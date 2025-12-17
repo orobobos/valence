@@ -14,22 +14,39 @@ This is Valence: the capacity to connect, to affect, to bond.
 - **[SYSTEM.md](docs/SYSTEM.md)** — The architecture. How principles become structure.
 - **[UNKNOWNS.md](docs/UNKNOWNS.md)** — Honest gaps. What we don't know yet.
 
-## The Knowledge Base
+## Knowledge Base Architecture
 
-Valence uses a knowledge base (`valence.kb.sqlite`) as first-class project state. The KB tracks:
+Valence uses modular knowledge bases with clear separation:
 
-- Beliefs, decisions, principles, unknowns
-- Provenance (where things came from)
-- Relationships between entries
-- Artifacts (external files and their state)
+- **Schema** (in repo) — Structure definitions, migrations, constraints
+- **Data** (external) — Instance-specific, moving to cloud service
 
-The KB is the project's memory. It commits with the code.
+### KB Scopes
+
+| Scope | Purpose | Location |
+|-------|---------|----------|
+| Personal | User values, preferences, agent memory | Cloud (planned) |
+| Project | Decisions, state, progress for this project | Local/Cloud |
+| Agent | Operational patterns, consistency across sessions | With Personal |
+
+### Schema Modules
+
+- `schema.sql` — Core entries, tags, relationships, modules
+- `schema_conversations.sql` — Session tracking at micro/meso/macro scales
+- `schema_embeddings.sql` — Multi-provider embedding registry
 
 ## Getting Started
 
 ```bash
-# Initialize the KB with founding documents
-python scripts/seed.py
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install package
+pip install -e .
+
+# Initialize schemas (creates local KB)
+python -c "from valence.kb import init_schemas; init_schemas()"
 ```
 
 ## Development
@@ -42,10 +59,31 @@ This project is developed using its own principles:
 4. **Knowledge capture** → Decisions accumulate in KB
 5. **Reflection** → Did the process follow principles?
 
+## MCP Server
+
+Valence exposes tools via Model Context Protocol for AI agent access:
+
+```bash
+# Run the MCP server
+./valence-mcp
+```
+
+Tools include session management, exchange capture, insight extraction, and pattern tracking.
+
 ## Status
 
-This is the seed. Dawn, not sunset.
+Active development. Current focus:
+- Conversation tracking and curation
+- Multi-provider embedding architecture
+- Cloud migration path for personal KB
+
+### Pending Architecture Work
+
+- Library restructuring (valence-core, valence-mcp)
+- Schema migration strategy
+- Configuration management
+- MCP tool interface versioning
 
 ---
 
-*Co-created by Chris and Claude. December 2024.*
+*Co-created by Chris and Claude. December 2025.*

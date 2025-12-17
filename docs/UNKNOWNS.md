@@ -34,11 +34,20 @@
 - Progressive learning from interaction
 - User controls what the agent knows and can infer
 
+**Progress made:**
+- Modular schema architecture (core, conversations, embeddings)
+- Multi-scale conversation tracking (micro/meso/macro)
+- Multi-provider embedding registry with fallback strategy
+- Schema/data separation supporting cloud migration
+- KB scopes defined: Personal, Project, Agent
+
 **What needs work:**
-- Technical architecture for knowledge representation
+- ~~Technical architecture for knowledge representation~~ (in progress)
 - Privacy-preserving learning mechanisms
 - User-understandable transparency into what agent "knows"
 - Interpretability integration specifics
+- Native embeddings vs external provider tradeoffs
+- Cloud service architecture for multi-client access
 
 **Principle constraint:** The knowledge base is the user's. The agent learns from it; it doesn't extract from it.
 
@@ -71,8 +80,15 @@
 - The collective action benefits are emergent
 - Early users need immediate, tangible value
 
+**Progress made:**
+- Dogfooding: Chris is user #1, using Valence to build Valence
+- MVP focus: automated development and project management
+- The development process IS the first instantiation of Valence principles
+- Aggregation at N=1 is direct; architecture supports N>1
+
 **What needs work:**
-- Specific value proposition for user #1 through user #10,000
+- ~~Specific value proposition for user #1~~ (in progress via dogfooding)
+- Value proposition for users #2 through user #10,000
 - The feature or capability that's compelling without network effects
 - Growth strategy that doesn't compromise principles
 

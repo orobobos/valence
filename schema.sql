@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS entries (
     type TEXT NOT NULL,  -- belief, decision, reference, artifact, principle, unknown, etc.
     content TEXT NOT NULL,
     summary TEXT,  -- optional short version
-    created_at TEXT NOT NULL,  -- when the thing came into being (ISO 8601)
-    ingested_at TEXT NOT NULL DEFAULT (datetime('now')),  -- when we learned about it
-    modified_at TEXT NOT NULL DEFAULT (datetime('now')),  -- when KB entry last changed
+    created_at INTEGER NOT NULL,  -- when the thing came into being (unix timestamp)
+    ingested_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- when we learned about it
+    modified_at INTEGER NOT NULL DEFAULT (unixepoch()),  -- when KB entry last changed
     confidence REAL DEFAULT 1.0,  -- 0.0 to 1.0
     source TEXT,  -- where it came from
     source_type TEXT,  -- conversation, document, inference, etc.
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS relationships (
     type TEXT NOT NULL,  -- derived_from, supports, contradicts, supersedes, relates_to, etc.
     strength REAL DEFAULT 1.0,  -- 0.0 to 1.0
     reasoning TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     CONSTRAINT valid_strength CHECK (strength >= 0.0 AND strength <= 1.0)
 );
 
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS contestation (
     contested_by TEXT,  -- what/who contests this
     alternatives TEXT,  -- JSON array of alternative positions
     resolution TEXT,
-    resolved_at TEXT
+    resolved_at INTEGER
 );
 
 -- Module: Scope (for visibility and ownership)
@@ -58,9 +58,9 @@ CREATE TABLE IF NOT EXISTS scope (
 CREATE TABLE IF NOT EXISTS lifecycle (
     entry_id TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'active',  -- draft, active, review, archived, expired
-    reviewed_at TEXT,
+    reviewed_at INTEGER,
     review_interval_days INTEGER,
-    expires_at TEXT
+    expires_at INTEGER
 );
 
 -- Module: Artifacts (for tracking external files)
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     entry_id TEXT PRIMARY KEY REFERENCES entries(id) ON DELETE CASCADE,
     filepath TEXT NOT NULL,
     filehash TEXT,  -- for detecting changes
-    last_synced_at TEXT
+    last_synced_at INTEGER
 );
 
 -- Indexes for common queries
@@ -82,8 +82,11 @@ CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(type);
 
 -- View: entries with their tags
 CREATE VIEW IF NOT EXISTS entries_with_tags AS
-SELECT 
+SELECT
     e.*,
+    datetime(e.created_at, 'unixepoch') as created_at_iso,
+    datetime(e.ingested_at, 'unixepoch') as ingested_at_iso,
+    datetime(e.modified_at, 'unixepoch') as modified_at_iso,
     GROUP_CONCAT(t.tag, ', ') as tags
 FROM entries e
 LEFT JOIN tags t ON e.id = t.entry_id

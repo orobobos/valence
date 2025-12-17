@@ -19,4 +19,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Note: valence.kb.sqlite is NOT ignored - it's first-class project state
+# Data files - schema is in repo, data is not
+# Data is instance-specific and will move to cloud service
+*.sqlite
+*.sqlite.bak
+*.db
