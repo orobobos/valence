@@ -1,0 +1,84 @@
+---
+# VKB (Valence Knowledge Base) service role
+
+- name: Install VKB dependencies
+  pip:
+    name:
+      - psycopg2-binary
+      - mcp
+      - matrix-nio
+      - openai
+    virtualenv: /opt/valence/venv
+  become_user: valence
+
+- name: Install VKB package
+  pip:
+    name: /opt/valence/repo
+    virtualenv: /opt/valence/venv
+    editable: yes
+  become_user: valence
+
+- name: Create VKB config directory
+  file:
+    path: /opt/valence/config
+    state: directory
+    owner: valence
+    group: valence
+    mode: '0750'
+
+- name: Create VKB environment file
+  template:
+    src: vkb.env.j2
+    dest: /opt/valence/config/vkb.env
+    owner: valence
+    group: valence
+    mode: '0600'
+
+- name: Initialize VKB database schema
+  shell: |
+    source /opt/valence/venv/bin/activate
+    cd /opt/valence/repo
+    psql -h localhost -U {{ postgres_user }} -d {{ postgres_db }} -f schema.sql
+    psql -h localhost -U {{ postgres_user }} -d {{ postgres_db }} -f schema_conversations.sql
+    psql -h localhost -U {{ postgres_user }} -d {{ postgres_db }} -f schema_embeddings.sql
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  args:
+    creates: /opt/valence/.schema_initialized
+  become_user: valence
+
+- name: Mark schema initialized
+  file:
+    path: /opt/valence/.schema_initialized
+    state: touch
+    owner: valence
+  when: true
+
+- name: Create VKB systemd service
+  template:
+    src: vkb.service.j2
+    dest: /etc/systemd/system/vkb.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart vkb
+
+- name: Enable and start VKB service
+  service:
+    name: vkb
+    state: started
+    enabled: yes
+
+- name: Create Matrix bot user
+  command: >
+    register_new_matrix_user -c /etc/matrix-synapse/homeserver.yaml
+    -u valence-bot -p "{{ lookup('env', 'VALENCE_BOT_PASSWORD') }}"
+  args:
+    creates: /opt/valence/.bot_user_created
+  register: bot_created
+
+- name: Mark bot user created
+  file:
+    path: /opt/valence/.bot_user_created
+    state: touch
+  when: bot_created.changed

@@ -1,0 +1,57 @@
+---
+# PostgreSQL + pgvector role
+
+- name: Add PostgreSQL repo key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL repo
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+
+- name: Install PostgreSQL and pgvector
+  apt:
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-{{ postgres_version }}-pgvector"
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create Valence database
+  become_user: postgres
+  postgresql_db:
+    name: "{{ postgres_db }}"
+    encoding: UTF-8
+    state: present
+
+- name: Create Valence database user
+  become_user: postgres
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    db: "{{ postgres_db }}"
+    priv: ALL
+    state: present
+
+- name: Enable pgvector extension
+  become_user: postgres
+  postgresql_ext:
+    name: vector
+    db: "{{ postgres_db }}"
+    state: present
+
+- name: Configure PostgreSQL to listen locally only
+  lineinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = 'localhost'"
+  notify: restart postgresql

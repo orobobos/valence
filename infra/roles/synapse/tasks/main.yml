@@ -1,0 +1,91 @@
+---
+# Synapse Matrix homeserver role
+
+- name: Add Matrix repo key
+  apt_key:
+    url: https://packages.matrix.org/debian/matrix-org-archive-keyring.gpg
+    state: present
+
+- name: Add Matrix repo
+  apt_repository:
+    repo: "deb https://packages.matrix.org/debian/ {{ ansible_distribution_release }} main"
+    state: present
+
+- name: Install Synapse
+  apt:
+    name: matrix-synapse-py3
+    state: present
+    update_cache: yes
+
+- name: Create Synapse config directory
+  file:
+    path: /etc/matrix-synapse/conf.d
+    state: directory
+    mode: '0755'
+
+- name: Generate Synapse config
+  template:
+    src: homeserver.yaml.j2
+    dest: /etc/matrix-synapse/homeserver.yaml
+    mode: '0644'
+  notify: restart synapse
+
+- name: Configure Synapse to use PostgreSQL
+  template:
+    src: database.yaml.j2
+    dest: /etc/matrix-synapse/conf.d/database.yaml
+    mode: '0640'
+    group: matrix-synapse
+  notify: restart synapse
+
+- name: Create Synapse signing key
+  command: /opt/venvs/matrix-synapse/bin/python -m synapse.app.homeserver --config-path /etc/matrix-synapse/homeserver.yaml --generate-keys
+  args:
+    creates: /etc/matrix-synapse/{{ synapse_server_name }}.signing.key
+
+- name: Configure nginx for Synapse
+  template:
+    src: nginx-synapse.conf.j2
+    dest: /etc/nginx/sites-available/synapse
+    mode: '0644'
+  notify: reload nginx
+
+- name: Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/synapse
+    dest: /etc/nginx/sites-enabled/synapse
+    state: link
+  notify: reload nginx
+
+- name: Remove default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Obtain SSL certificate
+  command: >
+    certbot --nginx -d {{ domain }} -d matrix.{{ domain }}
+    --non-interactive --agree-tos --email {{ letsencrypt_email }}
+  args:
+    creates: /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+
+- name: Ensure Synapse is running
+  service:
+    name: matrix-synapse
+    state: started
+    enabled: yes
+
+- name: Create admin user
+  command: >
+    register_new_matrix_user -c /etc/matrix-synapse/homeserver.yaml
+    -u {{ synapse_admin_user }} -p "{{ lookup('env', 'SYNAPSE_ADMIN_PASSWORD') }}" -a
+  args:
+    creates: /opt/valence/.admin_user_created
+  register: admin_created
+
+- name: Mark admin user created
+  file:
+    path: /opt/valence/.admin_user_created
+    state: touch
+  when: admin_created.changed

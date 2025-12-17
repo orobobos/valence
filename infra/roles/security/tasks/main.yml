@@ -1,0 +1,100 @@
+---
+# Security role - lock down the pod
+
+- name: Create valence user
+  user:
+    name: valence
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    create_home: yes
+
+- name: Add SSH key for valence user
+  authorized_key:
+    user: valence
+    key: "{{ lookup('env', 'VALENCE_SSH_PUBKEY') }}"
+    state: present
+
+- name: Add SSH key for root (initial setup only)
+  authorized_key:
+    user: root
+    key: "{{ lookup('env', 'VALENCE_SSH_PUBKEY') }}"
+    state: present
+
+- name: Install security packages
+  apt:
+    name:
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+    state: present
+
+- name: Configure UFW defaults
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Allow HTTP (for Let's Encrypt)
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Allow HTTPS
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: Allow Matrix federation
+  ufw:
+    rule: allow
+    port: "8448"
+    proto: tcp
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Harden SSH config
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin prohibit-password' }
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+    - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+    - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+  notify: restart sshd
+
+- name: Configure fail2ban for SSH
+  copy:
+    dest: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      port = ssh
+      filter = sshd
+      logpath = /var/log/auth.log
+      maxretry = 3
+      bantime = 3600
+  notify: restart fail2ban
+
+- name: Enable unattended upgrades
+  copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";

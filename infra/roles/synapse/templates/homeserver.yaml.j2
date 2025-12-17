@@ -1,0 +1,54 @@
+# Synapse homeserver configuration
+# Managed by Ansible - do not edit manually
+
+server_name: "{{ synapse_server_name }}"
+pid_file: /var/run/matrix-synapse.pid
+
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client, federation]
+        compress: false
+
+  - port: 8448
+    tls: true
+    type: http
+    resources:
+      - names: [federation]
+        compress: false
+
+# Database configured in conf.d/database.yaml
+
+log_config: "/etc/matrix-synapse/log.yaml"
+
+media_store_path: /var/lib/matrix-synapse/media
+uploads_path: /var/lib/matrix-synapse/uploads
+
+# Registration - disabled, admin creates users
+enable_registration: false
+enable_registration_without_verification: false
+
+# Security
+registration_shared_secret: "{{ lookup('env', 'SYNAPSE_REGISTRATION_SECRET') }}"
+macaroon_secret_key: "{{ lookup('env', 'SYNAPSE_MACAROON_SECRET') }}"
+form_secret: "{{ lookup('env', 'SYNAPSE_FORM_SECRET') }}"
+
+# Signing key
+signing_key_path: "/etc/matrix-synapse/{{ synapse_server_name }}.signing.key"
+
+# Trusted key servers
+trusted_key_servers:
+  - server_name: "matrix.org"
+
+# Rate limiting - relaxed for personal use
+rc_messages_per_second: 1000
+rc_message_burst_count: 1000
+
+# Suppress warnings about federation
+suppress_key_server_warning: true
+
+# App service for Valence bot (configured separately)
+app_service_config_files: []

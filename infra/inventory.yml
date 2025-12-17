@@ -1,0 +1,26 @@
+---
+# Valence Infrastructure Inventory
+# Update with actual Droplet IP after creation
+
+all:
+  hosts:
+    valence-pod:
+      ansible_host: "{{ lookup('env', 'VALENCE_POD_IP') }}"
+      ansible_user: root
+      ansible_ssh_private_key_file: ~/.ssh/valence_pod
+  vars:
+    # Domain configuration
+    domain: "{{ lookup('env', 'VALENCE_DOMAIN') }}"
+
+    # PostgreSQL
+    postgres_version: "16"
+    postgres_db: valence
+    postgres_user: valence
+    postgres_password: "{{ lookup('env', 'VALENCE_DB_PASSWORD') }}"
+
+    # Synapse
+    synapse_server_name: "{{ domain }}"
+    synapse_admin_user: chris
+
+    # Let's Encrypt
+    letsencrypt_email: "{{ lookup('env', 'LETSENCRYPT_EMAIL') }}"

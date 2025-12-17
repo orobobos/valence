@@ -1,0 +1,59 @@
+---
+# Common role - base packages and configuration
+
+- name: Install base packages
+  apt:
+    name:
+      - git
+      - curl
+      - wget
+      - htop
+      - vim
+      - tmux
+      - build-essential
+      - python3
+      - python3-pip
+      - python3-venv
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+    state: present
+
+- name: Set timezone
+  timezone:
+    name: UTC
+
+- name: Create app directory
+  file:
+    path: /opt/valence
+    state: directory
+    owner: valence
+    group: valence
+    mode: '0755'
+
+- name: Clone Valence repo
+  git:
+    repo: "https://github.com/{{ lookup('env', 'GITHUB_USER') }}/valence.git"
+    dest: /opt/valence/repo
+    version: main
+  become_user: valence
+
+- name: Create Python venv
+  command: python3 -m venv /opt/valence/venv
+  args:
+    creates: /opt/valence/venv
+  become_user: valence
+
+- name: Install Claude Code
+  shell: |
+    curl -fsSL https://claude.ai/install.sh | sh
+  args:
+    creates: /home/valence/.claude/bin/claude
+  become_user: valence
+
+- name: Add Claude Code to PATH
+  lineinfile:
+    path: /home/valence/.bashrc
+    line: 'export PATH="$HOME/.claude/bin:$PATH"'
+    state: present
+  become_user: valence

@@ -1,0 +1,43 @@
+---
+# Valence Pod Deployment Playbook
+# Usage: ansible-playbook -i inventory.yml site.yml
+
+- name: Deploy Valence Pod
+  hosts: valence-pod
+  become: yes
+
+  pre_tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+  roles:
+    - role: security
+      tags: [security]
+
+    - role: common
+      tags: [common]
+
+    - role: postgresql
+      tags: [postgresql, db]
+
+    - role: synapse
+      tags: [synapse, matrix]
+
+    - role: vkb
+      tags: [vkb]
+
+  post_tasks:
+    - name: Display connection info
+      debug:
+        msg: |
+          Valence Pod deployed successfully!
+
+          Matrix homeserver: https://{{ domain }}
+          PostgreSQL: localhost:5432/{{ postgres_db }}
+
+          Next steps:
+          1. SSH in and authenticate Claude Code
+          2. Connect Element to {{ domain }}
+          3. Verify VKB MCP is responding

@@ -1,0 +1,23 @@
+[Unit]
+Description=Valence Knowledge Base Service
+After=network.target postgresql.service matrix-synapse.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=valence
+Group=valence
+WorkingDirectory=/opt/valence/repo
+EnvironmentFile=/opt/valence/config/vkb.env
+ExecStart=/opt/valence/venv/bin/python -m valence.mcp_server
+Restart=always
+RestartSec=5
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/valence
+
+[Install]
+WantedBy=multi-user.target

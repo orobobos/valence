@@ -1,0 +1,12 @@
+# Synapse PostgreSQL database configuration
+# Managed by Ansible
+
+database:
+  name: psycopg2
+  args:
+    user: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    database: "{{ postgres_db }}"
+    host: localhost
+    cp_min: 5
+    cp_max: 10
