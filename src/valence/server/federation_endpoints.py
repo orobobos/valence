@@ -3,14 +3,21 @@
 Provides well-known endpoints for federation node discovery:
 - /.well-known/vfp-node-metadata - Node DID document
 - /.well-known/vfp-trust-anchors - Trusted nodes list (optional)
+
+Security: Federation protocol endpoints require DID signature verification.
+Discovery endpoints (/.well-known/*) are public by design.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
+import time
 from datetime import datetime
-from typing import Any
+from functools import wraps
+from typing import Any, Callable
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -18,6 +25,132 @@ from starlette.responses import JSONResponse
 from .config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# DID SIGNATURE VERIFICATION MIDDLEWARE
+# =============================================================================
+
+
+class DIDSignatureError(Exception):
+    """Error during DID signature verification."""
+    pass
+
+
+async def verify_did_signature(request: Request) -> dict[str, Any] | None:
+    """Verify the DID signature on a federation request.
+
+    Expects headers:
+    - X-VFP-DID: The sender's DID
+    - X-VFP-Signature: Base64-encoded Ed25519 signature
+    - X-VFP-Timestamp: Unix timestamp (for replay protection)
+    - X-VFP-Nonce: Random nonce (for replay protection)
+
+    The signature covers: method + path + timestamp + nonce + body_hash
+
+    Returns:
+        Dict with verified DID info, or None if verification fails
+    """
+    did = request.headers.get("X-VFP-DID")
+    signature_b64 = request.headers.get("X-VFP-Signature")
+    timestamp_str = request.headers.get("X-VFP-Timestamp")
+    nonce = request.headers.get("X-VFP-Nonce")
+
+    if not all([did, signature_b64, timestamp_str, nonce]):
+        return None
+
+    try:
+        timestamp = int(timestamp_str)
+    except ValueError:
+        return None
+
+    # Check timestamp freshness (within 5 minutes)
+    now = int(time.time())
+    if abs(now - timestamp) > 300:
+        logger.warning(f"DID signature timestamp too old/future: {timestamp} vs {now}")
+        return None
+
+    # Get the request body for hashing
+    body = await request.body()
+    body_hash = hashlib.sha256(body).hexdigest()
+
+    # Construct the message that was signed
+    # Format: METHOD PATH TIMESTAMP NONCE BODYHASH
+    message = f"{request.method} {request.url.path} {timestamp} {nonce} {body_hash}"
+    message_bytes = message.encode("utf-8")
+
+    # Resolve the DID to get the public key
+    try:
+        from ..federation.identity import parse_did, resolve_did_sync, verify_signature
+
+        parsed_did = parse_did(did)
+        did_document = resolve_did_sync(parsed_did)
+
+        if not did_document:
+            logger.warning(f"Could not resolve DID: {did}")
+            return None
+
+        # Get the public key from the DID document
+        public_key = did_document.get_public_key()
+        if not public_key:
+            logger.warning(f"No public key in DID document: {did}")
+            return None
+
+        # Verify the signature
+        signature = base64.b64decode(signature_b64)
+        if not verify_signature(message_bytes, signature, public_key):
+            logger.warning(f"Invalid DID signature from: {did}")
+            return None
+
+        return {
+            "did": did,
+            "did_document": did_document,
+            "timestamp": timestamp,
+            "nonce": nonce,
+        }
+
+    except Exception as e:
+        logger.warning(f"DID signature verification error: {e}")
+        return None
+
+
+def require_did_signature(handler: Callable) -> Callable:
+    """Decorator that requires valid DID signature for federation endpoints.
+
+    Usage:
+        @require_did_signature
+        async def my_handler(request: Request) -> JSONResponse:
+            # request.state.did_info contains verified DID info
+            ...
+    """
+    @wraps(handler)
+    async def wrapper(request: Request) -> JSONResponse:
+        settings = get_settings()
+
+        # Skip verification if federation is disabled
+        if not settings.federation_enabled:
+            return JSONResponse(
+                {"error": "Federation not enabled"},
+                status_code=404,
+            )
+
+        # Verify DID signature
+        did_info = await verify_did_signature(request)
+        if not did_info:
+            return JSONResponse(
+                {
+                    "error": "DID signature verification failed",
+                    "details": "Federation endpoints require valid X-VFP-DID, X-VFP-Signature, X-VFP-Timestamp, and X-VFP-Nonce headers",
+                },
+                status_code=401,
+            )
+
+        # Attach verified DID info to request state
+        request.state.did_info = did_info
+
+        return await handler(request)
+
+    return wrapper
 
 
 async def vfp_node_metadata(request: Request) -> JSONResponse:
@@ -336,6 +469,7 @@ def _get_federation_stats() -> dict[str, Any]:
 # =============================================================================
 
 
+@require_did_signature
 async def federation_protocol(request: Request) -> JSONResponse:
     """Main federation protocol endpoint.
 
@@ -347,14 +481,11 @@ async def federation_protocol(request: Request) -> JSONResponse:
     - etc.
 
     Endpoint: POST /federation/protocol
+    Requires: Valid DID signature (X-VFP-DID, X-VFP-Signature, X-VFP-Timestamp, X-VFP-Nonce headers)
     """
     settings = get_settings()
 
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
+    # Note: federation_enabled check is done by @require_did_signature
 
     try:
         body = await request.json()
@@ -460,6 +591,7 @@ async def federation_nodes_get(request: Request) -> JSONResponse:
     return JSONResponse(result)
 
 
+@require_did_signature
 async def federation_nodes_discover(request: Request) -> JSONResponse:
     """Discover and register a federation node.
 
@@ -468,14 +600,9 @@ async def federation_nodes_discover(request: Request) -> JSONResponse:
     - auto_register: Whether to auto-register (default true)
 
     Endpoint: POST /federation/nodes/discover
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json()
@@ -538,6 +665,7 @@ async def federation_trust_get(request: Request) -> JSONResponse:
     return JSONResponse(result)
 
 
+@require_did_signature
 async def federation_trust_set(request: Request) -> JSONResponse:
     """Set trust preference for a node.
 
@@ -548,14 +676,9 @@ async def federation_trust_set(request: Request) -> JSONResponse:
     - domain: Optional domain-specific override
 
     Endpoint: POST /federation/nodes/{node_id}/trust
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json()
@@ -618,6 +741,7 @@ async def federation_sync_status(request: Request) -> JSONResponse:
     return JSONResponse(result)
 
 
+@require_did_signature
 async def federation_sync_trigger(request: Request) -> JSONResponse:
     """Trigger synchronization.
 
@@ -625,14 +749,9 @@ async def federation_sync_trigger(request: Request) -> JSONResponse:
     - node_id: Specific node to sync with
 
     Endpoint: POST /federation/sync
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json() if await request.body() else {}
@@ -656,6 +775,7 @@ async def federation_sync_trigger(request: Request) -> JSONResponse:
 # =============================================================================
 
 
+@require_did_signature
 async def federation_belief_share(request: Request) -> JSONResponse:
     """Share a belief with the federation.
 
@@ -666,14 +786,9 @@ async def federation_belief_share(request: Request) -> JSONResponse:
     - target_nodes: Optional list of specific node IDs
 
     Endpoint: POST /federation/beliefs/share
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json()
@@ -702,6 +817,7 @@ async def federation_belief_share(request: Request) -> JSONResponse:
         )
 
 
+@require_did_signature
 async def federation_belief_query(request: Request) -> JSONResponse:
     """Query beliefs across the federation.
 
@@ -713,14 +829,9 @@ async def federation_belief_query(request: Request) -> JSONResponse:
     - limit: Maximum results (default: 20)
 
     Endpoint: POST /federation/beliefs/query
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json()
@@ -750,6 +861,7 @@ async def federation_belief_query(request: Request) -> JSONResponse:
         )
 
 
+@require_did_signature
 async def federation_corroboration_check(request: Request) -> JSONResponse:
     """Check corroboration for a belief.
 
@@ -759,14 +871,9 @@ async def federation_corroboration_check(request: Request) -> JSONResponse:
     - domain: Optional domain context
 
     Endpoint: POST /federation/beliefs/corroboration
+    Requires: Valid DID signature
     """
     settings = get_settings()
-
-    if not settings.federation_enabled:
-        return JSONResponse(
-            {"error": "Federation not enabled"},
-            status_code=404,
-        )
 
     try:
         body = await request.json()
@@ -803,31 +910,40 @@ async def federation_corroboration_check(request: Request) -> JSONResponse:
 # These are exported for registration in the main app
 
 FEDERATION_ROUTES = [
-    # Discovery endpoints (no auth required)
+    # ==========================================================================
+    # DISCOVERY ENDPOINTS (Public - no auth required)
+    # These MUST remain public for federation discovery to work
+    # ==========================================================================
     ("/.well-known/vfp-node-metadata", vfp_node_metadata, ["GET"]),
     ("/.well-known/vfp-trust-anchors", vfp_trust_anchors, ["GET"]),
 
-    # Federation API (auth required - handled by caller)
+    # ==========================================================================
+    # FEDERATION API ENDPOINTS
+    # Read endpoints require standard OAuth/bearer auth (handled by caller)
+    # Write endpoints require DID signature verification (@require_did_signature)
+    # ==========================================================================
+
+    # Status (read-only, OAuth auth from caller)
     ("/federation/status", federation_status, ["GET"]),
 
-    # Protocol endpoint (for node-to-node communication)
+    # Protocol endpoint (DID signature required via decorator)
     ("/federation/protocol", federation_protocol, ["POST"]),
 
     # Node management
-    ("/federation/nodes", federation_nodes_list, ["GET"]),
-    ("/federation/nodes/discover", federation_nodes_discover, ["POST"]),
-    ("/federation/nodes/{node_id}", federation_nodes_get, ["GET"]),
+    ("/federation/nodes", federation_nodes_list, ["GET"]),  # OAuth auth from caller
+    ("/federation/nodes/discover", federation_nodes_discover, ["POST"]),  # DID signature required
+    ("/federation/nodes/{node_id}", federation_nodes_get, ["GET"]),  # OAuth auth from caller
 
     # Trust management
-    ("/federation/nodes/{node_id}/trust", federation_trust_get, ["GET"]),
-    ("/federation/nodes/{node_id}/trust", federation_trust_set, ["POST"]),
+    ("/federation/nodes/{node_id}/trust", federation_trust_get, ["GET"]),  # OAuth auth from caller
+    ("/federation/nodes/{node_id}/trust", federation_trust_set, ["POST"]),  # DID signature required
 
     # Sync management
-    ("/federation/sync", federation_sync_status, ["GET"]),
-    ("/federation/sync", federation_sync_trigger, ["POST"]),
+    ("/federation/sync", federation_sync_status, ["GET"]),  # OAuth auth from caller
+    ("/federation/sync", federation_sync_trigger, ["POST"]),  # DID signature required
 
-    # Belief federation
-    ("/federation/beliefs/share", federation_belief_share, ["POST"]),
-    ("/federation/beliefs/query", federation_belief_query, ["POST"]),
-    ("/federation/beliefs/corroboration", federation_corroboration_check, ["POST"]),
+    # Belief federation (all POST endpoints require DID signature)
+    ("/federation/beliefs/share", federation_belief_share, ["POST"]),  # DID signature required
+    ("/federation/beliefs/query", federation_belief_query, ["POST"]),  # DID signature required
+    ("/federation/beliefs/corroboration", federation_corroboration_check, ["POST"]),  # DID signature required
 ]
