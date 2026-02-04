@@ -1444,3 +1444,384 @@ class TestMessagePreservation:
         
         # No retry because no alternative was found
         assert len(retry_called) == 0
+
+
+# =============================================================================
+# Multi-Router Connection Tests (Issue #106)
+# =============================================================================
+
+
+class TestMultiRouterConnections:
+    """Tests for multi-router connection management (Issue #106).
+    
+    These tests verify:
+    1. NodeClient maintains connections to multiple routers (configurable)
+    2. Messages sent through best router, failover to alternatives
+    3. Router health tracking and connection status
+    4. Integration with failover logic from #107
+    """
+
+    def test_configurable_connection_counts(self, ed25519_keypair, x25519_keypair):
+        """Test that connection counts are configurable."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        # Test various configurations
+        for min_conn, target, max_conn in [(2, 3, 5), (1, 2, 3), (3, 5, 8)]:
+            node = NodeClient(
+                node_id=public_key.public_bytes_raw().hex(),
+                private_key=private_key,
+                encryption_private_key=enc_private,
+                min_connections=min_conn,
+                target_connections=target,
+                max_connections=max_conn,
+            )
+            
+            assert node.min_connections == min_conn
+            assert node.target_connections == target
+            assert node.max_connections == max_conn
+
+    def test_multiple_connections_tracked(
+        self, node_client, mock_session
+    ):
+        """Test that multiple router connections are tracked correctly."""
+        routers = []
+        for i in range(3):
+            router = RouterInfo(
+                router_id=f"{chr(97+i)}" * 64,  # a*64, b*64, c*64
+                endpoints=[f"10.{i}.1.1:8471"],
+                capacity={"current_load_pct": 20 + i * 10},
+                health={"uptime_pct": 99 - i},
+                regions=["us-west"],
+                features=[],
+            )
+            routers.append(router)
+            
+            ws = AsyncMock()
+            ws.closed = False
+            
+            conn = RouterConnection(
+                router=router,
+                websocket=ws,
+                session=mock_session,
+                connected_at=time.time(),
+                last_seen=time.time(),
+            )
+            node_client.connections[router.router_id] = conn
+            node_client._add_subnet(router)
+        
+        # Verify all connections are tracked
+        assert len(node_client.connections) == 3
+        assert len(node_client._connected_subnets) == 3
+        
+        # Verify connection info is retrievable
+        conn_info = node_client.get_connections()
+        assert len(conn_info) == 3
+
+    def test_health_tracking_per_router(
+        self, node_client, mock_session
+    ):
+        """Test that health metrics are tracked per router."""
+        # Create healthy router
+        healthy_router = RouterInfo(
+            router_id="h" * 64,
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10},
+            health={},
+            regions=[],
+            features=[],
+        )
+        healthy_ws = AsyncMock()
+        healthy_ws.closed = False
+        healthy_conn = RouterConnection(
+            router=healthy_router,
+            websocket=healthy_ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+            ack_success=95,
+            ack_failure=5,
+            ping_latency_ms=30,
+        )
+        
+        # Create degraded router
+        degraded_router = RouterInfo(
+            router_id="d" * 64,
+            endpoints=["10.1.1.1:8471"],
+            capacity={"current_load_pct": 80},
+            health={},
+            regions=[],
+            features=[],
+        )
+        degraded_ws = AsyncMock()
+        degraded_ws.closed = False
+        degraded_conn = RouterConnection(
+            router=degraded_router,
+            websocket=degraded_ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+            ack_success=60,
+            ack_failure=40,
+            ping_latency_ms=300,
+        )
+        
+        node_client.connections[healthy_router.router_id] = healthy_conn
+        node_client.connections[degraded_router.router_id] = degraded_conn
+        
+        # Health scores should differ significantly
+        assert healthy_conn.health_score > degraded_conn.health_score
+        assert healthy_conn.ack_success_rate > degraded_conn.ack_success_rate
+        
+        # Stats should reflect multi-router state
+        stats = node_client.get_stats()
+        assert stats["active_connections"] == 2
+
+    def test_best_router_selected_for_messages(
+        self, node_client, mock_session
+    ):
+        """Test that healthiest router is selected most often."""
+        # Create 3 routers with different health levels
+        routers_and_health = [
+            ("excellent", 0.95),
+            ("good", 0.7),
+            ("poor", 0.3),
+        ]
+        
+        for name, target_health in routers_and_health:
+            router = RouterInfo(
+                router_id=name.ljust(64, "x"),
+                endpoints=[f"10.{len(name)}.1.1:8471"],
+                capacity={"current_load_pct": int((1 - target_health) * 100)},
+                health={},
+                regions=[],
+                features=[],
+            )
+            ws = AsyncMock()
+            ws.closed = False
+            
+            # Set ACK stats to achieve target health
+            if target_health >= 0.9:
+                ack_success, ack_failure, latency = 100, 0, 20
+            elif target_health >= 0.6:
+                ack_success, ack_failure, latency = 70, 30, 150
+            else:
+                ack_success, ack_failure, latency = 30, 70, 400
+            
+            conn = RouterConnection(
+                router=router,
+                websocket=ws,
+                session=mock_session,
+                connected_at=time.time(),
+                last_seen=time.time(),
+                ack_success=ack_success,
+                ack_failure=ack_failure,
+                ping_latency_ms=latency,
+            )
+            node_client.connections[router.router_id] = conn
+        
+        # Sample selections
+        selection_counts = {}
+        for _ in range(1000):
+            selected = node_client._select_router()
+            selection_counts[selected.router_id] = selection_counts.get(selected.router_id, 0) + 1
+        
+        # Excellent router should be selected most
+        excellent_id = "excellent".ljust(64, "x")
+        poor_id = "poor".ljust(64, "x")
+        
+        assert selection_counts[excellent_id] > selection_counts[poor_id] * 2
+
+    @pytest.mark.asyncio
+    async def test_failover_to_secondary_router(
+        self, node_client, mock_session
+    ):
+        """Test failover from primary to secondary router."""
+        # Create primary router (will fail)
+        primary_router = RouterInfo(
+            router_id="p" * 64,
+            endpoints=["10.0.1.1:8471"],
+            capacity={},
+            health={"uptime_pct": 99},
+            regions=[],
+            features=[],
+        )
+        primary_ws = AsyncMock()
+        primary_ws.closed = False
+        primary_ws.close = AsyncMock()
+        primary_conn = RouterConnection(
+            router=primary_router,
+            websocket=primary_ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+            ack_success=100,  # Healthy before failure
+        )
+        
+        # Create secondary router (backup)
+        secondary_router = RouterInfo(
+            router_id="s" * 64,
+            endpoints=["10.1.1.1:8471"],
+            capacity={},
+            health={"uptime_pct": 99},
+            regions=[],
+            features=[],
+        )
+        secondary_ws = AsyncMock()
+        secondary_ws.closed = False
+        secondary_conn = RouterConnection(
+            router=secondary_router,
+            websocket=secondary_ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+            ack_success=90,
+        )
+        
+        node_client.connections[primary_router.router_id] = primary_conn
+        node_client.connections[secondary_router.router_id] = secondary_conn
+        
+        # Before failure: should have 2 connections
+        assert len(node_client.connections) == 2
+        
+        # Simulate primary failure
+        with patch.object(
+            node_client.discovery, 'discover_routers',
+            new_callable=AsyncMock, return_value=[]
+        ):
+            await node_client._handle_router_failure(primary_router.router_id)
+        
+        # After failure: secondary should still be available
+        assert len(node_client.connections) == 1
+        assert secondary_router.router_id in node_client.connections
+        
+        # Should be able to select secondary
+        selected = node_client._select_router()
+        assert selected.router_id == secondary_router.router_id
+
+    def test_connection_status_reporting(
+        self, node_client, mock_session
+    ):
+        """Test accurate connection status reporting."""
+        # Add some routers with different states
+        for i, (load, latency, ack_rate) in enumerate([
+            (15, 25, 0.98),
+            (45, 100, 0.85),
+            (80, 300, 0.60),
+        ]):
+            router = RouterInfo(
+                router_id=f"{chr(97+i)}" * 64,
+                endpoints=[f"10.{i}.1.1:8471"],
+                capacity={"current_load_pct": load},
+                health={},
+                regions=[],
+                features=[],
+            )
+            ws = AsyncMock()
+            ws.closed = False
+            
+            total_acks = 100
+            successes = int(total_acks * ack_rate)
+            
+            conn = RouterConnection(
+                router=router,
+                websocket=ws,
+                session=mock_session,
+                connected_at=time.time() - 3600,  # 1 hour ago
+                last_seen=time.time(),
+                messages_sent=50 + i * 10,
+                messages_received=45 + i * 8,
+                ack_success=successes,
+                ack_failure=total_acks - successes,
+                ping_latency_ms=latency,
+            )
+            node_client.connections[router.router_id] = conn
+        
+        # Get connection info
+        connections = node_client.get_connections()
+        
+        assert len(connections) == 3
+        
+        # Verify info contains expected fields
+        for conn_info in connections:
+            assert "router_id" in conn_info
+            assert "endpoint" in conn_info
+            assert "connected_at" in conn_info
+            assert "last_seen" in conn_info
+            assert "health_score" in conn_info
+            assert "ack_success_rate" in conn_info
+            assert "ping_latency_ms" in conn_info
+            assert "messages_sent" in conn_info
+            assert "messages_received" in conn_info
+
+    @pytest.mark.asyncio
+    async def test_ensure_connections_targets_config(
+        self, node_client
+    ):
+        """Test that _ensure_connections respects target_connections."""
+        node_client.target_connections = 3
+        
+        # Create mock routers for discovery
+        mock_routers = [
+            RouterInfo(
+                router_id=f"{chr(97+i)}" * 64,
+                endpoints=[f"10.{i}.1.1:8471"],
+                capacity={"current_load_pct": 20},
+                health={"uptime_pct": 99},
+                regions=[],
+                features=[],
+            )
+            for i in range(5)
+        ]
+        
+        connections_made = []
+        
+        async def mock_connect(router):
+            connections_made.append(router.router_id)
+            # Simulate successful connection
+            ws = AsyncMock()
+            ws.closed = False
+            conn = RouterConnection(
+                router=router,
+                websocket=ws,
+                session=AsyncMock(),
+                connected_at=time.time(),
+                last_seen=time.time(),
+            )
+            node_client.connections[router.router_id] = conn
+            node_client._add_subnet(router)
+        
+        with patch.object(
+            node_client.discovery, 'discover_routers',
+            new_callable=AsyncMock, return_value=mock_routers
+        ):
+            with patch.object(node_client, '_connect_to_router', mock_connect):
+                await node_client._ensure_connections()
+        
+        # Should have connected to target_connections routers
+        assert len(node_client.connections) == 3
+
+    def test_integration_with_failover_states(
+        self, node_client
+    ):
+        """Test multi-router integrates with failover state tracking."""
+        from valence.network.node import FailoverState
+        
+        # Add a router in cooldown
+        cooldown_router_id = "c" * 64
+        node_client.failover_states[cooldown_router_id] = FailoverState(
+            router_id=cooldown_router_id,
+            failed_at=time.time(),
+            fail_count=2,
+            cooldown_until=time.time() + 120,  # 2 minutes cooldown
+        )
+        
+        # Stats should show routers in cooldown
+        stats = node_client.get_stats()
+        assert stats["routers_in_cooldown"] == 1
+        
+        # Failover states should be retrievable
+        states = node_client.get_failover_states()
+        assert cooldown_router_id in states
+        assert states[cooldown_router_id]["in_cooldown"] is True
+        assert states[cooldown_router_id]["fail_count"] == 2
