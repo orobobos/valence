@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **External Source Verification for L4 Elevation** (Issue #18)
+  - Comprehensive external source verification per THREAT-MODEL.md §1.4.2
+  - `external_sources.py` module with complete implementation:
+    - `ExternalSourceVerificationService` for full verification workflow
+    - `TrustedSourceRegistry` with default academic, government, news sources
+    - `SourceCategory` enum with reliability scores (academic > government > news > unknown)
+    - Liveness checking (URL resolution, DOI verification)
+    - Content matching (semantic similarity simulation, 0.65 threshold)
+    - Source reliability scoring (multi-factor: category, liveness, content match, freshness)
+  - Data models:
+    - `ExternalSourceVerification`, `LivenessCheckResult`, `ContentMatchResult`
+    - `DOIVerificationResult`, `SourceReliabilityScore`, `L4SourceRequirements`
+    - `TrustedDomain`, `DOIPrefix` for registry entries
+  - L4 elevation requirements:
+    - Minimum 1 verified external source
+    - Source reliability ≥ 0.50
+    - Content match ≥ 0.65
+    - `check_l4_requirements()` for elevation gate
+  - Convenience functions: `verify_external_source()`, `check_belief_l4_readiness()`
+  - Spec document: `spec/components/consensus-mechanism/EXTERNAL-SOURCES.md`
+  - 75 comprehensive tests covering all functionality
+  - Updated THREAT-MODEL.md: Independence Oracle Manipulation marked MITIGATED
+
+- **Federation Layer with Aggregation** (Issue #15)
+  - Cross-federation belief aggregation with privacy preservation
+  - `aggregation.py` module with complete implementation:
+    - `FederationAggregator` - Main aggregation engine
+    - `ConflictDetector` - Detects conflicts across federations
+    - `TrustWeightedAggregator` - Trust-weighted statistics
+    - `PrivacyPreservingAggregator` - Differential privacy integration
+  - Four conflict types: CONTRADICTION, DIVERGENCE, TEMPORAL, SCOPE
+  - Five conflict resolution strategies: 
+    - TRUST_WEIGHTED, RECENCY_WINS, CORROBORATION, 
+    - EXCLUDE_CONFLICTING, FLAG_FOR_REVIEW
+  - Trust-weighted aggregation with:
+    - Configurable weights (trust, recency, corroboration)
+    - Anchor federation bonus
+    - Temporal smoothing integration
+  - Privacy-preserving aggregation:
+    - k-anonymity enforcement (min 5, 10 for sensitive domains)
+    - Laplace/Gaussian noise injection
+    - Privacy budget tracking
+    - Automatic sensitive domain detection
+  - Data classes: `FederationContribution`, `DetectedConflict`,
+    `AggregationConfig`, `CrossFederationAggregateResult`
+  - Convenience functions: `aggregate_cross_federation()`, `create_contribution()`
+  - Full module exports in `federation/__init__.py`
+  - 43 comprehensive tests covering all functionality
+  - Documentation at `docs/federation/AGGREGATION.md`
+
 - **Verification Protocol with Staking** (Issue #14)
   - Full implementation of `spec/components/verification-protocol/`
   - `verification.py` module with complete data models:

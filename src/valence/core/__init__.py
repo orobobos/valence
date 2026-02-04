@@ -71,6 +71,33 @@ from .mcp_base import (
     error_response,
     not_found_response,
 )
+from .external_sources import (
+    # Constants
+    ExternalSourceConstants,
+    # Enums
+    SourceCategory,
+    SourceVerificationStatus,
+    DOIStatus,
+    SourceLivenessStatus,
+    # Registry
+    TrustedDomain,
+    DOIPrefix,
+    TrustedSourceRegistry,
+    get_registry,
+    # Results
+    LivenessCheckResult,
+    ContentMatchResult,
+    DOIVerificationResult,
+    SourceReliabilityScore,
+    # Models
+    ExternalSourceVerification,
+    L4SourceRequirements,
+    # Service
+    ExternalSourceVerificationService,
+    # Functions
+    verify_external_source,
+    check_belief_l4_readiness,
+)
 
 __all__ = [
     # Models
@@ -139,4 +166,23 @@ __all__ = [
     "calculate_max_stake",
     "calculate_bounty",
     "create_evidence",
+    # External Source Verification (L4)
+    "ExternalSourceConstants",
+    "SourceCategory",
+    "SourceVerificationStatus",
+    "DOIStatus",
+    "SourceLivenessStatus",
+    "TrustedDomain",
+    "DOIPrefix",
+    "TrustedSourceRegistry",
+    "get_registry",
+    "LivenessCheckResult",
+    "ContentMatchResult",
+    "DOIVerificationResult",
+    "SourceReliabilityScore",
+    "ExternalSourceVerification",
+    "L4SourceRequirements",
+    "ExternalSourceVerificationService",
+    "verify_external_source",
+    "check_belief_l4_readiness",
 ]
