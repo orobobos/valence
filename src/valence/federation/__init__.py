@@ -11,7 +11,7 @@ Key components:
 - discovery: Node discovery and registration
 - sync: Belief synchronization between nodes
 - trust: Trust computation and management
-- privacy: Differential privacy for aggregation (coming in Phase 3)
+- privacy: Differential privacy for aggregation
 - peers: In-memory peer storage (MVP)
 - server: Lightweight federation server (MVP)
 """
@@ -145,12 +145,96 @@ from .trust_propagation import (
     DEFAULT_DECAY_FACTOR,
     DEFAULT_MAX_HOPS,
     DEFAULT_CACHE_TTL,
+    DEFAULT_APPLY_RING_COEFFICIENT,
+)
+
+from .ring_coefficient import (
+    RingDetector,
+    RingDetectionResult,
+    RingCoefficientCalculator,
+    TrustVelocityAnalyzer,
+    TrustVelocityResult,
+    SybilClusterDetector,
+    SybilCluster,
+    GraphAnalysisResult,
+    get_ring_coefficient_calculator,
+    calculate_ring_coefficient,
+    record_trust_change,
+    analyze_trust_graph,
+    DEFAULT_RING_DAMPENING,
+    MIN_RING_COEFFICIENT,
+    VELOCITY_ANOMALY_THRESHOLD,
 )
 
 from .tools import (
     FEDERATION_TOOLS,
     FEDERATION_TOOL_HANDLERS,
     handle_federation_tool,
+)
+
+from .privacy import (
+    # Constants
+    MIN_EPSILON,
+    MAX_EPSILON,
+    DEFAULT_EPSILON,
+    DEFAULT_DELTA,
+    DEFAULT_MIN_CONTRIBUTORS,
+    SENSITIVE_MIN_CONTRIBUTORS,
+    HISTOGRAM_SUPPRESSION_THRESHOLD,
+    MAX_QUERIES_PER_TOPIC_PER_DAY,
+    MAX_QUERIES_PER_FEDERATION_PER_DAY,
+    SENSITIVE_DOMAINS,
+    # Enums
+    PrivacyLevel,
+    NoiseMechanism,
+    BudgetCheckResult,
+    # Config
+    PrivacyConfig,
+    # Budget tracking
+    TopicBudget,
+    RequesterBudget,
+    PrivacyBudget,
+    # Temporal smoothing
+    MembershipEvent,
+    TemporalSmoother,
+    # Functions
+    add_laplace_noise,
+    add_gaussian_noise,
+    add_noise,
+    should_include_histogram,
+    build_noisy_histogram,
+    is_sensitive_domain,
+    compute_topic_hash,
+    compute_private_aggregate,
+    PrivateAggregateResult,
+)
+
+from .challenges import (
+    # Configuration
+    ReviewerConfig,
+    DEFAULT_REVIEWER_CONFIG,
+    # Enums
+    ChallengeType,
+    ChallengeStatus,
+    ReviewDecision,
+    ReviewerStatus,
+    # Data classes
+    Challenge,
+    ChallengeReview,
+    ChallengeResolution,
+    ReviewerReputation,
+    EligibleReviewer,
+    # Selection & Resolution
+    ReviewerSelector,
+    ChallengeResolver,
+    AppealHandler,
+    # Exceptions
+    ChallengeError,
+    InsufficientReviewersError,
+    AppealNotAllowedError,
+    InvalidChallengeError,
+    # Validation
+    validate_challenge,
 )
 
 __all__ = [
@@ -270,8 +354,74 @@ __all__ = [
     "DEFAULT_DECAY_FACTOR",
     "DEFAULT_MAX_HOPS",
     "DEFAULT_CACHE_TTL",
+    "DEFAULT_APPLY_RING_COEFFICIENT",
+    # Ring Coefficient
+    "RingDetector",
+    "RingDetectionResult",
+    "RingCoefficientCalculator",
+    "TrustVelocityAnalyzer",
+    "TrustVelocityResult",
+    "SybilClusterDetector",
+    "SybilCluster",
+    "GraphAnalysisResult",
+    "get_ring_coefficient_calculator",
+    "calculate_ring_coefficient",
+    "record_trust_change",
+    "analyze_trust_graph",
+    "DEFAULT_RING_DAMPENING",
+    "MIN_RING_COEFFICIENT",
+    "VELOCITY_ANOMALY_THRESHOLD",
     # Tools
     "FEDERATION_TOOLS",
     "FEDERATION_TOOL_HANDLERS",
     "handle_federation_tool",
+    # Challenges
+    "ReviewerConfig",
+    "DEFAULT_REVIEWER_CONFIG",
+    "ChallengeType",
+    "ChallengeStatus",
+    "ReviewDecision",
+    "ReviewerStatus",
+    "Challenge",
+    "ChallengeReview",
+    "ChallengeResolution",
+    "ReviewerReputation",
+    "EligibleReviewer",
+    "ReviewerSelector",
+    "ChallengeResolver",
+    "AppealHandler",
+    "ChallengeError",
+    "InsufficientReviewersError",
+    "AppealNotAllowedError",
+    "InvalidChallengeError",
+    "validate_challenge",
+    # Privacy (Issue #7 - Differential Privacy)
+    "MIN_EPSILON",
+    "MAX_EPSILON",
+    "DEFAULT_EPSILON",
+    "DEFAULT_DELTA",
+    "DEFAULT_MIN_CONTRIBUTORS",
+    "SENSITIVE_MIN_CONTRIBUTORS",
+    "HISTOGRAM_SUPPRESSION_THRESHOLD",
+    "MAX_QUERIES_PER_TOPIC_PER_DAY",
+    "MAX_QUERIES_PER_FEDERATION_PER_DAY",
+    "SENSITIVE_DOMAINS",
+    "PrivacyLevel",
+    "NoiseMechanism",
+    "BudgetCheckResult",
+    "PrivacyConfig",
+    "TopicBudget",
+    "RequesterBudget",
+    "PrivacyBudget",
+    "MembershipEvent",
+    "TemporalSmoother",
+    "add_laplace_noise",
+    "add_gaussian_noise",
+    "add_noise",
+    "should_include_histogram",
+    "build_noisy_histogram",
+    "is_sensitive_domain",
+    "compute_topic_hash",
+    "compute_private_aggregate",
+    "PrivateAggregateResult",
 ]

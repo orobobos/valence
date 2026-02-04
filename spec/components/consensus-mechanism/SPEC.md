@@ -517,10 +517,16 @@ Challenge or contradiction detected
   ├── Challenge enters review queue
   │
   ├── Review process:
-  │   ├── Independent reviewers assigned (minimum 3)
-  │   ├── Reviewers examine evidence
-  │   ├── Reviewers stake reputation on assessment
-  │   └── 2/3 agreement required for resolution
+  │   ├── Reviewers randomly selected (no volunteering)
+  │   │   ├── L1/L2 beliefs: minimum 3 reviewers
+  │   │   └── L3/L4 beliefs: minimum 7 reviewers (per THREAT-MODEL.md §1.4.3)
+  │   ├── Reviewer independence verified:
+  │   │   ├── No shared federation membership with belief holder
+  │   │   └── Minimum pairwise independence score between reviewers
+  │   ├── Reviewers examine evidence and stake reputation
+  │   └── Consensus required:
+  │       ├── L1/L2: 2/3 (67%) agreement
+  │       └── L3/L4: 3/4 (75%) agreement
   │
   ├── If challenge UPHELD:
   │   │
@@ -580,7 +586,45 @@ Communal belief X revised
       └── All domain experts in X's domains
 ```
 
-### 6.5 Revision Safeguards
+### 6.5 Appeal Mechanism
+
+Challenges can be appealed if the outcome is disputed:
+
+```
+Challenge resolved (upheld or rejected)
+  │
+  ├── Appeal window: 14 days from resolution
+  │
+  ├── Appeal requirements:
+  │   ├── Higher stake (1.5× original)
+  │   ├── New reasoning/evidence required
+  │   └── Previous challenge must be resolved
+  │
+  ├── Appeal review:
+  │   ├── Larger reviewer pool (1.5× base count per round)
+  │   ├── New random selection (previous reviewers excluded)
+  │   └── Same consensus thresholds apply
+  │
+  └── Maximum 2 appeal rounds
+```
+
+**Appeal escalation:**
+- Round 0 (original): 7 reviewers for L3/L4
+- Round 1 (first appeal): ~10 reviewers (7 × 1.5)
+- Round 2 (final appeal): ~15 reviewers (7 × 1.5²)
+
+### 6.6 Reviewer Reputation Tracking
+
+Reviewers build or lose credibility based on outcomes:
+
+- **Upheld decisions**: Reviewer accuracy improves
+- **Overturned decisions**: Accuracy decreases
+- **Suspension threshold**: <50% accuracy after 10+ reviews
+- **Suspension duration**: 90 days minimum
+
+This ensures long-term reviewer quality and discourages unreliable reviews.
+
+### 6.7 Revision Safeguards
 
 **Anti-oscillation:**
 - Minimum 30 days between demotion and re-elevation

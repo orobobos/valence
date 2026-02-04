@@ -1,0 +1,794 @@
+"""Differential privacy implementation for Valence federation.
+
+Provides privacy-preserving aggregation with configurable epsilon,
+privacy budget tracking, temporal smoothing, and rate limiting.
+
+Addresses THREAT-MODEL.md §1.3.3 - k-Anonymity Threshold Attack.
+
+Reference: spec/components/federation-layer/DIFFERENTIAL-PRIVACY.md
+"""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import random
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any
+from uuid import UUID
+
+import numpy as np
+
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# Epsilon bounds
+MIN_EPSILON = 0.01  # Below this provides negligible utility
+MAX_EPSILON = 3.0   # Above this provides negligible privacy
+
+# Default values
+DEFAULT_EPSILON = 1.0
+DEFAULT_DELTA = 1e-6
+DEFAULT_MIN_CONTRIBUTORS = 5
+SENSITIVE_MIN_CONTRIBUTORS = 10
+
+# Histogram suppression
+HISTOGRAM_SUPPRESSION_THRESHOLD = 20
+
+# Temporal smoothing
+DEFAULT_MEMBERSHIP_SMOOTHING_HOURS = 24
+
+# Rate limits
+MAX_QUERIES_PER_TOPIC_PER_DAY = 3
+MAX_QUERIES_PER_FEDERATION_PER_DAY = 100
+MAX_QUERIES_PER_REQUESTER_PER_HOUR = 20
+
+# Daily budget
+DEFAULT_DAILY_EPSILON_BUDGET = 10.0
+DEFAULT_DAILY_DELTA_BUDGET = 1e-4
+
+# Sensitive domains (auto-detect elevated privacy needs)
+SENSITIVE_DOMAINS = frozenset([
+    "health", "medical", "mental_health", "diagnosis", "treatment",
+    "finance", "banking", "investments", "salary", "debt",
+    "legal", "law", "criminal", "lawsuit", "arrest",
+    "politics", "political", "voting", "election",
+    "religion", "religious", "faith", "spiritual",
+    "sexuality", "sexual", "gender", "lgbtq",
+    "employment", "hr", "hiring", "termination",
+    "addiction", "substance", "abuse",
+    "immigration", "visa", "asylum",
+])
+
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+
+class PrivacyLevel(str, Enum):
+    """Pre-defined privacy levels with recommended parameters."""
+    
+    MAXIMUM = "maximum"    # ε=0.1, δ=10⁻⁸ - Medical, financial, legal
+    HIGH = "high"          # ε=0.5, δ=10⁻⁷ - Personal opinions, sensitive
+    STANDARD = "standard"  # ε=1.0, δ=10⁻⁶ - General knowledge
+    RELAXED = "relaxed"    # ε=2.0, δ=10⁻⁵ - Low-sensitivity
+
+
+class NoiseMechanism(str, Enum):
+    """Noise mechanism for differential privacy."""
+    
+    LAPLACE = "laplace"    # Pure DP (δ=0)
+    GAUSSIAN = "gaussian"  # Approximate DP (δ>0), better for composition
+
+
+class BudgetCheckResult(str, Enum):
+    """Result of privacy budget check."""
+    
+    OK = "ok"
+    DAILY_EPSILON_EXHAUSTED = "daily_epsilon_exhausted"
+    DAILY_DELTA_EXHAUSTED = "daily_delta_exhausted"
+    TOPIC_RATE_LIMITED = "topic_rate_limited"
+    FEDERATION_RATE_LIMITED = "federation_rate_limited"
+    REQUESTER_RATE_LIMITED = "requester_rate_limited"
+
+
+# =============================================================================
+# PRIVACY PARAMETERS
+# =============================================================================
+
+
+@dataclass
+class PrivacyConfig:
+    """Privacy configuration for a federation.
+    
+    Specifies differential privacy parameters and budget limits.
+    """
+    
+    # Core DP parameters
+    epsilon: float = DEFAULT_EPSILON
+    delta: float = DEFAULT_DELTA
+    
+    # k-anonymity
+    min_contributors: int = DEFAULT_MIN_CONTRIBUTORS
+    sensitive_domain: bool = False
+    
+    # Budget
+    daily_epsilon_budget: float = DEFAULT_DAILY_EPSILON_BUDGET
+    daily_delta_budget: float = DEFAULT_DAILY_DELTA_BUDGET
+    
+    # Temporal smoothing
+    membership_smoothing_hours: int = DEFAULT_MEMBERSHIP_SMOOTHING_HOURS
+    
+    # Histogram
+    histogram_suppression_threshold: int = HISTOGRAM_SUPPRESSION_THRESHOLD
+    
+    # Noise mechanism
+    noise_mechanism: NoiseMechanism = NoiseMechanism.LAPLACE
+    
+    def __post_init__(self) -> None:
+        """Validate configuration."""
+        if not MIN_EPSILON <= self.epsilon <= MAX_EPSILON:
+            raise ValueError(
+                f"epsilon must be in [{MIN_EPSILON}, {MAX_EPSILON}], got {self.epsilon}"
+            )
+        if self.delta >= 1e-4:
+            raise ValueError(f"delta must be < 10⁻⁴, got {self.delta}")
+        if self.min_contributors < 5:
+            raise ValueError(f"min_contributors must be >= 5, got {self.min_contributors}")
+    
+    @classmethod
+    def from_level(cls, level: PrivacyLevel) -> PrivacyConfig:
+        """Create config from a predefined privacy level."""
+        configs = {
+            PrivacyLevel.MAXIMUM: cls(epsilon=0.1, delta=1e-8, min_contributors=10),
+            PrivacyLevel.HIGH: cls(epsilon=0.5, delta=1e-7, min_contributors=8),
+            PrivacyLevel.STANDARD: cls(epsilon=1.0, delta=1e-6, min_contributors=5),
+            PrivacyLevel.RELAXED: cls(epsilon=2.0, delta=1e-5, min_contributors=5),
+        }
+        return configs[level]
+    
+    @property
+    def effective_min_contributors(self) -> int:
+        """Get effective minimum contributors, considering sensitivity."""
+        if self.sensitive_domain:
+            return max(self.min_contributors, SENSITIVE_MIN_CONTRIBUTORS)
+        return self.min_contributors
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "epsilon": self.epsilon,
+            "delta": self.delta,
+            "min_contributors": self.min_contributors,
+            "effective_min_contributors": self.effective_min_contributors,
+            "sensitive_domain": self.sensitive_domain,
+            "daily_epsilon_budget": self.daily_epsilon_budget,
+            "membership_smoothing_hours": self.membership_smoothing_hours,
+            "histogram_suppression_threshold": self.histogram_suppression_threshold,
+            "noise_mechanism": self.noise_mechanism.value,
+        }
+
+
+# =============================================================================
+# TOPIC BUDGET TRACKING
+# =============================================================================
+
+
+@dataclass
+class TopicBudget:
+    """Budget tracking for a specific topic."""
+    
+    topic_hash: str
+    query_count: int = 0
+    epsilon_spent: float = 0.0
+    last_query: datetime = field(default_factory=datetime.utcnow)
+    
+    def can_query(self, max_queries: int = MAX_QUERIES_PER_TOPIC_PER_DAY) -> bool:
+        """Check if topic can be queried."""
+        return self.query_count < max_queries
+    
+    def record_query(self, epsilon: float) -> None:
+        """Record a query against this topic."""
+        self.query_count += 1
+        self.epsilon_spent += epsilon
+        self.last_query = datetime.utcnow()
+
+
+@dataclass 
+class RequesterBudget:
+    """Budget tracking for a specific requester."""
+    
+    requester_id: str
+    queries_this_hour: int = 0
+    hour_start: datetime = field(default_factory=datetime.utcnow)
+    
+    def can_query(self, max_per_hour: int = MAX_QUERIES_PER_REQUESTER_PER_HOUR) -> bool:
+        """Check if requester can query."""
+        self._maybe_reset_hour()
+        return self.queries_this_hour < max_per_hour
+    
+    def record_query(self) -> None:
+        """Record a query from this requester."""
+        self._maybe_reset_hour()
+        self.queries_this_hour += 1
+    
+    def _maybe_reset_hour(self) -> None:
+        """Reset hourly counter if needed."""
+        now = datetime.utcnow()
+        if (now - self.hour_start).total_seconds() > 3600:
+            self.queries_this_hour = 0
+            self.hour_start = now
+
+
+# =============================================================================
+# PRIVACY BUDGET
+# =============================================================================
+
+
+@dataclass
+class PrivacyBudget:
+    """Track cumulative privacy loss for a federation.
+    
+    Implements budget tracking with:
+    - Daily epsilon/delta limits (reset every 24h)
+    - Per-topic query limits (prevent enumeration)
+    - Per-requester rate limits (slow down adversaries)
+    """
+    
+    federation_id: UUID
+    
+    # Daily budget
+    daily_epsilon_budget: float = DEFAULT_DAILY_EPSILON_BUDGET
+    daily_delta_budget: float = DEFAULT_DAILY_DELTA_BUDGET
+    
+    # Current spend
+    spent_epsilon: float = 0.0
+    spent_delta: float = 0.0
+    queries_today: int = 0
+    
+    # Per-topic tracking
+    topic_budgets: dict[str, TopicBudget] = field(default_factory=dict)
+    
+    # Per-requester tracking
+    requester_budgets: dict[str, RequesterBudget] = field(default_factory=dict)
+    
+    # Reset tracking
+    period_start: datetime = field(default_factory=datetime.utcnow)
+    budget_period_hours: int = 24
+    
+    def check_budget(
+        self,
+        epsilon: float,
+        delta: float,
+        topic_hash: str,
+        requester_id: str | None = None,
+    ) -> tuple[bool, BudgetCheckResult]:
+        """Check if budget allows this query.
+        
+        Args:
+            epsilon: Privacy budget to consume
+            delta: Delta to consume
+            topic_hash: Hash of the query topic
+            requester_id: ID of the requester (for rate limiting)
+            
+        Returns:
+            Tuple of (can_query, reason)
+        """
+        self._maybe_reset_period()
+        
+        # Global epsilon budget
+        if self.spent_epsilon + epsilon > self.daily_epsilon_budget:
+            return False, BudgetCheckResult.DAILY_EPSILON_EXHAUSTED
+        
+        # Global delta budget
+        if self.spent_delta + delta > self.daily_delta_budget:
+            return False, BudgetCheckResult.DAILY_DELTA_EXHAUSTED
+        
+        # Federation-wide query limit
+        if self.queries_today >= MAX_QUERIES_PER_FEDERATION_PER_DAY:
+            return False, BudgetCheckResult.FEDERATION_RATE_LIMITED
+        
+        # Per-topic rate limit
+        topic = self.topic_budgets.get(topic_hash)
+        if topic and not topic.can_query():
+            return False, BudgetCheckResult.TOPIC_RATE_LIMITED
+        
+        # Per-requester rate limit
+        if requester_id:
+            requester = self.requester_budgets.get(requester_id)
+            if requester and not requester.can_query():
+                return False, BudgetCheckResult.REQUESTER_RATE_LIMITED
+        
+        return True, BudgetCheckResult.OK
+    
+    def consume(
+        self,
+        epsilon: float,
+        delta: float,
+        topic_hash: str,
+        requester_id: str | None = None,
+    ) -> None:
+        """Record budget consumption.
+        
+        Args:
+            epsilon: Epsilon consumed
+            delta: Delta consumed  
+            topic_hash: Hash of the query topic
+            requester_id: ID of the requester
+        """
+        self._maybe_reset_period()
+        
+        # Global spend
+        self.spent_epsilon += epsilon
+        self.spent_delta += delta
+        self.queries_today += 1
+        
+        # Topic spend
+        if topic_hash not in self.topic_budgets:
+            self.topic_budgets[topic_hash] = TopicBudget(topic_hash=topic_hash)
+        self.topic_budgets[topic_hash].record_query(epsilon)
+        
+        # Requester spend
+        if requester_id:
+            if requester_id not in self.requester_budgets:
+                self.requester_budgets[requester_id] = RequesterBudget(requester_id=requester_id)
+            self.requester_budgets[requester_id].record_query()
+    
+    def remaining_epsilon(self) -> float:
+        """Get remaining epsilon budget."""
+        self._maybe_reset_period()
+        return max(0.0, self.daily_epsilon_budget - self.spent_epsilon)
+    
+    def remaining_queries(self) -> int:
+        """Get remaining query count."""
+        self._maybe_reset_period()
+        return max(0, MAX_QUERIES_PER_FEDERATION_PER_DAY - self.queries_today)
+    
+    def topic_queries_remaining(self, topic_hash: str) -> int:
+        """Get remaining queries for a specific topic."""
+        topic = self.topic_budgets.get(topic_hash)
+        if not topic:
+            return MAX_QUERIES_PER_TOPIC_PER_DAY
+        return max(0, MAX_QUERIES_PER_TOPIC_PER_DAY - topic.query_count)
+    
+    def _maybe_reset_period(self) -> None:
+        """Reset budget if period has elapsed."""
+        now = datetime.utcnow()
+        if (now - self.period_start).total_seconds() > self.budget_period_hours * 3600:
+            self.spent_epsilon = 0.0
+            self.spent_delta = 0.0
+            self.queries_today = 0
+            self.topic_budgets.clear()
+            # Don't clear requester budgets (hourly reset handled separately)
+            self.period_start = now
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "federation_id": str(self.federation_id),
+            "daily_epsilon_budget": self.daily_epsilon_budget,
+            "daily_delta_budget": self.daily_delta_budget,
+            "spent_epsilon": self.spent_epsilon,
+            "spent_delta": self.spent_delta,
+            "queries_today": self.queries_today,
+            "remaining_epsilon": self.remaining_epsilon(),
+            "remaining_queries": self.remaining_queries(),
+            "period_start": self.period_start.isoformat(),
+            "topics_queried": len(self.topic_budgets),
+        }
+
+
+# =============================================================================
+# NOISE MECHANISMS
+# =============================================================================
+
+
+def add_laplace_noise(
+    true_value: float,
+    sensitivity: float,
+    epsilon: float,
+) -> float:
+    """Add Laplace noise for (ε, 0)-differential privacy.
+    
+    Args:
+        true_value: The true value to protect
+        sensitivity: Maximum change from adding/removing one record
+        epsilon: Privacy parameter
+        
+    Returns:
+        Noisy value
+    """
+    if epsilon <= 0:
+        raise ValueError(f"epsilon must be positive, got {epsilon}")
+    
+    scale = sensitivity / epsilon
+    noise = np.random.laplace(0, scale)
+    return true_value + noise
+
+
+def add_gaussian_noise(
+    true_value: float,
+    sensitivity: float,
+    epsilon: float,
+    delta: float,
+) -> float:
+    """Add Gaussian noise for (ε, δ)-differential privacy.
+    
+    Args:
+        true_value: The true value to protect
+        sensitivity: Maximum change from adding/removing one record
+        epsilon: Privacy parameter
+        delta: Failure probability
+        
+    Returns:
+        Noisy value
+    """
+    if epsilon <= 0:
+        raise ValueError(f"epsilon must be positive, got {epsilon}")
+    if delta <= 0:
+        raise ValueError(f"delta must be positive, got {delta}")
+    
+    sigma = sensitivity * math.sqrt(2 * math.log(1.25 / delta)) / epsilon
+    noise = np.random.normal(0, sigma)
+    return true_value + noise
+
+
+def add_noise(
+    true_value: float,
+    sensitivity: float,
+    config: PrivacyConfig,
+) -> float:
+    """Add noise according to configured mechanism.
+    
+    Args:
+        true_value: The true value to protect
+        sensitivity: Maximum change from adding/removing one record
+        config: Privacy configuration
+        
+    Returns:
+        Noisy value
+    """
+    if config.noise_mechanism == NoiseMechanism.GAUSSIAN:
+        return add_gaussian_noise(true_value, sensitivity, config.epsilon, config.delta)
+    return add_laplace_noise(true_value, sensitivity, config.epsilon)
+
+
+# =============================================================================
+# TEMPORAL SMOOTHING
+# =============================================================================
+
+
+@dataclass
+class MembershipEvent:
+    """Record of a membership change."""
+    
+    member_id: str
+    event_type: str  # "joined" or "departed"
+    timestamp: datetime
+
+
+class TemporalSmoother:
+    """Smooth membership changes over time to prevent inference.
+    
+    When a member joins or departs, their contribution is phased
+    in/out over the smoothing period to prevent timing attacks.
+    """
+    
+    def __init__(self, smoothing_hours: int = DEFAULT_MEMBERSHIP_SMOOTHING_HOURS):
+        self.smoothing_hours = smoothing_hours
+        self.events: list[MembershipEvent] = []
+    
+    def record_join(self, member_id: str, timestamp: datetime | None = None) -> None:
+        """Record a member joining."""
+        self.events.append(MembershipEvent(
+            member_id=member_id,
+            event_type="joined",
+            timestamp=timestamp or datetime.utcnow(),
+        ))
+    
+    def record_departure(self, member_id: str, timestamp: datetime | None = None) -> None:
+        """Record a member departing."""
+        self.events.append(MembershipEvent(
+            member_id=member_id,
+            event_type="departed",
+            timestamp=timestamp or datetime.utcnow(),
+        ))
+    
+    def get_contribution_weight(
+        self,
+        member_id: str,
+        joined_at: datetime | None,
+        departed_at: datetime | None,
+        query_time: datetime | None = None,
+    ) -> float:
+        """Get contribution weight for a member.
+        
+        Args:
+            member_id: Member identifier
+            joined_at: When member joined (None for founding members)
+            departed_at: When member departed (None if still active)
+            query_time: Time of query (default: now)
+            
+        Returns:
+            Weight in [0, 1] for member's contribution
+        """
+        query_time = query_time or datetime.utcnow()
+        
+        # Active member: check if recently joined (ramp up)
+        if departed_at is None:
+            if joined_at is None:
+                return 1.0  # Founding member
+            
+            hours_since_join = (query_time - joined_at).total_seconds() / 3600
+            
+            if hours_since_join < self.smoothing_hours:
+                # Linearly ramp up over smoothing period
+                return hours_since_join / self.smoothing_hours
+            
+            return 1.0
+        
+        # Departed member: check if recently departed (ramp down)
+        hours_since_departure = (query_time - departed_at).total_seconds() / 3600
+        
+        if hours_since_departure >= self.smoothing_hours:
+            return 0.0  # Fully phased out
+        
+        # Linearly ramp down, with probabilistic inclusion
+        weight = 1.0 - (hours_since_departure / self.smoothing_hours)
+        
+        # Probabilistic inclusion for additional privacy
+        if random.random() > weight:
+            return 0.0
+        
+        return weight
+    
+    def should_include_member(
+        self,
+        member_id: str,
+        joined_at: datetime | None,
+        departed_at: datetime | None,
+        query_time: datetime | None = None,
+    ) -> bool:
+        """Determine if member should be included in aggregate.
+        
+        Args:
+            member_id: Member identifier
+            joined_at: When member joined
+            departed_at: When member departed (None if active)
+            query_time: Time of query
+            
+        Returns:
+            True if member should be included
+        """
+        weight = self.get_contribution_weight(member_id, joined_at, departed_at, query_time)
+        return weight > 0.0
+
+
+# =============================================================================
+# HISTOGRAM HANDLING
+# =============================================================================
+
+
+def should_include_histogram(
+    contributor_count: int,
+    threshold: int = HISTOGRAM_SUPPRESSION_THRESHOLD,
+) -> bool:
+    """Check if histogram should be included in response.
+    
+    Args:
+        contributor_count: Number of contributors
+        threshold: Minimum contributors for histogram
+        
+    Returns:
+        True if histogram can be safely included
+    """
+    return contributor_count >= threshold
+
+
+def build_noisy_histogram(
+    values: list[float],
+    epsilon: float,
+    bins: int = 5,
+) -> dict[str, int]:
+    """Build histogram with differential privacy noise.
+    
+    Args:
+        values: Values to histogram (assumed in [0, 1])
+        epsilon: Privacy budget for histogram (split across bins)
+        bins: Number of histogram bins
+        
+    Returns:
+        Noisy histogram as {bin_label: count}
+    """
+    # Create bin edges
+    bin_edges = [i / bins for i in range(bins + 1)]
+    counts = [0] * bins
+    
+    # Count values in each bin
+    for v in values:
+        v = max(0.0, min(1.0, v))  # Clamp to [0, 1]
+        bin_idx = min(int(v * bins), bins - 1)
+        counts[bin_idx] += 1
+    
+    # Add Laplace noise to each bin
+    # Split epsilon budget across bins
+    per_bin_epsilon = epsilon / bins
+    noisy_counts = [
+        max(0, round(c + np.random.laplace(0, 1.0 / per_bin_epsilon)))
+        for c in counts
+    ]
+    
+    # Build result
+    return {
+        f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}": noisy_counts[i]
+        for i in range(bins)
+    }
+
+
+# =============================================================================
+# SENSITIVITY DETECTION
+# =============================================================================
+
+
+def is_sensitive_domain(domains: list[str]) -> bool:
+    """Check if any domain is considered sensitive.
+    
+    Args:
+        domains: List of domain names
+        
+    Returns:
+        True if any domain is sensitive
+    """
+    for domain in domains:
+        domain_lower = domain.lower()
+        # Check for exact match or substring
+        for sensitive in SENSITIVE_DOMAINS:
+            if sensitive in domain_lower:
+                return True
+    return False
+
+
+def compute_topic_hash(
+    domain_filter: list[str],
+    semantic_query: str | None = None,
+) -> str:
+    """Compute a stable hash for a query topic.
+    
+    Args:
+        domain_filter: Domain path
+        semantic_query: Optional semantic query
+        
+    Returns:
+        SHA-256 hash of the topic
+    """
+    content = "|".join(sorted(domain_filter))
+    if semantic_query:
+        content += f"||{semantic_query}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+# =============================================================================
+# AGGREGATE PRIVACY
+# =============================================================================
+
+
+@dataclass
+class PrivateAggregateResult:
+    """Result of a privacy-preserving aggregation.
+    
+    Contains noisy statistics and privacy guarantees.
+    """
+    
+    # Noisy results
+    collective_confidence: float
+    contributor_count: int  # Noisy count
+    agreement_score: float | None = None
+    
+    # Optional histogram (only if above threshold)
+    confidence_distribution: dict[str, int] | None = None
+    
+    # Privacy guarantees
+    epsilon_used: float = 0.0
+    delta: float = 0.0
+    noise_mechanism: str = "laplace"
+    k_anonymity_satisfied: bool = True
+    histogram_suppressed: bool = False
+    
+    # Temporal smoothing applied
+    temporal_smoothing_applied: bool = False
+    smoothing_window_hours: int = 0
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        result: dict[str, Any] = {
+            "collective_confidence": self.collective_confidence,
+            "contributor_count": self.contributor_count,
+            "privacy_guarantees": {
+                "epsilon": self.epsilon_used,
+                "delta": self.delta,
+                "mechanism": self.noise_mechanism,
+                "k_anonymity_satisfied": self.k_anonymity_satisfied,
+            },
+        }
+        
+        if self.agreement_score is not None:
+            result["agreement_score"] = self.agreement_score
+        
+        if self.confidence_distribution is not None:
+            result["confidence_distribution"] = self.confidence_distribution
+        else:
+            result["histogram_suppressed"] = True
+            result["histogram_suppression_reason"] = "insufficient_contributors"
+        
+        if self.temporal_smoothing_applied:
+            result["temporal_smoothing"] = {
+                "applied": True,
+                "window_hours": self.smoothing_window_hours,
+            }
+        
+        return result
+
+
+def compute_private_aggregate(
+    confidences: list[float],
+    config: PrivacyConfig,
+    include_histogram: bool = True,
+) -> PrivateAggregateResult | None:
+    """Compute privacy-preserving aggregate statistics.
+    
+    Args:
+        confidences: List of confidence values from contributors
+        config: Privacy configuration
+        include_histogram: Whether to include histogram if possible
+        
+    Returns:
+        PrivateAggregateResult or None if k-anonymity not satisfied
+    """
+    true_count = len(confidences)
+    
+    # Check k-anonymity
+    if true_count < config.effective_min_contributors:
+        return None
+    
+    # Compute true statistics
+    true_mean = sum(confidences) / true_count if confidences else 0.0
+    
+    # Compute agreement (stddev-based)
+    if len(confidences) > 1:
+        variance = sum((c - true_mean) ** 2 for c in confidences) / len(confidences)
+        true_agreement = 1.0 - min(1.0, math.sqrt(variance) * 2)  # Scale to [0, 1]
+    else:
+        true_agreement = 1.0
+    
+    # Add noise
+    noisy_mean = add_noise(true_mean, 1.0 / true_count, config)
+    noisy_count = max(0, round(add_noise(true_count, 1.0, config)))
+    noisy_agreement = add_noise(true_agreement, 1.0 / true_count, config)
+    
+    # Clamp to valid ranges
+    noisy_mean = max(0.0, min(1.0, noisy_mean))
+    noisy_agreement = max(0.0, min(1.0, noisy_agreement))
+    
+    # Histogram
+    histogram = None
+    histogram_suppressed = True
+    if include_histogram and should_include_histogram(true_count, config.histogram_suppression_threshold):
+        histogram = build_noisy_histogram(confidences, config.epsilon / 5)
+        histogram_suppressed = False
+    
+    return PrivateAggregateResult(
+        collective_confidence=noisy_mean,
+        contributor_count=noisy_count,
+        agreement_score=noisy_agreement,
+        confidence_distribution=histogram,
+        epsilon_used=config.epsilon,
+        delta=config.delta,
+        noise_mechanism=config.noise_mechanism.value,
+        k_anonymity_satisfied=True,
+        histogram_suppressed=histogram_suppressed,
+    )

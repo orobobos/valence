@@ -277,6 +277,53 @@ def sybil_detection(nodes: list[FederationNode]) -> list[NodeCluster]:
 - Participant nodes: 200 beliefs/day
 - Anchor nodes: 500 beliefs/day
 
+**5. Ring Coefficient for Trust Propagation**
+
+Per THREAT-MODEL.md §1.2.1: Ring detection must apply to **trust propagation**, not just rewards.
+
+When trust flows through cycles (A→B→C→A), coordinated Sybils can artificially inflate transitive trust. The ring coefficient dampens trust propagation through detected cycles:
+
+```python
+from valence.federation import (
+    RingCoefficientCalculator,
+    TrustPropagation,
+)
+
+# Trust propagation with ring coefficient enabled (default)
+engine = TrustPropagation(apply_ring_coefficient=True)
+result = engine.compute_transitive_trust(node_a, node_c)
+
+# Result includes ring information
+print(f"Transitive trust: {result.transitive_trust}")
+print(f"Ring coefficient applied: {result.ring_coefficient_applied}")
+print(f"Rings detected: {result.rings_detected}")
+```
+
+**Ring Coefficient Calculation:**
+- Base dampening: 0.3 (30% of trust retained when ring detected)
+- Size penalty: Additional 0.1 per ring member beyond 2
+- Minimum coefficient: 0.05 (never fully eliminates trust)
+
+**Example:**
+- 3-node ring (A→B→C→A): coefficient ≈ 0.30
+- 5-node ring: coefficient ≈ 0.20
+- 10-node ring: coefficient ≈ 0.05 (minimum)
+
+**Additional Detection:**
+- **Trust Velocity Analysis**: Detects abnormally rapid trust accumulation
+- **Sybil Cluster Detection**: Graph analysis identifies coordinated patterns
+- **Temporal Correlation**: Flags synchronized activity timing
+
+```python
+# Full graph analysis for Sybil detection
+from valence.federation import analyze_trust_graph
+
+result = analyze_trust_graph(trust_graph)
+print(f"Rings found: {result.ring_count}")
+print(f"Suspicious clusters: {len(result.suspicious_clusters)}")
+print(f"Velocity anomalies: {len(result.velocity_anomalies)}")
+```
+
 ---
 
 ## 6. Graceful Degradation

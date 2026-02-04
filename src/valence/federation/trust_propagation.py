@@ -8,6 +8,8 @@ Key concepts:
 - Transitive trust: Trust propagated through the network
 - Decay factor: Trust decreases with each hop (default 0.8)
 - Max hops: Maximum propagation distance (default 4)
+- Ring coefficient: Dampening applied when trust flows through cycles
+  (per THREAT-MODEL.md §1.2.1 - Sybil Network Infiltration)
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ DEFAULT_DECAY_FACTOR = 0.8  # Trust retained per hop
 DEFAULT_MAX_HOPS = 4        # Maximum propagation depth
 DEFAULT_CACHE_TTL = 300     # 5 minutes cache TTL
 DEFAULT_MIN_TRUST = 0.01    # Below this, don't propagate
+DEFAULT_APPLY_RING_COEFFICIENT = True  # Apply ring dampening by default
 
 
 # =============================================================================
@@ -64,12 +67,21 @@ class TransitiveTrustResult:
     computation_time_ms: float
     cached: bool = False
     computed_at: datetime = field(default_factory=datetime.now)
+    ring_coefficient_applied: float = 1.0  # Ring dampening (1.0 = no dampening)
+    rings_detected: int = 0  # Number of rings in paths
     
     @property
     def effective_trust(self) -> float:
         """Return the higher of direct or transitive trust."""
         if self.direct_trust is not None:
             return max(self.direct_trust, self.transitive_trust)
+        return self.transitive_trust
+    
+    @property
+    def undampened_trust(self) -> float:
+        """Return what transitive trust would be without ring dampening."""
+        if self.ring_coefficient_applied > 0:
+            return self.transitive_trust / self.ring_coefficient_applied
         return self.transitive_trust
     
     def to_dict(self) -> dict[str, Any]:
@@ -85,6 +97,8 @@ class TransitiveTrustResult:
             "computation_time_ms": self.computation_time_ms,
             "cached": self.cached,
             "computed_at": self.computed_at.isoformat(),
+            "ring_coefficient_applied": self.ring_coefficient_applied,
+            "rings_detected": self.rings_detected,
         }
 
 
@@ -140,6 +154,8 @@ class TrustCache:
             computation_time_ms=result.computation_time_ms,
             cached=True,
             computed_at=result.computed_at,
+            ring_coefficient_applied=result.ring_coefficient_applied,
+            rings_detected=result.rings_detected,
         )
     
     def set(
@@ -192,12 +208,19 @@ class TrustPropagation:
     1. Build trust graph from direct trust relationships
     2. For each (source, target) pair, find all paths up to max_hops
     3. For each path, compute decayed trust: direct_trust * decay^hops
-    4. Aggregate path contributions (max or weighted sum)
+    4. Apply ring coefficient dampening for paths through cycles
+    5. Aggregate path contributions (max or weighted sum)
+    
+    Ring Coefficient (per THREAT-MODEL.md §1.2.1):
+    When trust flows through cycles (A→B→C→A), the ring coefficient
+    reduces the propagated trust to prevent Sybil networks from
+    accumulating artificial transitive trust through coordinated rings.
     
     Example:
         >>> engine = TrustPropagation(trust_getter=my_trust_getter)
         >>> result = engine.compute_transitive_trust(node_a_id, node_c_id)
         >>> print(f"Transitive trust: {result.transitive_trust}")
+        >>> print(f"Ring dampening: {result.ring_coefficient_applied}")
     """
     
     def __init__(
@@ -207,6 +230,7 @@ class TrustPropagation:
         max_hops: int = DEFAULT_MAX_HOPS,
         min_trust_threshold: float = DEFAULT_MIN_TRUST,
         cache_ttl: int = DEFAULT_CACHE_TTL,
+        apply_ring_coefficient: bool = DEFAULT_APPLY_RING_COEFFICIENT,
     ):
         """Initialize the propagation engine.
         
@@ -217,19 +241,33 @@ class TrustPropagation:
             max_hops: Maximum path length
             min_trust_threshold: Don't propagate below this
             cache_ttl: Cache time-to-live in seconds
+            apply_ring_coefficient: Whether to apply ring dampening (default True)
         """
         self.trust_getter = trust_getter or self._default_trust_getter
         self.decay_factor = decay_factor
         self.max_hops = max_hops
         self.min_trust_threshold = min_trust_threshold
         self.cache = TrustCache(ttl_seconds=cache_ttl)
+        self.apply_ring_coefficient = apply_ring_coefficient
+        
+        # Ring coefficient calculator (lazy loaded)
+        self._ring_calculator: Any = None
         
         # Stats
         self.stats = {
             "computations": 0,
             "cache_hits": 0,
             "cache_misses": 0,
+            "rings_detected": 0,
         }
+    
+    @property
+    def ring_calculator(self) -> Any:
+        """Get or create the ring coefficient calculator."""
+        if self._ring_calculator is None:
+            from .ring_coefficient import RingCoefficientCalculator
+            self._ring_calculator = RingCoefficientCalculator()
+        return self._ring_calculator
     
     def _default_trust_getter(
         self,
@@ -314,7 +352,7 @@ class TrustPropagation:
         direct_trust = trust_graph.get(from_node_id, {}).get(to_node_id)
         
         # Compute transitive trust using modified Dijkstra/BFS
-        transitive, paths, shortest = self._propagate_trust(
+        transitive, paths, shortest, ring_coeff, rings = self._propagate_trust(
             trust_graph,
             from_node_id,
             to_node_id,
@@ -330,6 +368,8 @@ class TrustPropagation:
             path_count=paths,
             shortest_path_length=shortest,
             computation_time_ms=computation_time,
+            ring_coefficient_applied=ring_coeff,
+            rings_detected=rings,
         )
         
         # Cache result
@@ -378,19 +418,21 @@ class TrustPropagation:
         graph: dict[UUID, dict[UUID, float]],
         source: UUID,
         target: UUID,
-    ) -> tuple[float, int, int | None]:
+    ) -> tuple[float, int, int | None, float, int]:
         """Compute transitive trust using path aggregation.
         
         Uses BFS to find all paths and aggregates trust contributions.
+        Applies ring coefficient dampening when cycles are detected.
         
         Returns:
-            Tuple of (transitive_trust, path_count, shortest_path_length)
+            Tuple of (transitive_trust, path_count, shortest_path_length, 
+                      ring_coefficient, rings_detected)
         """
         if source == target:
-            return 1.0, 1, 0
+            return 1.0, 1, 0, 1.0, 0
         
         if source not in graph:
-            return 0.0, 0, None
+            return 0.0, 0, None, 1.0, 0
         
         # Direct trust check
         if target in graph.get(source, {}):
@@ -400,21 +442,25 @@ class TrustPropagation:
             direct = 0.0
         
         # BFS to find all paths
-        # State: (current_node, path_trust, hop_count, visited_set)
-        paths_found: list[tuple[float, int]] = []  # (trust, hops)
+        # State: (current_node, path_trust, hop_count, visited_set, path_list)
+        paths_found: list[tuple[float, int, list[UUID]]] = []  # (trust, hops, path)
+        rings_detected = 0
         
-        queue: list[tuple[UUID, float, int, set[UUID]]] = [
-            (source, 1.0, 0, {source})
+        queue: list[tuple[UUID, float, int, set[UUID], list[UUID]]] = [
+            (source, 1.0, 0, {source}, [source])
         ]
         
         while queue:
-            current, path_trust, hops, visited = queue.pop(0)
+            current, path_trust, hops, visited, path = queue.pop(0)
             
             if hops >= self.max_hops:
                 continue
             
             for neighbor, edge_trust in graph.get(current, {}).items():
                 if neighbor in visited:
+                    # Ring detected - this is a back edge
+                    if self.apply_ring_coefficient:
+                        rings_detected += 1
                     continue
                 
                 # Decay trust for this hop
@@ -424,25 +470,45 @@ class TrustPropagation:
                     continue
                 
                 new_hops = hops + 1
+                new_path = path + [neighbor]
                 
                 if neighbor == target:
-                    paths_found.append((new_trust, new_hops))
+                    paths_found.append((new_trust, new_hops, new_path))
                 else:
                     new_visited = visited | {neighbor}
-                    queue.append((neighbor, new_trust, new_hops, new_visited))
+                    queue.append((neighbor, new_trust, new_hops, new_visited, new_path))
         
         if not paths_found:
-            return direct, 0 if direct == 0 else 1, 1 if direct > 0 else None
+            return direct, 0 if direct == 0 else 1, 1 if direct > 0 else None, 1.0, rings_detected
+        
+        # Calculate ring coefficient for paths
+        ring_coefficient = 1.0
+        if self.apply_ring_coefficient and rings_detected > 0:
+            # Apply ring dampening based on graph structure
+            ring_coefficient = self.ring_calculator.calculate_path_coefficient(
+                [source, target], graph
+            )
+            self.stats["rings_detected"] += rings_detected
         
         # Aggregate paths using max (could also use weighted sum)
         # Using max is more conservative and interpretable
-        max_trust = max(t for t, _ in paths_found)
-        shortest = min(h for _, h in paths_found)
+        max_trust = max(t for t, _, _ in paths_found)
+        shortest = min(h for _, h, _ in paths_found)
+        
+        # Apply ring coefficient to transitive trust
+        dampened_trust = max_trust * ring_coefficient
         
         # Combine direct and transitive (take max)
-        final_trust = max(direct, max_trust)
+        # Note: Direct trust is NOT subject to ring dampening
+        final_trust = max(direct, dampened_trust)
         
-        return final_trust, len(paths_found) + (1 if direct > 0 else 0), shortest
+        return (
+            final_trust, 
+            len(paths_found) + (1 if direct > 0 else 0), 
+            shortest,
+            ring_coefficient,
+            rings_detected,
+        )
     
     def compute_trust_for_all_peers(
         self,
@@ -485,7 +551,41 @@ class TrustPropagation:
             "cache_hit_rate": (
                 self.stats["cache_hits"] / max(1, self.stats["computations"])
             ),
+            "ring_coefficient_enabled": self.apply_ring_coefficient,
         }
+    
+    def record_trust_change(
+        self,
+        node_id: UUID,
+        trust_delta: float,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Record a trust change for ring coefficient velocity tracking.
+        
+        Args:
+            node_id: Node that received trust change
+            trust_delta: Amount of trust change (positive or negative)
+            timestamp: When the change occurred (defaults to now)
+        """
+        if self.apply_ring_coefficient:
+            self.ring_calculator.record_trust_change(node_id, trust_delta, timestamp)
+    
+    def analyze_trust_graph(
+        self,
+        from_node_id: UUID,
+        domain: str | None = None,
+    ) -> Any:
+        """Analyze the trust graph for Sybil patterns.
+        
+        Args:
+            from_node_id: Root node to build graph from
+            domain: Optional domain filter
+            
+        Returns:
+            GraphAnalysisResult with ring detection and cluster analysis
+        """
+        graph = self._build_trust_graph(from_node_id, domain)
+        return self.ring_calculator.analyze_graph(graph)
     
     def invalidate_node(self, node_id: UUID) -> int:
         """Invalidate cache entries for a node.
