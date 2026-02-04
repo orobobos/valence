@@ -1155,12 +1155,16 @@ class EncryptedAuditBackend:
         self._key_provider = key_provider
         self._lock = threading.Lock()
     
-    def _encrypt_event(self, event: AuditEvent) -> AuditEvent:
+    def _encrypt_event(self, event: AuditEvent, previous_hash: Optional[str] = None) -> AuditEvent:
         """Encrypt an event's sensitive data.
         
         Creates a new event with the same ID but encrypted content.
-        The event_type, event_id, timestamp, and hashes are preserved
-        for indexing and chain integrity.
+        The event_type, event_id, timestamp are preserved for indexing.
+        Hash chain is computed on the encrypted data for tamper detection.
+        
+        Args:
+            event: The original event to encrypt
+            previous_hash: Hash of previous encrypted event (for chain)
         """
         # Serialize the full event
         event_json = event.to_json()
@@ -1169,7 +1173,7 @@ class EncryptedAuditBackend:
         envelope = encrypt_envelope(event_json.encode("utf-8"), self._key_provider)
         
         # Create a wrapper event that stores the encrypted envelope
-        # Preserve key fields for indexing and chain integrity
+        # Hash will be computed fresh on encrypted content
         encrypted_event = AuditEvent(
             event_id=event.event_id,
             event_type=event.event_type,
@@ -1183,8 +1187,8 @@ class EncryptedAuditBackend:
                 self.ENCRYPTED_MARKER: True,
                 "envelope": envelope.to_dict(),
             },
-            previous_hash=event.previous_hash,
-            event_hash=event.event_hash,
+            previous_hash=previous_hash,
+            # event_hash will be auto-computed in __post_init__
         )
         
         return encrypted_event
@@ -1225,14 +1229,13 @@ class EncryptedAuditBackend:
     def write(self, event: AuditEvent) -> None:
         """Write an encrypted event to the backend."""
         with self._lock:
-            # Handle chain linking before encryption
+            # Get previous hash for chain linking
+            previous_hash = None
             if hasattr(self._backend, "last_hash"):
-                if not event.previous_hash and self._backend.last_hash:
-                    event.previous_hash = self._backend.last_hash
-                    event.event_hash = event._compute_hash()
+                previous_hash = self._backend.last_hash
             
-            # Encrypt and write
-            encrypted_event = self._encrypt_event(event)
+            # Encrypt with chain info (hash computed on encrypted content)
+            encrypted_event = self._encrypt_event(event, previous_hash)
             
             # Write to backend (skip its chain linking since we handled it)
             # We need to write directly to avoid double-chaining
