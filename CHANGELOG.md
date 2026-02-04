@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Resilient Storage with Erasure Coding** (Issue #22)
+  - Reed-Solomon erasure coding for belief storage redundancy
+  - `valence.storage` module with complete implementation:
+    - `ErasureCodec` - Reed-Solomon encoder/decoder with GF(2^8) arithmetic
+    - `MerkleTree` - Integrity verification with inclusion proofs
+    - `IntegrityVerifier` - Shard set verification and challenge-response
+    - `StorageBackend` ABC with `MemoryBackend` and `LocalFileBackend` implementations
+    - `BackendRegistry` for multi-backend distribution
+  - Data models:
+    - `RedundancyLevel` enum (MINIMAL, PERSONAL, FEDERATION, PARANOID)
+    - `ShardSet`, `StorageShard`, `ShardMetadata` for shard management
+    - `RecoveryResult`, `IntegrityReport` for operation results
+    - `MerkleProof` for cryptographic verification
+  - Configurable redundancy levels:
+    - MINIMAL (2 of 3): 50% overhead, survives 1 failure
+    - PERSONAL (3 of 5): 67% overhead, survives 2 failures
+    - FEDERATION (5 of 9): 80% overhead, survives 4 failures
+    - PARANOID (7 of 15): 114% overhead, survives 8 failures
+  - Key features:
+    - Systematic encoding (first k shards contain original data)
+    - Recovery from any k of n shards via Gauss-Jordan elimination
+    - Merkle tree proofs for individual shard verification
+    - Storage quota enforcement
+    - Round-robin distribution across backends
+  - Documentation: `docs/RESILIENT_STORAGE.md`
+  - 126 comprehensive tests covering all functionality
+
 - **External Source Verification for L4 Elevation** (Issue #18)
   - Comprehensive external source verification per THREAT-MODEL.md §1.4.2
   - `external_sources.py` module with complete implementation:
