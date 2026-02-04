@@ -273,22 +273,22 @@ class TestTableExists:
     def test_returns_true_when_exists(self, mock_psycopg2, env_with_db_vars):
         """Should return True when table exists."""
         from valence.core.db import table_exists
-        # table_exists uses regular cursor (not dict), returns tuple
-        mock_psycopg2["cursor"].fetchone.return_value = (True,)
+        # table_exists uses get_cursor() which returns dict cursor by default
+        mock_psycopg2["cursor"].fetchone.return_value = {"exists": True}
         result = table_exists("beliefs")
         assert result is True
 
     def test_returns_false_when_not_exists(self, mock_psycopg2, env_with_db_vars):
         """Should return False when table doesn't exist."""
         from valence.core.db import table_exists
-        mock_psycopg2["cursor"].fetchone.return_value = (False,)
+        mock_psycopg2["cursor"].fetchone.return_value = {"exists": False}
         result = table_exists("nonexistent")
         assert result is False
 
     def test_uses_parameterized_query(self, mock_psycopg2, env_with_db_vars):
         """Should use parameterized query for safety."""
         from valence.core.db import table_exists
-        mock_psycopg2["cursor"].fetchone.return_value = (True,)
+        mock_psycopg2["cursor"].fetchone.return_value = {"exists": True}
         table_exists("test_table")
         # Check that the query was parameterized
         call_args = mock_psycopg2["cursor"].execute.call_args
