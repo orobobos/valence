@@ -439,8 +439,15 @@ class SyncManager:
             mark_node_unreachable(node_id)
 
     def _belief_to_federated(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        """Convert a belief row to federated format."""
+        """Convert a belief row to federated format with federation-standard embedding."""
         from .identity import sign_belief_content
+        from ..embeddings.federation import (
+            FEDERATION_EMBEDDING_MODEL,
+            FEDERATION_EMBEDDING_DIMS,
+            FEDERATION_EMBEDDING_TYPE,
+            is_federation_compatible,
+        )
+        from ..embeddings.providers.local import generate_embedding
 
         settings = self.settings
         did = settings.federation_node_did or f"did:vkb:web:localhost:{settings.port}"
@@ -462,6 +469,31 @@ class SyncManager:
             result["valid_from"] = row["valid_from"].isoformat()
         if row.get("valid_until"):
             result["valid_until"] = row["valid_until"].isoformat()
+
+        # Include federation-standard embedding for cross-node semantic queries
+        # Check if row has compatible embedding already
+        embedding_type = row.get("embedding_type")
+        dimensions = row.get("dimensions")
+        
+        if is_federation_compatible(embedding_type, dimensions) and row.get("embedding_384"):
+            # Use existing compatible embedding
+            embedding = row["embedding_384"]
+            if hasattr(embedding, "tolist"):
+                embedding = embedding.tolist()
+            result["embedding"] = list(embedding)
+        else:
+            # Generate federation-standard embedding
+            try:
+                result["embedding"] = generate_embedding(row["content"])
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding for belief {row['id']}: {e}")
+                # Continue without embedding - receiver can regenerate
+        
+        # Add embedding metadata
+        if "embedding" in result:
+            result["embedding_model"] = FEDERATION_EMBEDDING_MODEL
+            result["embedding_dims"] = FEDERATION_EMBEDDING_DIMS
+            result["embedding_type"] = FEDERATION_EMBEDDING_TYPE
 
         # Sign the belief
         if settings.federation_private_key:

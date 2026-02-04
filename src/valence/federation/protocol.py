@@ -583,6 +583,12 @@ def _process_incoming_belief(
     if visibility == "private":
         return "Belief visibility is private"
 
+    # Validate federation embedding if provided
+    from ..embeddings.federation import validate_incoming_belief_embedding
+    is_valid, embed_error = validate_incoming_belief_embedding(belief_data)
+    if not is_valid:
+        return f"Invalid federation embedding: {embed_error}"
+
     # Check for corroboration with existing beliefs
     # If a highly similar belief exists, add corroboration instead of creating new
     try:
