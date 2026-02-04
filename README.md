@@ -44,6 +44,53 @@ We believe in transparency. Your data sovereignty matters.
 
 ---
 
+## Offline Installation
+
+For air-gapped environments, pre-download the embedding model before deploying.
+
+### Option 1: Use the download script
+
+```bash
+# Download model to default cache location
+python scripts/download_model.py
+
+# Or save to a custom path for portable deployment
+python scripts/download_model.py --save-path /opt/valence/models/bge-small-en-v1.5
+```
+
+### Option 2: Pre-download on connected machine
+
+```bash
+# Download model to cache
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+
+# Copy cache to target (Linux/Mac)
+scp -r ~/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5 user@target:~/.cache/huggingface/hub/
+
+# Or copy cache (Windows)
+# Copy %USERPROFILE%\.cache\huggingface\hub\models--BAAI--bge-small-en-v1.5
+```
+
+### Option 3: Save to custom path
+
+```bash
+# Save model to portable location
+python -c "
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+model.save('/opt/valence/models/bge-small-en-v1.5')
+"
+
+# On target machine, set the path
+export VALENCE_EMBEDDING_MODEL_PATH=/opt/valence/models/bge-small-en-v1.5
+```
+
+The `VALENCE_EMBEDDING_MODEL_PATH` environment variable can point to either:
+- A Hugging Face model name (e.g., `BAAI/bge-small-en-v1.5`) - downloads if not cached
+- A local filesystem path to a pre-saved model - loads directly, no network required
+
+---
+
 ## Why Now
 
 Three forces converging:

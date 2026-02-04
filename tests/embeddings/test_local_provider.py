@@ -3,10 +3,49 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
+
+# ============================================================================
+# Helper Function Tests
+# ============================================================================
+
+class TestIsLocalPath:
+    """Tests for _is_local_path helper function."""
+
+    def test_absolute_path_detected(self, tmp_path):
+        """Should detect absolute filesystem paths."""
+        from valence.embeddings.providers import local
+        
+        # Create a real path
+        model_dir = tmp_path / "model"
+        model_dir.mkdir()
+        
+        assert local._is_local_path(str(model_dir)) is True
+
+    def test_relative_path_detected(self):
+        """Should detect relative paths starting with ./ or ../"""
+        from valence.embeddings.providers import local
+        
+        assert local._is_local_path("./models/bge") is True
+        assert local._is_local_path("../models/bge") is True
+
+    def test_home_path_detected(self):
+        """Should detect paths starting with ~"""
+        from valence.embeddings.providers import local
+        
+        assert local._is_local_path("~/models/bge") is True
+
+    def test_huggingface_model_name_not_local(self):
+        """Should NOT detect HuggingFace model names as local paths."""
+        from valence.embeddings.providers import local
+        
+        assert local._is_local_path("BAAI/bge-small-en-v1.5") is False
+        assert local._is_local_path("sentence-transformers/all-MiniLM-L6-v2") is False
 
 
 # ============================================================================
@@ -299,3 +338,157 @@ class TestResetModel:
         local.reset_model()
         
         assert local._model is None
+
+
+# ============================================================================
+# Offline/Custom Path Tests
+# ============================================================================
+
+class TestOfflineSupport:
+    """Tests for offline installation and custom model paths."""
+
+    def test_loads_from_local_path(self, tmp_path):
+        """Should load model from local filesystem path."""
+        from valence.embeddings.providers import local
+        
+        local.reset_model()
+        
+        # Create fake model directory
+        model_dir = tmp_path / "my-model"
+        model_dir.mkdir()
+        
+        mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        
+        with patch.dict(os.environ, {"VALENCE_EMBEDDING_MODEL_PATH": str(model_dir)}):
+            with patch("sentence_transformers.SentenceTransformer", return_value=mock_model) as mock_st:
+                model = local.get_model()
+                
+                # Should have loaded from the resolved path
+                mock_st.assert_called_once()
+                call_args = mock_st.call_args[0]
+                assert str(model_dir) in call_args[0]
+
+    def test_error_for_missing_local_path(self, tmp_path):
+        """Should raise ModelLoadError with helpful message for missing local path."""
+        from valence.embeddings.providers import local
+        from valence.embeddings.providers.local import ModelLoadError
+        
+        local.reset_model()
+        
+        nonexistent_path = tmp_path / "does-not-exist"
+        
+        with patch.dict(os.environ, {"VALENCE_EMBEDDING_MODEL_PATH": str(nonexistent_path)}):
+            with pytest.raises(ModelLoadError) as exc_info:
+                local.get_model()
+            
+            error_msg = str(exc_info.value)
+            assert "not found" in error_msg.lower()
+            assert "download_model.py" in error_msg
+            assert "VALENCE_EMBEDDING_MODEL_PATH" in error_msg
+
+    def test_error_for_network_failure(self):
+        """Should provide offline instructions when network fails."""
+        from valence.embeddings.providers import local
+        from valence.embeddings.providers.local import ModelLoadError
+        
+        local.reset_model()
+        
+        # Simulate network error
+        network_error = OSError("Connection error: could not resolve hostname")
+        
+        with patch.dict(os.environ, {"VALENCE_EMBEDDING_MODEL_PATH": "BAAI/bge-small-en-v1.5"}):
+            with patch("sentence_transformers.SentenceTransformer", side_effect=network_error):
+                with pytest.raises(ModelLoadError) as exc_info:
+                    local.get_model()
+                
+                error_msg = str(exc_info.value)
+                assert "network unavailable" in error_msg.lower() or "cannot download" in error_msg.lower()
+                assert "download_model.py" in error_msg
+                assert "air-gapped" in error_msg.lower()
+
+    def test_model_load_error_is_exception(self):
+        """ModelLoadError should be a proper exception."""
+        from valence.embeddings.providers.local import ModelLoadError
+        
+        assert issubclass(ModelLoadError, Exception)
+        
+        error = ModelLoadError("test message")
+        assert str(error) == "test message"
+
+    def test_expands_home_in_path(self, tmp_path, monkeypatch):
+        """Should expand ~ in model path."""
+        from valence.embeddings.providers import local
+        
+        local.reset_model()
+        
+        # Create a model dir in a fake home
+        fake_home = tmp_path / "fakehome"
+        fake_home.mkdir()
+        model_dir = fake_home / "models" / "bge"
+        model_dir.mkdir(parents=True)
+        
+        monkeypatch.setenv("HOME", str(fake_home))
+        
+        mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        
+        with patch.dict(os.environ, {"VALENCE_EMBEDDING_MODEL_PATH": "~/models/bge"}):
+            with patch("sentence_transformers.SentenceTransformer", return_value=mock_model) as mock_st:
+                local.get_model()
+                
+                call_args = mock_st.call_args[0]
+                # Should have expanded ~ to actual path
+                assert "~" not in call_args[0]
+                assert "models/bge" in call_args[0]
+
+    def test_huggingface_name_not_treated_as_local(self):
+        """HuggingFace model names should NOT be treated as local paths."""
+        from valence.embeddings.providers import local
+        
+        local.reset_model()
+        
+        mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        
+        # Standard HuggingFace model name
+        with patch.dict(os.environ, {"VALENCE_EMBEDDING_MODEL_PATH": "BAAI/bge-small-en-v1.5"}):
+            with patch("sentence_transformers.SentenceTransformer", return_value=mock_model) as mock_st:
+                local.get_model()
+                
+                # Should pass model name directly (not as resolved path)
+                call_args = mock_st.call_args[0]
+                assert call_args[0] == "BAAI/bge-small-en-v1.5"
+
+
+# ============================================================================
+# Download Script Tests  
+# ============================================================================
+
+class TestDownloadScript:
+    """Tests for scripts/download_model.py"""
+
+    def test_script_exists(self):
+        """Download script should exist."""
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "download_model.py"
+        assert script_path.exists(), f"Script not found at {script_path}"
+
+    def test_script_is_executable_python(self):
+        """Script should be valid Python."""
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "download_model.py"
+        
+        # Try to compile it
+        with open(script_path) as f:
+            source = f.read()
+        
+        # This will raise SyntaxError if invalid
+        compile(source, str(script_path), "exec")
+
+    def test_script_has_main_guard(self):
+        """Script should have if __name__ == '__main__' guard."""
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "download_model.py"
+        
+        with open(script_path) as f:
+            content = f.read()
+        
+        assert 'if __name__ == "__main__"' in content or "if __name__ == '__main__'" in content
