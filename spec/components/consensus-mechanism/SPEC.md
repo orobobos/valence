@@ -233,11 +233,13 @@ Multiple federations have similar aggregates
 |-------------|---------|-----------|
 | Independent domains | ≥ 3 | Multiple perspectives |
 | Independence score | > 0.7 | Strong evidential independence |
-| Byzantine quorum | 2f+1 of 3f+1 | Tolerate f byzantine nodes |
+| Byzantine quorum | 2f+1 of 3f+1 | Tolerate f byzantine nodes (see [NODE-SELECTION.md](./NODE-SELECTION.md)) |
 | Active challenges | < 3 | No major disputes |
 | Challenge weight | < 10% | Challenges are weak |
 | Minimum age | 7 days | Resist coordinated rushes |
 | Verification count | ≥ 10 | Multiple independent verifications |
+
+> **Note:** Consensus nodes (validators) are selected via stake-weighted VRF lottery with Sybil-resistant eligibility requirements. See [NODE-SELECTION.md](./NODE-SELECTION.md) for the complete selection mechanism, including stake requirements, rotation schedule, and slashing conditions.
 
 **Process:**
 ```
@@ -280,7 +282,54 @@ Domain knowledge gains cross-domain corroboration
 
 ---
 
-## 4. Consensus Data Structures
+## 4. Consensus Node Selection
+
+> **Full specification:** [NODE-SELECTION.md](./NODE-SELECTION.md)
+
+### 4.1 Validator Set Overview
+
+L4 elevation requires approval from a **validator set**—agents authorized to participate in Byzantine consensus. Validators are selected to be:
+
+- **Sybil-resistant**: Identity attestation + reputation + account age requirements
+- **Stake-weighted**: Validators lock reputation as collateral
+- **Rotational**: 7-day epochs with mandatory 20% turnover
+- **Diverse**: No single federation can hold >20% of validators
+
+### 4.2 Eligibility Requirements
+
+| Requirement | Threshold |
+|-------------|-----------|
+| Reputation | ≥ 0.5 |
+| Account age | ≥ 180 days |
+| Verification history | ≥ 50 verifications |
+| Uphold rate | ≥ 70% |
+| Identity attestation | Required (social, federation, or external) |
+| Stake | 0.10-0.80 reputation locked |
+
+### 4.3 Selection Mechanism
+
+Validators are selected each epoch via **Verifiable Random Function (VRF)**:
+
+1. Each eligible agent stakes reputation and receives a selection ticket
+2. Selection weight = stake tier × reputation × attestations × (tenure penalty)
+3. Diversity constraints ensure no single group dominates
+4. Validator set is 3f+1 where f = max tolerable byzantine nodes (minimum 31)
+
+### 4.4 Slashing
+
+Validators risk their staked reputation:
+
+| Offense | Slash |
+|---------|-------|
+| Double-voting / equivocation | 100% |
+| Proven collusion | 100% |
+| Persistent unavailability (>30%) | 50% |
+| Proven censorship | 50% |
+| Invalid vote | 20% |
+
+---
+
+## 5. Consensus Data Structures
 
 ### 4.1 ConsensusStatus
 
@@ -448,9 +497,9 @@ interface ChallengeResolution {
 
 ---
 
-## 5. Revision Handling
+## 6. Revision Handling
 
-### 5.1 When Consensus Changes
+### 6.1 When Consensus Changes
 
 Consensus is not immutable. Knowledge evolves. Revision happens when:
 
@@ -460,7 +509,7 @@ Consensus is not immutable. Knowledge evolves. Revision happens when:
 4. **Supersession**: Better/more complete knowledge replaces old
 5. **Temporal expiry**: Time-bound knowledge reaches end of validity
 
-### 5.2 Revision Process
+### 6.2 Revision Process
 
 ```
 Challenge or contradiction detected
@@ -497,7 +546,7 @@ Challenge or contradiction detected
       └── Belief gains "contested and upheld" mark (strengthens confidence)
 ```
 
-### 5.3 Revision Types
+### 6.3 Revision Types
 
 | Type | Trigger | Effect | Reversible? |
 |------|---------|--------|-------------|
@@ -507,7 +556,7 @@ Challenge or contradiction detected
 | **Retraction** | Fundamental error | Tombstone, no layer | Rarely |
 | **Expiry** | Time-bound | Status → EXPIRED | No |
 
-### 5.4 Cascade Effects
+### 6.4 Cascade Effects
 
 When communal knowledge is revised, effects cascade:
 
@@ -531,7 +580,7 @@ Communal belief X revised
       └── All domain experts in X's domains
 ```
 
-### 5.5 Revision Safeguards
+### 6.5 Revision Safeguards
 
 **Anti-oscillation:**
 - Minimum 30 days between demotion and re-elevation
@@ -549,9 +598,9 @@ Communal belief X revised
 
 ---
 
-## 6. Confidence Aggregation
+## 7. Confidence Aggregation
 
-### 6.1 Aggregation by Layer
+### 7.1 Aggregation by Layer
 
 Each layer aggregates confidence differently:
 
@@ -598,7 +647,7 @@ def aggregate_communal_confidence(domain_knowledge: List[DomainKnowledge]) -> Co
     return base
 ```
 
-### 6.2 Confidence Decay
+### 7.2 Confidence Decay
 
 Confidence decays without fresh corroboration:
 
@@ -620,9 +669,9 @@ def apply_decay(confidence: ConfidenceVector, age: Duration, last_verification: 
 
 ---
 
-## 7. Monitoring & Metrics
+## 8. Monitoring & Metrics
 
-### 7.1 Consensus Health Metrics
+### 8.1 Consensus Health Metrics
 
 ```typescript
 ConsensusMetrics {
@@ -661,7 +710,7 @@ ConsensusMetrics {
 }
 ```
 
-### 7.2 Alerts
+### 8.2 Alerts
 
 System generates alerts for:
 
@@ -673,7 +722,7 @@ System generates alerts for:
 
 ---
 
-## 8. Design Rationale
+## 9. Design Rationale
 
 ### Why independence-based consensus?
 
@@ -700,7 +749,7 @@ Communal knowledge is the network's strongest claim. False positives here damage
 
 ---
 
-## 9. Integration Points
+## 10. Integration Points
 
 | Component | Integration |
 |-----------|-------------|
@@ -713,21 +762,21 @@ Communal knowledge is the network's strongest claim. False positives here damage
 
 ---
 
-## 10. Future Considerations
+## 11. Future Considerations
 
-### 10.1 Predictive Consensus
+### 11.1 Predictive Consensus
 
 ML models to predict which beliefs will likely elevate, enabling proactive verification focus.
 
-### 10.2 Conditional Consensus
+### 11.2 Conditional Consensus
 
 "X is true IF Y holds"—consensus with explicit preconditions.
 
-### 10.3 Probabilistic Layers
+### 11.3 Probabilistic Layers
 
 Replace discrete layers with continuous consensus strength, preserving layer semantics as thresholds.
 
-### 10.4 Cross-Network Consensus
+### 11.4 Cross-Network Consensus
 
 Bridges to external knowledge networks (Wikipedia, academic databases) with appropriate trust mapping.
 

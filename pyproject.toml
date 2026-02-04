@@ -44,6 +44,7 @@ dev = [
 ]
 
 [project.scripts]
+valence = "valence.cli:main"
 valence-substrate = "valence.substrate.mcp_server:run"
 valence-vkb = "valence.vkb.mcp_server:run"
 valence-matrix = "valence.agents.matrix_bot:main"

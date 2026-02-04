@@ -70,6 +70,12 @@ Federation {
   // === Configuration ===
   config: FederationConfig
   
+  // === Sybil Resistance (see SYBIL-RESISTANCE.md) ===
+  maturity: FederationMaturity       // PROBATIONARY | PROVISIONAL | ESTABLISHED | VETERAN
+  reputation: FederationReputation   // Federation's own reputation score
+  founder_stake: StakeReference      // Reference to locked founder stake
+  trust_level: uint8                 // 1-5 trust milestone level
+  
   // === Metadata ===
   created_at: timestamp
   created_by: DID
@@ -211,8 +217,21 @@ FederationConfig {
 
 ### 1. Creation
 
+**See [SYBIL-RESISTANCE.md](./SYBIL-RESISTANCE.md) for detailed anti-Sybil measures.**
+
+Federation creation requires:
+- **Minimum founder reputation:** 0.3 (or 0.15 with proof-of-work)
+- **Reputation stake:** 10% of founder's reputation, locked for 1 year
+- **Stake slashing:** If federation flagged as Sybil, stake is forfeited
+
 ```
 Agent calls create_federation(config)
+  │
+  ├── Verify founder eligibility
+  │   ├── Check reputation >= 0.3 (or 0.15 with PoW)
+  │   └── Check no active Sybil flags
+  │
+  ├── Lock founder reputation stake (10%, 1 year)
   │
   ├── Generate federation keypairs
   │   ├── Group encryption key (X25519)
@@ -223,10 +242,19 @@ Agent calls create_federation(config)
   │
   ├── Configure governance model
   │
+  ├── Set initial maturity status
+  │   ├── maturity = PROBATIONARY
+  │   ├── reputation = 0.2 (initial)
+  │   └── trust_level = 1
+  │
   ├── Register DID: did:valence:fed:<fingerprint>
   │
   └── Return Federation object
 ```
+
+**New federations start in PROBATIONARY status:**
+- Cannot contribute to L3/L4 elevation
+- Must meet milestones to advance (see SYBIL-RESISTANCE.md §2, §8)
 
 ### 2. Membership Changes
 
@@ -581,6 +609,44 @@ Sub-federations:
 
 ---
 
+## Federation Independence Scoring
+
+For L3/L4 consensus elevation, multiple federations must **independently** corroborate beliefs. Independence is measured across five dimensions to prevent Sybil attacks.
+
+**Full specification:** [SYBIL-RESISTANCE.md](./SYBIL-RESISTANCE.md) §4
+
+### Independence Dimensions
+
+```typescript
+FederationIndependenceScore {
+  overall: float                    // 0.0 - 1.0
+  
+  dimensions: {
+    membership_independence: float,   // Penalized by member overlap (Jaccard)
+    leadership_independence: float,   // Penalized by founder/admin relationships
+    trust_independence: float,        // Based on trust graph distance
+    temporal_independence: float,     // Penalized if created close together
+    behavioral_independence: float,   // Penalized by coordinated belief timing
+  }
+}
+```
+
+### Independence Requirements for Elevation
+
+| Layer | Min Federations | Min Pairwise Independence | Min Geom Mean | Additional |
+|-------|-----------------|---------------------------|---------------|------------|
+| L3 | 3 | 0.60 | 0.65 | - |
+| L4 | 5 | 0.75 | 0.80 | Max cluster coefficient 0.3 |
+
+### Key Anti-Sybil Mechanisms
+
+1. **Membership overlap:** >20% shared members triggers 50% independence penalty
+2. **Source deduplication:** Multiple federations citing same external source counts as ONE source
+3. **Cluster detection:** Graph analysis flags coordinated federation creation
+4. **Maturity requirements:** Federations must be PROVISIONAL (90+ days) for L3, ESTABLISHED (180+ days) for L4
+
+---
+
 ## Events
 
 Federation operations emit events for audit and synchronization:
@@ -636,6 +702,10 @@ These must always hold:
 4. **Audit trail**: All membership changes are logged and signed
 5. **Governance compliance**: Actions requiring votes cannot bypass governance
 6. **Privacy bounds**: Individual contributions never exposed via aggregates
+7. **Founder stake locked**: Federation cannot exist without locked founder stake (or PoW)
+8. **Maturity progression**: Federations cannot skip maturity levels
+9. **Independence verification**: L3/L4 elevation requires verified federation independence
+10. **Source deduplication**: Multiple federations citing same source count as one for elevation
 
 ---
 
@@ -692,7 +762,16 @@ CREATE INDEX ON federation_events (actor, timestamp);
 | **Trust Graph** | Federation membership is a trust basis |
 | **Query Protocol** | Federation scope is a query filter |
 | **Verification** | Cross-federation verification possible |
-| **Consensus** | Federation aggregates can elevate to L3/L4 |
+| **Consensus** | Federation aggregates can elevate to L3/L4 (subject to independence requirements) |
+| **Incentive System** | Founder stake, federation reputation, slashing conditions |
+| **Sybil Resistance** | See [SYBIL-RESISTANCE.md](./SYBIL-RESISTANCE.md) for anti-Sybil measures |
+
+---
+
+## Related Specifications
+
+- [SYBIL-RESISTANCE.md](./SYBIL-RESISTANCE.md) — Anti-Sybil measures, independence scoring, maturity system
+- [PRIVACY.md](./PRIVACY.md) — Privacy preservation mechanisms
 
 ---
 
