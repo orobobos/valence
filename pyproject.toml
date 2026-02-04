@@ -54,6 +54,7 @@ valence-vkb = "valence.vkb.mcp_server:run"
 valence-matrix = "valence.agents.matrix_bot:main"
 valence-server = "valence.server.app:run"
 valence-token = "valence.server.cli:main"
+valence-federation = "valence.cli.federation:main"
 
 [build-system]
 requires = ["hatchling"]
