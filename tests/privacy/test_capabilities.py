@@ -1606,3 +1606,557 @@ class TestCapabilityDictNaiveDatetime:
         # Should assume UTC
         assert cap.issued_at.tzinfo == timezone.utc
         assert cap.expires_at.tzinfo == timezone.utc
+
+
+# =============================================================================
+# CAPABILITY VALIDATION TESTS (Issue #79)
+# =============================================================================
+
+class TestValidationResult:
+    """Tests for ValidationResult dataclass."""
+    
+    def test_valid_result(self):
+        """Test creating a valid result."""
+        result = ValidationResult(
+            is_valid=True,
+            capability_id="cap-123",
+            resource="valence://test",
+            action="read",
+        )
+        
+        assert result.is_valid
+        assert result.errors == []
+        assert result.capability_id == "cap-123"
+        assert result.resource == "valence://test"
+        assert result.action == "read"
+        assert result.checked_at is not None
+    
+    def test_invalid_result_with_errors(self):
+        """Test creating an invalid result with errors."""
+        errors = ["Capability expired", "Action not permitted"]
+        result = ValidationResult(
+            is_valid=False,
+            errors=errors,
+            capability_id="cap-456",
+        )
+        
+        assert not result.is_valid
+        assert len(result.errors) == 2
+        assert "Capability expired" in result.errors
+    
+    def test_boolean_conversion(self):
+        """Test that ValidationResult works in boolean context."""
+        valid = ValidationResult(is_valid=True)
+        invalid = ValidationResult(is_valid=False, errors=["Error"])
+        
+        assert valid
+        assert not invalid
+        
+        # Use in if statement
+        if valid:
+            passed = True
+        else:
+            passed = False
+        assert passed
+    
+    def test_raise_if_invalid_on_valid(self):
+        """Test that raise_if_invalid does nothing for valid result."""
+        result = ValidationResult(is_valid=True)
+        result.raise_if_invalid()  # Should not raise
+    
+    def test_raise_if_invalid_on_invalid(self):
+        """Test that raise_if_invalid raises CapabilityValidationError."""
+        result = ValidationResult(
+            is_valid=False,
+            errors=["Error 1", "Error 2"],
+        )
+        
+        with pytest.raises(CapabilityValidationError) as exc_info:
+            result.raise_if_invalid()
+        
+        assert len(exc_info.value.errors) == 2
+        assert "Error 1" in str(exc_info.value)
+
+
+class TestValidateCapability:
+    """Tests for validate_capability function (Issue #79)."""
+    
+    @pytest.fixture
+    def valid_capability(self, issuer_did, holder_did, resource, actions):
+        """Create a valid capability for testing."""
+        return Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+        )
+    
+    def test_validate_valid_capability(self, valid_capability, resource):
+        """Test validating a valid capability."""
+        result = validate_capability(valid_capability, resource, "read")
+        
+        assert result.is_valid
+        assert result.errors == []
+        assert result.capability_id == valid_capability.id
+        assert result.resource == resource
+        assert result.action == "read"
+    
+    def test_validate_expired_capability(self, issuer_did, holder_did, resource, actions):
+        """Test validating an expired capability."""
+        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        cap = Capability(
+            id="cap-expired",
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issued_at=past - timedelta(hours=1),
+            expires_at=past,
+        )
+        
+        result = validate_capability(cap, resource, "read")
+        
+        assert not result.is_valid
+        assert len(result.errors) == 1
+        assert "expired" in result.errors[0].lower()
+    
+    def test_validate_revoked_capability(self, issuer_did, holder_did, resource, actions):
+        """Test validating a revoked capability."""
+        now = datetime.now(timezone.utc)
+        cap = Capability(
+            id="cap-revoked",
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issued_at=now,
+            expires_at=now + timedelta(hours=1),
+            revoked_at=now,
+            revocation_reason="Test revocation",
+        )
+        
+        result = validate_capability(cap, resource, "read")
+        
+        assert not result.is_valid
+        assert len(result.errors) == 1
+        assert "revoked" in result.errors[0].lower()
+    
+    def test_validate_wrong_resource(self, valid_capability):
+        """Test validating against wrong resource."""
+        result = validate_capability(valid_capability, "valence://other/resource", "read")
+        
+        assert not result.is_valid
+        assert len(result.errors) == 1
+        assert "resource mismatch" in result.errors[0].lower()
+    
+    def test_validate_wrong_action(self, valid_capability, resource):
+        """Test validating with unpermitted action."""
+        result = validate_capability(valid_capability, resource, "delete")
+        
+        assert not result.is_valid
+        assert len(result.errors) == 1
+        assert "action not permitted" in result.errors[0].lower()
+    
+    def test_validate_multiple_errors(self, issuer_did, holder_did, resource, actions):
+        """Test that validation collects multiple errors."""
+        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        cap = Capability(
+            id="cap-multi-error",
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issued_at=past - timedelta(hours=1),
+            expires_at=past,
+            revoked_at=past,
+        )
+        
+        # Wrong resource + wrong action + expired + revoked = 4 errors
+        result = validate_capability(cap, "wrong/resource", "delete")
+        
+        assert not result.is_valid
+        assert len(result.errors) == 4
+    
+    def test_validate_admin_grants_all_actions(self, issuer_did, holder_did, resource):
+        """Test that admin capability grants all actions."""
+        cap = Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=[CapabilityAction.ADMIN.value],
+        )
+        
+        # Should pass for any action
+        for action in ["read", "write", "delete", "random_action"]:
+            result = validate_capability(cap, resource, action)
+            assert result.is_valid, f"Admin should allow action: {action}"
+    
+    def test_validate_skip_revocation_check(self, issuer_did, holder_did, resource, actions):
+        """Test skipping revocation check."""
+        now = datetime.now(timezone.utc)
+        cap = Capability(
+            id="cap-revoked",
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issued_at=now,
+            expires_at=now + timedelta(hours=1),
+            revoked_at=now,
+        )
+        
+        # With check_revocation=True (default) - fails
+        result_with_check = validate_capability(cap, resource, "read", check_revocation=True)
+        assert not result_with_check.is_valid
+        
+        # With check_revocation=False - passes
+        result_no_check = validate_capability(cap, resource, "read", check_revocation=False)
+        assert result_no_check.is_valid
+
+
+class TestValidateCapabilityAsync:
+    """Tests for validate_capability_async function."""
+    
+    @pytest.mark.asyncio
+    async def test_async_validation_with_store(self, store, issuer_did, holder_did, resource, actions):
+        """Test async validation checks store for revocation."""
+        now = datetime.now(timezone.utc)
+        cap = Capability(
+            id="cap-to-revoke",
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issued_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+        await store.save(cap)
+        
+        # Initially valid
+        result = await validate_capability_async(cap, resource, "read", store=store)
+        assert result.is_valid
+        
+        # Revoke in store
+        await store.revoke(cap.id, "Test")
+        
+        # Now fails validation
+        result = await validate_capability_async(cap, resource, "read", store=store)
+        assert not result.is_valid
+        assert any("revoked" in err.lower() for err in result.errors)
+
+
+class TestRequiresCapabilityDecorator:
+    """Tests for @requires_capability decorator (Issue #79)."""
+    
+    @pytest.fixture
+    def test_resource(self):
+        return "valence://test/data"
+    
+    @pytest.fixture
+    def read_capability(self, issuer_did, holder_did, test_resource):
+        """Create a capability with read permission."""
+        return Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=test_resource,
+            actions=["read"],
+        )
+    
+    @pytest.fixture
+    def write_capability(self, issuer_did, holder_did, test_resource):
+        """Create a capability with write permission."""
+        return Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=test_resource,
+            actions=["write"],
+        )
+    
+    def test_sync_decorator_allows_valid(self, read_capability, test_resource):
+        """Test that sync decorator allows valid capability."""
+        @requires_capability(test_resource, "read")
+        def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        result = protected_function(read_capability)
+        assert result == "success"
+    
+    def test_sync_decorator_denies_wrong_action(self, read_capability, test_resource):
+        """Test that sync decorator denies capability with wrong action."""
+        @requires_capability(test_resource, "write")
+        def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        with pytest.raises(CapabilityValidationError):
+            protected_function(read_capability)
+    
+    def test_sync_decorator_denies_wrong_resource(self, read_capability):
+        """Test that sync decorator denies capability for wrong resource."""
+        @requires_capability("valence://other/resource", "read")
+        def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        with pytest.raises(CapabilityValidationError):
+            protected_function(read_capability)
+    
+    @pytest.mark.asyncio
+    async def test_async_decorator_allows_valid(self, read_capability, test_resource):
+        """Test that async decorator allows valid capability."""
+        @requires_capability(test_resource, "read")
+        async def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        result = await protected_function(read_capability)
+        assert result == "success"
+    
+    @pytest.mark.asyncio
+    async def test_async_decorator_denies_invalid(self, read_capability, test_resource):
+        """Test that async decorator denies invalid capability."""
+        @requires_capability(test_resource, "write")
+        async def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        with pytest.raises(CapabilityValidationError):
+            await protected_function(read_capability)
+    
+    def test_decorator_with_dynamic_resource(self, issuer_did, holder_did):
+        """Test decorator with callable resource resolver."""
+        cap = Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource="valence://data/users",
+            actions=["read"],
+        )
+        
+        @requires_capability(
+            lambda data_type: f"valence://data/{data_type}",
+            "read"
+        )
+        def get_data(data_type: str, capability: Capability) -> str:
+            return f"data from {data_type}"
+        
+        result = get_data("users", capability=cap)
+        assert result == "data from users"
+    
+    def test_decorator_with_dynamic_resource_wrong_resource(self, issuer_did, holder_did):
+        """Test decorator with callable resource resolver - wrong resource."""
+        cap = Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource="valence://data/users",
+            actions=["read"],
+        )
+        
+        @requires_capability(
+            lambda data_type: f"valence://data/{data_type}",
+            "read"
+        )
+        def get_data(data_type: str, capability: Capability) -> str:
+            return f"data from {data_type}"
+        
+        with pytest.raises(CapabilityValidationError):
+            get_data("admins", capability=cap)  # Wrong resource
+    
+    def test_decorator_custom_capability_param(self, read_capability, test_resource):
+        """Test decorator with custom capability parameter name."""
+        @requires_capability(test_resource, "read", capability_param="auth")
+        def protected_function(auth: Capability) -> str:
+            return "success"
+        
+        result = protected_function(auth=read_capability)
+        assert result == "success"
+    
+    def test_decorator_missing_capability_raises(self, test_resource):
+        """Test that missing capability raises ValueError."""
+        @requires_capability(test_resource, "read")
+        def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        with pytest.raises(ValueError, match="capability"):
+            protected_function(capability=None)
+    
+    def test_decorator_no_raise_returns_none(self, read_capability, test_resource):
+        """Test decorator with raise_on_invalid=False returns None."""
+        @requires_capability(test_resource, "write", raise_on_invalid=False)
+        def protected_function(capability: Capability) -> str:
+            return "success"
+        
+        result = protected_function(read_capability)
+        assert result is None
+    
+    @pytest.mark.asyncio
+    async def test_async_decorator_with_store(self, store, issuer_did, holder_did, test_resource):
+        """Test async decorator with store for revocation checking."""
+        cap = Capability.create(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=test_resource,
+            actions=["read"],
+        )
+        await store.save(cap)
+        
+        @requires_capability(test_resource, "read", store_param="store")
+        async def protected_function(capability: Capability, store: InMemoryCapabilityStore) -> str:
+            return "success"
+        
+        # Initially works
+        result = await protected_function(capability=cap, store=store)
+        assert result == "success"
+        
+        # Revoke capability
+        await store.revoke(cap.id, "Test revocation")
+        
+        # Now fails
+        with pytest.raises(CapabilityValidationError):
+            await protected_function(capability=cap, store=store)
+
+
+class TestCapabilityServiceValidation:
+    """Tests for CapabilityService.validate_capability method (Issue #79)."""
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_valid_capability(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validating a valid capability through service."""
+        private_key, public_key = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issuer_private_key=private_key,
+        )
+        
+        result = await service.validate_capability(
+            cap, resource, "read", issuer_public_key=public_key
+        )
+        
+        assert result.is_valid
+        assert result.errors == []
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_wrong_resource(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validating capability with wrong resource."""
+        private_key, _ = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issuer_private_key=private_key,
+        )
+        
+        result = await service.validate_capability(
+            cap, "wrong/resource", "read", verify_signature=False
+        )
+        
+        assert not result.is_valid
+        assert any("mismatch" in err.lower() for err in result.errors)
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_wrong_action(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validating capability with unpermitted action."""
+        private_key, _ = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,  # only read, query
+            issuer_private_key=private_key,
+        )
+        
+        result = await service.validate_capability(
+            cap, resource, "delete", verify_signature=False
+        )
+        
+        assert not result.is_valid
+        assert any("not permitted" in err.lower() for err in result.errors)
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_revoked_capability(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validating a revoked capability through service."""
+        private_key, public_key = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issuer_private_key=private_key,
+        )
+        
+        # Revoke the capability
+        await service.revoke(cap.id, "Security incident")
+        
+        result = await service.validate_capability(
+            cap, resource, "read", issuer_public_key=public_key
+        )
+        
+        assert not result.is_valid
+        assert any("revoked" in err.lower() for err in result.errors)
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_with_signature_verification(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validation includes signature verification."""
+        private_key, public_key = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issuer_private_key=private_key,
+        )
+        
+        # Tamper with capability
+        cap.actions.append("admin")
+        
+        result = await service.validate_capability(
+            cap, resource, "read",
+            verify_signature=True,
+            issuer_public_key=public_key,
+        )
+        
+        assert not result.is_valid
+        assert any("signature" in err.lower() for err in result.errors)
+    
+    @pytest.mark.asyncio
+    async def test_service_validate_skip_signature(
+        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
+    ):
+        """Test validation can skip signature verification."""
+        private_key, _ = issuer_keypair
+        
+        cap = await service.issue(
+            issuer_did=issuer_did,
+            holder_did=holder_did,
+            resource=resource,
+            actions=actions,
+            issuer_private_key=private_key,
+        )
+        
+        # Tamper with capability
+        cap.actions.append("admin")
+        
+        # With verify_signature=False, tampering is not detected
+        # (but we're still checking resource/action which should pass)
+        result = await service.validate_capability(
+            cap, resource, "read",
+            verify_signature=False,
+        )
+        
+        # Still valid because we skip signature verification
+        # and read is in actions (admin is too now, but that's fine)
+        assert result.is_valid

@@ -27,6 +27,18 @@ from valence.privacy.trust import (
     list_trusted,
     compute_delegated_trust,
     compute_transitive_trust,
+    # Federation trust (Issue #86)
+    FederationTrustEdge,
+    FederationMembershipRegistry,
+    FEDERATION_PREFIX,
+    set_federation_trust,
+    get_federation_trust,
+    revoke_federation_trust,
+    get_federation_registry,
+    register_federation_member,
+    unregister_federation_member,
+    get_did_federation,
+    get_effective_trust_with_federation,
 )
 
 
@@ -2178,3 +2190,790 @@ class TestComputeDelegatedTrustConvenienceFunction:
         assert abs(result.competence - 0.72) < 0.01
         
         service.clear()
+
+
+# =============================================================================
+# FEDERATION TRUST TESTS (Issue #86)
+# =============================================================================
+
+
+class TestFederationTrustEdge:
+    """Tests for FederationTrustEdge dataclass."""
+    
+    def test_create_basic_federation_edge(self):
+        """Test creating a basic federation trust edge."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        edge = FederationTrustEdge(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+        )
+        
+        assert edge.source_federation == "acme-corp"
+        assert edge.target_federation == "globex-inc"
+        assert edge.competence == 0.5  # default
+        assert edge.integrity == 0.5
+        assert edge.confidentiality == 0.5
+        assert edge.judgment == 0.3  # federation default
+        assert edge.inheritance_factor == 0.5  # default
+        assert edge.domain is None
+    
+    def test_create_federation_edge_with_values(self):
+        """Test creating federation edge with custom values."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        edge = FederationTrustEdge(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+            judgment=0.6,
+            inheritance_factor=0.75,
+            domain="research",
+        )
+        
+        assert edge.competence == 0.9
+        assert edge.integrity == 0.8
+        assert edge.confidentiality == 0.7
+        assert edge.judgment == 0.6
+        assert edge.inheritance_factor == 0.75
+        assert edge.domain == "research"
+    
+    def test_federation_edge_invalid_scores(self):
+        """Test validation of federation edge scores."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        with pytest.raises(ValueError, match="competence must be between"):
+            FederationTrustEdge(
+                source_federation="a",
+                target_federation="b",
+                competence=1.5,
+            )
+        
+        with pytest.raises(ValueError, match="inheritance_factor must be between"):
+            FederationTrustEdge(
+                source_federation="a",
+                target_federation="b",
+                inheritance_factor=-0.1,
+            )
+    
+    def test_federation_edge_no_self_trust(self):
+        """Test that self-trust is rejected."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        with pytest.raises(ValueError, match="Cannot create federation trust edge to self"):
+            FederationTrustEdge(
+                source_federation="acme-corp",
+                target_federation="acme-corp",
+            )
+    
+    def test_federation_edge_overall_trust(self):
+        """Test overall trust calculation for federation edge."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        edge = FederationTrustEdge(
+            source_federation="a",
+            target_federation="b",
+            competence=0.8,
+            integrity=0.8,
+            confidentiality=0.8,
+            judgment=0.8,
+        )
+        assert abs(edge.overall_trust - 0.8) < 0.001
+    
+    def test_federation_edge_source_target_did(self):
+        """Test DID-style properties for storage compatibility."""
+        from valence.privacy.trust import FederationTrustEdge, FEDERATION_PREFIX
+        
+        edge = FederationTrustEdge(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+        )
+        
+        assert edge.source_did == f"{FEDERATION_PREFIX}acme-corp"
+        assert edge.target_did == f"{FEDERATION_PREFIX}globex-inc"
+    
+    def test_federation_edge_to_trust_edge(self):
+        """Test conversion to TrustEdge for storage."""
+        from valence.privacy.trust import FederationTrustEdge, TrustEdge
+        
+        fed_edge = FederationTrustEdge(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+            judgment=0.6,
+        )
+        
+        trust_edge = fed_edge.to_trust_edge()
+        
+        assert isinstance(trust_edge, TrustEdge)
+        assert trust_edge.source_did == "federation:acme-corp"
+        assert trust_edge.target_did == "federation:globex-inc"
+        assert trust_edge.competence == 0.9
+        assert trust_edge.integrity == 0.8
+        assert trust_edge.can_delegate is False  # Federation trust doesn't delegate
+    
+    def test_federation_edge_from_trust_edge(self):
+        """Test conversion from TrustEdge."""
+        from valence.privacy.trust import FederationTrustEdge, TrustEdge
+        
+        trust_edge = TrustEdge(
+            source_did="federation:acme-corp",
+            target_did="federation:globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+            judgment=0.6,
+        )
+        
+        fed_edge = FederationTrustEdge.from_trust_edge(trust_edge, inheritance_factor=0.6)
+        
+        assert fed_edge.source_federation == "acme-corp"
+        assert fed_edge.target_federation == "globex-inc"
+        assert fed_edge.competence == 0.9
+        assert fed_edge.inheritance_factor == 0.6
+    
+    def test_federation_edge_from_trust_edge_invalid_prefix(self):
+        """Test that from_trust_edge rejects non-federation edges."""
+        from valence.privacy.trust import FederationTrustEdge, TrustEdge
+        
+        trust_edge = TrustEdge(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+        )
+        
+        with pytest.raises(ValueError, match="must start with federation:"):
+            FederationTrustEdge.from_trust_edge(trust_edge)
+    
+    def test_federation_edge_serialization(self):
+        """Test to_dict/from_dict roundtrip."""
+        from valence.privacy.trust import FederationTrustEdge
+        
+        original = FederationTrustEdge(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+            judgment=0.6,
+            inheritance_factor=0.75,
+            domain="research",
+        )
+        
+        data = original.to_dict()
+        restored = FederationTrustEdge.from_dict(data)
+        
+        assert restored.source_federation == original.source_federation
+        assert restored.target_federation == original.target_federation
+        assert restored.competence == original.competence
+        assert restored.inheritance_factor == original.inheritance_factor
+        assert restored.domain == original.domain
+
+
+class TestFederationMembershipRegistry:
+    """Tests for FederationMembershipRegistry."""
+    
+    def test_register_member(self):
+        """Test registering a DID to a federation."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        registry.register_member("did:key:alice", "acme-corp")
+        
+        assert registry.get_federation("did:key:alice") == "acme-corp"
+    
+    def test_get_members(self):
+        """Test getting all members of a federation."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "acme-corp")
+        registry.register_member("did:key:carol", "globex-inc")
+        
+        acme_members = registry.get_members("acme-corp")
+        assert acme_members == {"did:key:alice", "did:key:bob"}
+        
+        globex_members = registry.get_members("globex-inc")
+        assert globex_members == {"did:key:carol"}
+    
+    def test_unregister_member(self):
+        """Test unregistering a DID from a federation."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        registry.register_member("did:key:alice", "acme-corp")
+        
+        result = registry.unregister_member("did:key:alice")
+        assert result is True
+        assert registry.get_federation("did:key:alice") is None
+        assert "did:key:alice" not in registry.get_members("acme-corp")
+    
+    def test_unregister_unknown_member(self):
+        """Test unregistering a DID that isn't registered."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        result = registry.unregister_member("did:key:unknown")
+        assert result is False
+    
+    def test_change_federation(self):
+        """Test changing a DID's federation membership."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:alice", "globex-inc")  # Change federation
+        
+        assert registry.get_federation("did:key:alice") == "globex-inc"
+        assert "did:key:alice" not in registry.get_members("acme-corp")
+        assert "did:key:alice" in registry.get_members("globex-inc")
+    
+    def test_clear_registry(self):
+        """Test clearing the registry."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        
+        registry = FederationMembershipRegistry()
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        registry.clear()
+        
+        assert registry.get_federation("did:key:alice") is None
+        assert registry.get_federation("did:key:bob") is None
+
+
+class TestFederationTrustService:
+    """Tests for TrustService federation trust methods."""
+    
+    @pytest.fixture
+    def service(self):
+        """Fresh TrustService for each test."""
+        return TrustService(use_memory=True)
+    
+    def test_set_federation_trust(self, service):
+        """Test setting federation trust."""
+        result = service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+            judgment=0.6,
+            inheritance_factor=0.5,
+        )
+        
+        assert result.source_federation == "acme-corp"
+        assert result.target_federation == "globex-inc"
+        assert result.competence == 0.9
+        assert result.judgment == 0.6
+    
+    def test_get_federation_trust(self, service):
+        """Test getting federation trust."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        
+        result = service.get_federation_trust("acme-corp", "globex-inc")
+        
+        assert result is not None
+        assert result.source_federation == "acme-corp"
+        assert result.target_federation == "globex-inc"
+        assert result.competence == 0.9
+    
+    def test_get_federation_trust_not_found(self, service):
+        """Test getting non-existent federation trust."""
+        result = service.get_federation_trust("acme-corp", "unknown")
+        assert result is None
+    
+    def test_revoke_federation_trust(self, service):
+        """Test revoking federation trust."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        
+        result = service.revoke_federation_trust("acme-corp", "globex-inc")
+        assert result is True
+        
+        # Should be gone
+        assert service.get_federation_trust("acme-corp", "globex-inc") is None
+    
+    def test_revoke_federation_trust_not_found(self, service):
+        """Test revoking non-existent federation trust."""
+        result = service.revoke_federation_trust("acme-corp", "unknown")
+        assert result is False
+    
+    def test_list_federation_trusts_from(self, service):
+        """Test listing federations trusted by a federation."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="initech",
+            competence=0.7,
+            integrity=0.7,
+            confidentiality=0.7,
+        )
+        
+        results = service.list_federation_trusts_from("acme-corp")
+        
+        assert len(results) == 2
+        targets = {r.target_federation for r in results}
+        assert targets == {"globex-inc", "initech"}
+    
+    def test_list_federation_trusts_to(self, service):
+        """Test listing federations that trust a federation."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        service.set_federation_trust(
+            source_federation="initech",
+            target_federation="globex-inc",
+            competence=0.7,
+            integrity=0.7,
+            confidentiality=0.7,
+        )
+        
+        results = service.list_federation_trusts_to("globex-inc")
+        
+        assert len(results) == 2
+        sources = {r.source_federation for r in results}
+        assert sources == {"acme-corp", "initech"}
+    
+    def test_federation_trust_with_domain(self, service):
+        """Test domain-scoped federation trust."""
+        # Global federation trust
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.5,
+            integrity=0.5,
+            confidentiality=0.5,
+        )
+        
+        # Domain-specific federation trust (higher for research)
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+            domain="research",
+        )
+        
+        # Global query
+        global_result = service.get_federation_trust("acme-corp", "globex-inc")
+        assert global_result.competence == 0.5
+        
+        # Domain query
+        domain_result = service.get_federation_trust("acme-corp", "globex-inc", domain="research")
+        assert domain_result.competence == 0.9
+
+
+class TestEffectiveTrustWithFederation:
+    """Tests for computing effective trust considering federation relationships."""
+    
+    @pytest.fixture
+    def service(self):
+        """Fresh TrustService for each test."""
+        return TrustService(use_memory=True)
+    
+    @pytest.fixture
+    def registry(self):
+        """Fresh federation registry for each test."""
+        from valence.privacy.trust import FederationMembershipRegistry
+        return FederationMembershipRegistry()
+    
+    def test_no_federation_returns_direct_trust(self, service, registry):
+        """Test that without federation membership, direct trust is returned."""
+        service.grant_trust(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+        )
+        
+        assert result is not None
+        assert result.competence == 0.9
+    
+    def test_no_federation_returns_none_without_direct_trust(self, service, registry):
+        """Test that without federation or direct trust, None is returned."""
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+        )
+        
+        assert result is None
+    
+    def test_federation_trust_inherited_when_no_direct_trust(self, service, registry):
+        """Test that federation trust is inherited when no direct trust exists."""
+        # Set up federation trust
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.8,
+            integrity=0.8,
+            confidentiality=0.8,
+            judgment=0.6,
+        )
+        
+        # Register members
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        # Get effective trust (no direct trust exists)
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+            inheritance_factor=0.5,
+        )
+        
+        assert result is not None
+        # Inherited trust = federation_trust * inheritance_factor
+        # competence = 0.8 * 0.5 = 0.4
+        assert abs(result.competence - 0.4) < 0.01
+        assert abs(result.integrity - 0.4) < 0.01
+    
+    def test_direct_trust_overrides_inherited(self, service, registry):
+        """Test that direct trust overrides lower inherited trust."""
+        # Set up federation trust (lower)
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.5,
+            integrity=0.5,
+            confidentiality=0.5,
+        )
+        
+        # Register members
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        # Grant higher direct trust
+        service.grant_trust(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+        )
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+            inheritance_factor=0.5,
+        )
+        
+        assert result is not None
+        # Direct trust (0.9) > inherited (0.5 * 0.5 = 0.25)
+        assert result.competence == 0.9
+    
+    def test_inherited_trust_supplements_lower_direct_trust(self, service, registry):
+        """Test that inherited trust can supplement lower direct trust."""
+        # Set up high federation trust
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+        )
+        
+        # Register members
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        # Grant lower direct trust
+        service.grant_trust(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            competence=0.3,
+            integrity=0.3,
+            confidentiality=0.3,
+        )
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+            inheritance_factor=0.5,
+        )
+        
+        assert result is not None
+        # Inherited (0.9 * 0.5 = 0.45) > direct (0.3)
+        # Takes max
+        assert result.competence == 0.45
+    
+    def test_same_federation_no_inheritance(self, service, registry):
+        """Test that members of the same federation don't get inherited trust."""
+        # Set up federation trust (shouldn't apply within same federation)
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+        )
+        
+        # Both members of the same federation
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "acme-corp")
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+        )
+        
+        # No direct trust and no cross-federation inheritance
+        assert result is None
+    
+    def test_unregistered_source_no_inheritance(self, service, registry):
+        """Test that unregistered source DIDs don't get inherited trust."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+        )
+        
+        # Only target is registered
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",  # Not registered
+            target_did="did:key:bob",
+            registry=registry,
+        )
+        
+        assert result is None
+    
+    def test_unregistered_target_no_inheritance(self, service, registry):
+        """Test that unregistered target DIDs don't get inherited trust."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+        )
+        
+        # Only source is registered
+        registry.register_member("did:key:alice", "acme-corp")
+        
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",  # Not registered
+            registry=registry,
+        )
+        
+        assert result is None
+    
+    def test_custom_inheritance_factor(self, service, registry):
+        """Test that custom inheritance factor is applied."""
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.8,
+            integrity=0.8,
+            confidentiality=0.8,
+        )
+        
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        # Higher inheritance factor
+        result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+            inheritance_factor=0.75,
+        )
+        
+        assert result is not None
+        # competence = 0.8 * 0.75 = 0.6
+        assert abs(result.competence - 0.6) < 0.01
+    
+    def test_domain_scoped_federation_inheritance(self, service, registry):
+        """Test that domain-scoped federation trust is properly inherited."""
+        # Global federation trust
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.5,
+            integrity=0.5,
+            confidentiality=0.5,
+        )
+        
+        # Higher trust for research domain
+        service.set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.9,
+            confidentiality=0.9,
+            domain="research",
+        )
+        
+        registry.register_member("did:key:alice", "acme-corp")
+        registry.register_member("did:key:bob", "globex-inc")
+        
+        # Global domain
+        global_result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            registry=registry,
+            inheritance_factor=0.5,
+        )
+        assert abs(global_result.competence - 0.25) < 0.01  # 0.5 * 0.5
+        
+        # Research domain
+        research_result = service.get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            domain="research",
+            registry=registry,
+            inheritance_factor=0.5,
+        )
+        assert abs(research_result.competence - 0.45) < 0.01  # 0.9 * 0.5
+
+
+class TestFederationTrustConvenienceFunctions:
+    """Tests for module-level federation trust convenience functions."""
+    
+    @pytest.fixture(autouse=True)
+    def reset_singletons(self):
+        """Reset singletons before each test."""
+        import valence.privacy.trust as trust_module
+        trust_module._default_service = None
+        trust_module._federation_registry = None
+        yield
+        trust_module._default_service = None
+        trust_module._federation_registry = None
+    
+    def test_set_and_get_federation_trust(self):
+        """Test set_federation_trust and get_federation_trust convenience functions."""
+        from valence.privacy.trust import (
+            set_federation_trust,
+            get_federation_trust,
+        )
+        
+        set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        
+        result = get_federation_trust("acme-corp", "globex-inc")
+        
+        assert result is not None
+        assert result.source_federation == "acme-corp"
+        assert result.competence == 0.9
+    
+    def test_revoke_federation_trust(self):
+        """Test revoke_federation_trust convenience function."""
+        from valence.privacy.trust import (
+            set_federation_trust,
+            get_federation_trust,
+            revoke_federation_trust,
+        )
+        
+        set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.9,
+            integrity=0.8,
+            confidentiality=0.7,
+        )
+        
+        result = revoke_federation_trust("acme-corp", "globex-inc")
+        assert result is True
+        
+        assert get_federation_trust("acme-corp", "globex-inc") is None
+    
+    def test_register_and_get_federation_member(self):
+        """Test register_federation_member and get_did_federation functions."""
+        from valence.privacy.trust import (
+            register_federation_member,
+            get_did_federation,
+        )
+        
+        register_federation_member("did:key:alice", "acme-corp")
+        
+        result = get_did_federation("did:key:alice")
+        assert result == "acme-corp"
+    
+    def test_unregister_federation_member(self):
+        """Test unregister_federation_member function."""
+        from valence.privacy.trust import (
+            register_federation_member,
+            unregister_federation_member,
+            get_did_federation,
+        )
+        
+        register_federation_member("did:key:alice", "acme-corp")
+        result = unregister_federation_member("did:key:alice")
+        
+        assert result is True
+        assert get_did_federation("did:key:alice") is None
+    
+    def test_get_effective_trust_with_federation_convenience(self):
+        """Test get_effective_trust_with_federation convenience function."""
+        from valence.privacy.trust import (
+            set_federation_trust,
+            register_federation_member,
+            get_effective_trust_with_federation,
+        )
+        
+        set_federation_trust(
+            source_federation="acme-corp",
+            target_federation="globex-inc",
+            competence=0.8,
+            integrity=0.8,
+            confidentiality=0.8,
+        )
+        
+        register_federation_member("did:key:alice", "acme-corp")
+        register_federation_member("did:key:bob", "globex-inc")
+        
+        result = get_effective_trust_with_federation(
+            source_did="did:key:alice",
+            target_did="did:key:bob",
+            inheritance_factor=0.5,
+        )
+        
+        assert result is not None
+        assert abs(result.competence - 0.4) < 0.01
