@@ -283,13 +283,18 @@ from .groups import (
     WelcomeMessage,
     CommitMessage,
     GroupState,
+    RemovalAuditEntry,
     # Functions
     create_group,
     add_member,
+    remove_member,
     process_welcome,
     process_commit,
     encrypt_group_content,
     decrypt_group_content,
+    can_decrypt_at_epoch,
+    get_removal_history,
+    rotate_keys,
 )
 
 from .verification import (

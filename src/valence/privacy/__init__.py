@@ -15,6 +15,7 @@ from .sharing import (
     ShareRequest,
     ShareResult,
     ConsentChainEntry,
+    CrossFederationHop,
     Share,
     SharingService,
 )
@@ -156,6 +157,19 @@ from .reports import (
     get_report_service,
     set_report_service,
 )
+from .watermark import (
+    Watermark,
+    WatermarkTechnique,
+    WatermarkCodec,
+    WatermarkRegistry,
+    embed_watermark,
+    extract_watermark,
+    verify_watermark,
+    strip_watermarks,
+    create_watermarked_content,
+    get_watermark_registry,
+    set_watermark_registry,
+)
 
 __all__ = [
     # Types
@@ -177,6 +191,7 @@ __all__ = [
     "ShareRequest",
     "ShareResult",
     "ConsentChainEntry",
+    "CrossFederationHop",
     "Share",
     "SharingService",
     # Migration
@@ -307,4 +322,16 @@ __all__ = [
     "generate_data_report",
     "get_report_service",
     "set_report_service",
+    # Watermarking (Issue #92)
+    "Watermark",
+    "WatermarkTechnique",
+    "WatermarkCodec",
+    "WatermarkRegistry",
+    "embed_watermark",
+    "extract_watermark",
+    "verify_watermark",
+    "strip_watermarks",
+    "create_watermarked_content",
+    "get_watermark_registry",
+    "set_watermark_registry",
 ]

@@ -159,6 +159,57 @@ class ReceiveResult:
 
 
 @dataclass
+class CrossFederationHop:
+    """A hop that crosses federation boundaries in a consent chain.
+    
+    Used to track when consent/sharing crosses from one federation to another,
+    preserving provenance and enforcing federation-level policies.
+    """
+    
+    hop_id: str
+    federation_id: str  # Target federation
+    gateway_id: str  # Gateway in target federation
+    timestamp: float
+    signature: bytes
+    from_federation_id: str
+    from_gateway_id: str
+    hop_number: int
+    policy_snapshot: Optional[dict] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "hop_id": self.hop_id,
+            "federation_id": self.federation_id,
+            "gateway_id": self.gateway_id,
+            "timestamp": self.timestamp,
+            "signature": self.signature.hex() if isinstance(self.signature, bytes) else self.signature,
+            "from_federation_id": self.from_federation_id,
+            "from_gateway_id": self.from_gateway_id,
+            "hop_number": self.hop_number,
+            "policy_snapshot": self.policy_snapshot,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CrossFederationHop":
+        """Deserialize from dictionary."""
+        sig = data.get("signature", b"")
+        if isinstance(sig, str):
+            sig = bytes.fromhex(sig)
+        return cls(
+            hop_id=data["hop_id"],
+            federation_id=data["federation_id"],
+            gateway_id=data["gateway_id"],
+            timestamp=data["timestamp"],
+            signature=sig,
+            from_federation_id=data["from_federation_id"],
+            from_gateway_id=data["from_gateway_id"],
+            hop_number=data["hop_number"],
+            policy_snapshot=data.get("policy_snapshot"),
+        )
+
+
+@dataclass
 class ConsentChainEntry:
     """A consent chain tracking the origin and path of a share."""
     
@@ -175,6 +226,39 @@ class ConsentChainEntry:
     revoked_at: Optional[float] = None
     revoked_by: Optional[str] = None
     revoke_reason: Optional[str] = None
+    
+    # Cross-federation tracking (Issue #89)
+    cross_federation_hops: List[CrossFederationHop] = None  # type: ignore
+    origin_federation_id: Optional[str] = None
+    origin_gateway_id: Optional[str] = None
+    
+    def __post_init__(self):
+        """Initialize mutable defaults."""
+        if self.cross_federation_hops is None:
+            self.cross_federation_hops = []
+    
+    def add_cross_federation_hop(self, hop: CrossFederationHop) -> None:
+        """Add a cross-federation hop to this consent chain."""
+        self.cross_federation_hops.append(hop)
+    
+    def get_federation_path(self) -> List[str]:
+        """Get the list of federations this chain has traversed."""
+        if not self.origin_federation_id:
+            return []
+        path = [self.origin_federation_id]
+        for hop in self.cross_federation_hops:
+            path.append(hop.federation_id)
+        return path
+    
+    def get_current_federation(self) -> Optional[str]:
+        """Get the federation ID where the chain currently resides."""
+        if not self.cross_federation_hops:
+            return self.origin_federation_id
+        return self.cross_federation_hops[-1].federation_id
+    
+    def crossed_federation_boundary(self) -> bool:
+        """Check if this chain has crossed any federation boundaries."""
+        return len(self.cross_federation_hops) > 0
     
     @property
     def max_hops(self) -> Optional[int]:
