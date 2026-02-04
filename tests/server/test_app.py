@@ -283,28 +283,24 @@ class TestMCPEndpoint:
 
     def test_mcp_tools_list(self, client, auth_token):
         """Test MCP tools/list method."""
-        # Mock the tool imports at the module level where they're actually imported
-        mock_tool = MagicMock()
-        mock_tool.name = "test_tool"
-        mock_tool.description = "A test tool"
-        mock_tool.inputSchema = {"type": "object"}
-        
-        with patch("valence.substrate.tools.SUBSTRATE_TOOLS", [mock_tool]):
-            with patch("valence.vkb.tools.VKB_TOOLS", []):
-                with patch("valence.playwright.tools.PLAYWRIGHT_TOOLS", []):
-                    response = client.post(
-                        f"{API_V1}/mcp",
-                        json={
-                            "jsonrpc": "2.0",
-                            "method": "tools/list",
-                            "id": 1,
-                        },
-                        headers={"Authorization": f"Bearer {auth_token}"},
-                    )
+        # Test that tools/list returns a valid response
+        # The actual tool list depends on what's available in the environment
+        response = client.post(
+            f"{API_V1}/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/list",
+                "id": 1,
+            },
+            headers={"Authorization": f"Bearer {auth_token}"},
+        )
         
         assert response.status_code == 200
         data = response.json()
+        assert "result" in data
         assert "tools" in data["result"]
+        # tools can be empty if the modules aren't fully configured
+        assert isinstance(data["result"]["tools"], list)
 
     def test_mcp_resources_list(self, client, auth_token):
         """Test MCP resources/list method."""
