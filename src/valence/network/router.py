@@ -49,6 +49,26 @@ class Connection:
 
 
 @dataclass
+class NodeConnectionHistory:
+    """
+    Tracks connection history for a node (Issue #111).
+    
+    Used to recognize reconnecting nodes and provide state recovery hints.
+    """
+    
+    node_id: str
+    first_seen: float
+    last_connected: float
+    last_disconnected: float
+    connection_count: int
+    total_messages_delivered: int = 0
+    
+    def time_since_disconnect(self) -> float:
+        """Get seconds since last disconnect."""
+        return time.time() - self.last_disconnected
+
+
+@dataclass
 class QueuedMessage:
     """A message queued for an offline node."""
 
@@ -75,6 +95,8 @@ class RouterNode:
         heartbeat_interval: Seconds between seed heartbeats
         regions: Geographic regions this router serves
         features: Supported features/protocols
+        region: Primary region (ISO 3166-1 alpha-2 country code, e.g., "US", "DE")
+        coordinates: Optional (latitude, longitude) for precise location
     """
 
     host: str = "0.0.0.0"
@@ -87,6 +109,10 @@ class RouterNode:
     regions: list[str] = field(default_factory=list)
     features: list[str] = field(default_factory=list)
     
+    # Regional location (for geographic routing preference)
+    region: str | None = None  # ISO 3166-1 alpha-2 country code (e.g., "US", "DE", "JP")
+    coordinates: tuple[float, float] | None = None  # (latitude, longitude)
+    
     # Ed25519 identity keypair (generated on init if not provided)
     _private_key: Ed25519PrivateKey | None = field(default=None, repr=False)
     _router_id: str | None = field(default=None, repr=False)
@@ -94,12 +120,18 @@ class RouterNode:
     # Runtime state
     connections: dict[str, Connection] = field(default_factory=dict)
     offline_queues: dict[str, list[QueuedMessage]] = field(default_factory=dict)
+    
+    # Connection history tracking (Issue #111)
+    connection_history: dict[str, NodeConnectionHistory] = field(default_factory=dict)
+    max_history_entries: int = 10000  # Limit memory usage
+    history_max_age: float = 86400.0  # 24 hours
 
     # Metrics (aggregate only for privacy)
     messages_relayed: int = 0
     messages_queued: int = 0
     messages_delivered: int = 0
     connections_total: int = 0
+    reconnections_total: int = 0  # Track reconnections
     
     # Registration state
     _registered: bool = field(default=False, repr=False)
@@ -117,6 +149,13 @@ class RouterNode:
     
     # PoW settings
     POW_DIFFICULTY: int = 16  # Default difficulty (leading zero bits)
+    
+    # Back-pressure settings
+    back_pressure_threshold: float = 80.0  # Activate at 80% load
+    back_pressure_release_threshold: float = 60.0  # Release at 60% load
+    back_pressure_retry_ms: int = 1000  # Suggest 1 second retry delay
+    _back_pressure_active: bool = field(default=False, repr=False)
+    _back_pressure_nodes: set = field(default_factory=set, repr=False)  # Nodes notified
     
     def __post_init__(self):
         """Initialize identity keypair if not provided."""
@@ -145,6 +184,110 @@ class RouterNode:
             "current_connections": len(self.connections),
             "bandwidth_mbps": 100,  # Could be configurable
         }
+    
+    def get_load_pct(self) -> float:
+        """Calculate current load percentage (0-100).
+        
+        Load is based on:
+        - Connection utilization (connections / max_connections)
+        - Queue pressure (total queued messages / MAX_QUEUE_SIZE)
+        
+        Returns:
+            Load percentage from 0.0 to 100.0
+        """
+        # Connection-based load
+        conn_load = (len(self.connections) / self.max_connections * 100) if self.max_connections > 0 else 0
+        
+        # Queue-based load (total messages across all queues)
+        total_queued = sum(len(q) for q in self.offline_queues.values())
+        queue_load = (total_queued / self.MAX_QUEUE_SIZE * 100) if self.MAX_QUEUE_SIZE > 0 else 0
+        
+        # Combined load: weighted average (connections are more critical)
+        return (conn_load * 0.7) + (queue_load * 0.3)
+    
+    async def _check_back_pressure(self) -> None:
+        """Check load and activate/release back-pressure as needed."""
+        load_pct = self.get_load_pct()
+        
+        if not self._back_pressure_active and load_pct >= self.back_pressure_threshold:
+            # Activate back-pressure
+            await self._activate_back_pressure(load_pct)
+        elif self._back_pressure_active and load_pct <= self.back_pressure_release_threshold:
+            # Release back-pressure
+            await self._release_back_pressure(load_pct)
+    
+    async def _activate_back_pressure(self, load_pct: float) -> None:
+        """Activate back-pressure and notify all connected nodes.
+        
+        Args:
+            load_pct: Current load percentage for the notification
+        """
+        self._back_pressure_active = True
+        logger.warning(
+            f"Back-pressure ACTIVATED at {load_pct:.1f}% load "
+            f"(threshold: {self.back_pressure_threshold}%)"
+        )
+        
+        # Notify all connected nodes
+        message = {
+            "type": "back_pressure",
+            "active": True,
+            "load_pct": round(load_pct, 1),
+            "retry_after_ms": self.back_pressure_retry_ms,
+            "reason": "Router under heavy load",
+        }
+        
+        await self._broadcast_to_nodes(message)
+        self._back_pressure_nodes = set(self.connections.keys())
+    
+    async def _release_back_pressure(self, load_pct: float) -> None:
+        """Release back-pressure and notify previously notified nodes.
+        
+        Args:
+            load_pct: Current load percentage for the notification
+        """
+        self._back_pressure_active = False
+        logger.info(
+            f"Back-pressure RELEASED at {load_pct:.1f}% load "
+            f"(threshold: {self.back_pressure_release_threshold}%)"
+        )
+        
+        # Notify nodes that were previously notified of back-pressure
+        message = {
+            "type": "back_pressure",
+            "active": False,
+            "load_pct": round(load_pct, 1),
+            "retry_after_ms": 0,
+            "reason": "Load returned to normal",
+        }
+        
+        # Send to nodes that were notified of back-pressure
+        for node_id in list(self._back_pressure_nodes):
+            if node_id in self.connections:
+                try:
+                    conn = self.connections[node_id]
+                    await conn.websocket.send_json(message)
+                except Exception as e:
+                    logger.debug(f"Failed to send back-pressure release to {node_id}: {e}")
+        
+        self._back_pressure_nodes.clear()
+    
+    async def _broadcast_to_nodes(self, message: dict[str, Any]) -> None:
+        """Broadcast a message to all connected nodes.
+        
+        Args:
+            message: Message to broadcast
+        """
+        for node_id, conn in list(self.connections.items()):
+            try:
+                await conn.websocket.send_json(message)
+            except Exception as e:
+                logger.debug(f"Failed to broadcast to {node_id}: {e}")
+    
+    @property
+    def is_back_pressure_active(self) -> bool:
+        """Check if back-pressure is currently active."""
+        return self._back_pressure_active
     
     def _sign(self, data: dict[str, Any]) -> str:
         """Sign data with router's Ed25519 private key.
@@ -260,14 +403,23 @@ class RouterNode:
         finally:
             if node_id and node_id in self.connections:
                 del self.connections[node_id]
-                logger.info(f"Node disconnected: {node_id}")
+                # Update connection history with disconnect time (Issue #111)
+                if node_id in self.connection_history:
+                    self.connection_history[node_id].last_disconnected = time.time()
+                logger.info(f"Node disconnected: {node_id[:16]}...")
 
         return ws
 
     async def _handle_identify(
         self, data: dict[str, Any], ws: web.WebSocketResponse
     ) -> str | None:
-        """Handle node identification message."""
+        """Handle node identification message.
+        
+        Enhanced with reconnection tracking (Issue #111):
+        - Recognizes returning nodes
+        - Provides queued message count in response
+        - Tracks connection history for recovery hints
+        """
         node_id = data.get("node_id")
         if not node_id:
             await ws.send_json({"type": "error", "message": "Missing node_id"})
@@ -283,31 +435,92 @@ class RouterNode:
                 )
                 return None
 
+        now = time.time()
+        is_reconnection = False
+        queued_count = len(self.offline_queues.get(node_id, []))
+        
+        # Update connection history (Issue #111)
+        if node_id in self.connection_history:
+            history = self.connection_history[node_id]
+            is_reconnection = True
+            history.last_connected = now
+            history.connection_count += 1
+            self.reconnections_total += 1
+            
+            logger.info(
+                f"Node reconnected: {node_id[:16]}... "
+                f"(away for {history.time_since_disconnect():.1f}s, "
+                f"queued: {queued_count})"
+            )
+        else:
+            # New node - create history entry
+            self.connection_history[node_id] = NodeConnectionHistory(
+                node_id=node_id,
+                first_seen=now,
+                last_connected=now,
+                last_disconnected=0.0,
+                connection_count=1,
+            )
+            logger.info(f"Node connected (new): {node_id[:16]}...")
+        
+        # Prune old history entries to prevent memory bloat
+        self._prune_connection_history()
+
         # Register connection
         self.connections[node_id] = Connection(
             node_id=node_id,
             websocket=ws,
-            connected_at=time.time(),
-            last_seen=time.time(),
+            connected_at=now,
+            last_seen=now,
         )
 
-        logger.info(f"Node connected: {node_id}")
-
-        # Send acknowledgment
-        await ws.send_json(
-            {
-                "type": "identified",
-                "node_id": node_id,
-                "timestamp": time.time(),
-            }
-        )
+        # Build response with recovery hints (Issue #111)
+        response = {
+            "type": "identified",
+            "node_id": node_id,
+            "timestamp": now,
+            "is_reconnection": is_reconnection,
+            "queued_messages": queued_count,
+        }
+        
+        # Add time since disconnect for reconnections
+        if is_reconnection and node_id in self.connection_history:
+            history = self.connection_history[node_id]
+            if history.last_disconnected > 0:
+                response["time_since_disconnect"] = now - history.last_disconnected
+        
+        await ws.send_json(response)
 
         # Deliver any queued messages
         delivered = await self._deliver_queued(node_id, ws)
         if delivered > 0:
-            logger.info(f"Delivered {delivered} queued messages to {node_id}")
+            logger.info(f"Delivered {delivered} queued messages to {node_id[:16]}...")
+            # Update history
+            if node_id in self.connection_history:
+                self.connection_history[node_id].total_messages_delivered += delivered
 
         return node_id
+    
+    def _prune_connection_history(self) -> None:
+        """Remove old connection history entries to prevent memory bloat."""
+        if len(self.connection_history) <= self.max_history_entries:
+            return
+        
+        now = time.time()
+        
+        # Remove entries older than max age
+        to_remove = [
+            node_id for node_id, history in self.connection_history.items()
+            if (now - history.last_connected) > self.history_max_age
+            and node_id not in self.connections  # Don't remove active connections
+            and node_id not in self.offline_queues  # Don't remove nodes with queued messages
+        ]
+        
+        for node_id in to_remove:
+            del self.connection_history[node_id]
+        
+        if to_remove:
+            logger.debug(f"Pruned {len(to_remove)} old connection history entries")
 
     async def _handle_relay(self, data: dict[str, Any]) -> None:
         """Relay a message to its destination.
@@ -367,6 +580,9 @@ class RouterNode:
                 ),
             )
             logger.debug(f"Queued message {message_id} for offline node {next_hop}")
+        
+        # Check if we need to activate/release back-pressure
+        await self._check_back_pressure()
 
     def _queue_message(self, node_id: str, msg: QueuedMessage) -> bool:
         """Queue a message for an offline node.
@@ -433,6 +649,10 @@ class RouterNode:
                 "status": "healthy",
                 "connections": len(self.connections),
                 "queued_nodes": len(self.offline_queues),
+                "back_pressure": {
+                    "active": self._back_pressure_active,
+                    "load_pct": round(self.get_load_pct(), 1),
+                },
                 "metrics": {
                     "messages_relayed": self.messages_relayed,
                     "messages_queued": self.messages_queued,
@@ -460,6 +680,13 @@ class RouterNode:
                     "total_messages": sum(
                         len(q) for q in self.offline_queues.values()
                     ),
+                },
+                "back_pressure": {
+                    "active": self._back_pressure_active,
+                    "load_pct": round(self.get_load_pct(), 1),
+                    "threshold": self.back_pressure_threshold,
+                    "release_threshold": self.back_pressure_release_threshold,
+                    "nodes_notified": len(self._back_pressure_nodes),
                 },
                 "metrics": {
                     "messages_relayed": self.messages_relayed,
@@ -503,6 +730,8 @@ class RouterNode:
             "capacity": self.get_capacity(),
             "regions": self.regions,
             "features": self.features,
+            "region": self.region,  # ISO 3166-1 alpha-2 country code
+            "coordinates": list(self.coordinates) if self.coordinates else None,
             "proof_of_work": proof_of_work,
             "timestamp": time.time(),
         }
@@ -560,10 +789,13 @@ class RouterNode:
     async def _send_heartbeat(self) -> bool:
         """Send a heartbeat to the seed node.
         
-        Heartbeat includes:
+        Heartbeat includes enhanced load metrics for distributed load balancing:
         - current_connections: Active WebSocket connections
-        - load_pct: Estimated load percentage
+        - max_connections: Connection capacity
+        - load_pct: Estimated load percentage (connections/max)
         - messages_relayed: Total messages relayed since start
+        - messages_per_sec: Message throughput rate
+        - queue_depth: Total queued messages for offline nodes
         - uptime_pct: Estimated uptime (placeholder)
 
         Returns True if heartbeat acknowledged.
@@ -573,15 +805,38 @@ class RouterNode:
 
         heartbeat_url = f"{self.seed_url.rstrip('/')}/heartbeat"
         
-        # Calculate load percentage
-        load_pct = (len(self.connections) / self.max_connections) * 100 if self.max_connections > 0 else 0
+        # Calculate load percentage based on connections
+        connection_load = (len(self.connections) / self.max_connections) * 100 if self.max_connections > 0 else 0
         
-        # Build heartbeat payload
+        # Calculate queue depth (total messages across all offline queues)
+        queue_depth = sum(len(q) for q in self.offline_queues.values())
+        
+        # Calculate messages per second (using last heartbeat interval)
+        # Store previous values for rate calculation
+        now = time.time()
+        if not hasattr(self, '_last_heartbeat_time'):
+            self._last_heartbeat_time = now
+            self._last_messages_relayed = self.messages_relayed
+        
+        elapsed = now - self._last_heartbeat_time
+        if elapsed > 0:
+            messages_per_sec = (self.messages_relayed - self._last_messages_relayed) / elapsed
+        else:
+            messages_per_sec = 0.0
+        
+        # Update tracking for next heartbeat
+        self._last_heartbeat_time = now
+        self._last_messages_relayed = self.messages_relayed
+        
+        # Build heartbeat payload with enhanced load metrics
         heartbeat = {
             "router_id": self.router_id,
             "current_connections": len(self.connections),
-            "load_pct": round(load_pct, 1),
+            "max_connections": self.max_connections,
+            "load_pct": round(connection_load, 1),
             "messages_relayed": self.messages_relayed,
+            "messages_per_sec": round(messages_per_sec, 2),
+            "queue_depth": queue_depth,
             "uptime_pct": 99.9,  # Placeholder - could track actual uptime
             "timestamp": time.time(),
         }

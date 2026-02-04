@@ -71,6 +71,8 @@ class HealthState:
     last_probe: float
     probe_latency_ms: float
     warnings: List[str] = field(default_factory=list)
+    recovery_time: Optional[float] = None  # Timestamp when router recovered from unhealthy
+    previous_status: Optional[HealthStatus] = None  # Previous status before current
     
     def to_dict(self) -> Dict[str, Any]:
         """Serialize health state."""
@@ -81,6 +83,7 @@ class HealthState:
             "last_probe": self.last_probe,
             "probe_latency_ms": self.probe_latency_ms,
             "warnings": self.warnings.copy(),
+            "recovery_time": self.recovery_time,
         }
 
 
@@ -272,6 +275,7 @@ class HealthMonitor:
         Record a heartbeat from router.
         
         Creates health state if new, resets missed count and status to healthy.
+        Tracks recovery time for thundering herd prevention.
         
         Args:
             router_id: The router's ID
@@ -290,22 +294,37 @@ class HealthMonitor:
                 last_probe=0,
                 probe_latency_ms=0,
                 warnings=[],
+                recovery_time=None,  # New router, no recovery
+                previous_status=None,
             )
             logger.debug(f"New health state for router {router_id[:20]}...")
         else:
             state = self.health_states[router_id]
             old_status = state.status
+            state.previous_status = old_status
             state.last_heartbeat = now
             state.missed_heartbeats = 0
             state.status = HealthStatus.HEALTHY
             # Clear transient warnings on heartbeat
             state.warnings = [w for w in state.warnings if w not in ["probe_timeout", "probe_failed"]]
             
-            if old_status != HealthStatus.HEALTHY:
+            # Track recovery time for thundering herd prevention
+            # If router was DEGRADED or UNHEALTHY and is now HEALTHY
+            if old_status in (HealthStatus.DEGRADED, HealthStatus.UNHEALTHY):
+                state.recovery_time = now
+                logger.info(
+                    f"Router {router_id[:20]}... recovered: "
+                    f"{old_status.value} → healthy (recovery ramp started)"
+                )
+            elif old_status == HealthStatus.WARNING:
+                # Minor recovery, no ramp needed
                 logger.info(
                     f"Router {router_id[:20]}... recovered: "
                     f"{old_status.value} → healthy"
                 )
+            
+            # Clear recovery time if router has been healthy long enough
+            # (handled by _get_recovery_factor checking elapsed time)
         
         return self.health_states[router_id]
     
@@ -352,11 +371,20 @@ class SeedConfig:
     min_uptime_pct: float = 90.0  # Minimum uptime to be considered healthy
     max_stale_seconds: float = 600.0  # Max time since last heartbeat
     
-    # Selection weights
-    weight_health: float = 0.4
-    weight_capacity: float = 0.3
-    weight_region: float = 0.2
-    weight_random: float = 0.1
+    # Selection weights for load-aware balancing
+    weight_health: float = 0.25
+    weight_load: float = 0.35  # Primary load factor (connection ratio)
+    weight_queue: float = 0.15  # Queue depth penalty
+    weight_throughput: float = 0.10  # Message rate consideration
+    weight_region: float = 0.10
+    weight_random: float = 0.05
+    
+    # Thundering herd prevention
+    recovery_ramp_duration: float = 300.0  # 5 min ramp-up period for recovered routers
+    recovery_initial_weight: float = 0.2  # Start at 20% weight when coming back online
+    
+    # Legacy weight (for backward compatibility)
+    weight_capacity: float = 0.3  # Deprecated, use weight_load
     
     # Seed node identity
     seed_id: Optional[str] = None
@@ -377,9 +405,508 @@ class SeedConfig:
     probe_endpoints: bool = True
     probe_timeout_seconds: float = 5.0
     
+    # Seed peering / gossip settings
+    peer_seeds: List[str] = field(default_factory=list)  # URLs of peer seeds
+    gossip_enabled: bool = True
+    gossip_interval_seconds: float = 300.0  # 5 minutes
+    gossip_batch_size: int = 20  # Max routers per gossip exchange
+    gossip_timeout_seconds: float = 10.0  # Timeout for gossip requests
+    gossip_max_router_age_seconds: float = 1800.0  # Don't propagate routers older than 30 min
+    
     def __post_init__(self):
         if self.seed_id is None:
             self.seed_id = f"seed-{secrets.token_hex(8)}"
+
+
+# =============================================================================
+# REGIONAL ROUTING
+# =============================================================================
+
+
+# ISO 3166-1 alpha-2 country code to continent mapping
+# Continents: AF (Africa), AN (Antarctica), AS (Asia), EU (Europe),
+#             NA (North America), OC (Oceania), SA (South America)
+COUNTRY_TO_CONTINENT: Dict[str, str] = {
+    # North America
+    "US": "NA", "CA": "NA", "MX": "NA", "GT": "NA", "BZ": "NA", "HN": "NA",
+    "SV": "NA", "NI": "NA", "CR": "NA", "PA": "NA", "CU": "NA", "JM": "NA",
+    "HT": "NA", "DO": "NA", "PR": "NA", "BS": "NA", "BB": "NA", "TT": "NA",
+    
+    # South America
+    "BR": "SA", "AR": "SA", "CL": "SA", "CO": "SA", "PE": "SA", "VE": "SA",
+    "EC": "SA", "BO": "SA", "PY": "SA", "UY": "SA", "GY": "SA", "SR": "SA",
+    
+    # Europe
+    "GB": "EU", "DE": "EU", "FR": "EU", "IT": "EU", "ES": "EU", "PT": "EU",
+    "NL": "EU", "BE": "EU", "CH": "EU", "AT": "EU", "SE": "EU", "NO": "EU",
+    "DK": "EU", "FI": "EU", "IE": "EU", "PL": "EU", "CZ": "EU", "SK": "EU",
+    "HU": "EU", "RO": "EU", "BG": "EU", "GR": "EU", "HR": "EU", "SI": "EU",
+    "RS": "EU", "UA": "EU", "BY": "EU", "LT": "EU", "LV": "EU", "EE": "EU",
+    "LU": "EU", "MT": "EU", "CY": "EU", "IS": "EU", "AL": "EU", "MK": "EU",
+    "BA": "EU", "ME": "EU", "MD": "EU", "XK": "EU",
+    
+    # Asia
+    "CN": "AS", "JP": "AS", "KR": "AS", "IN": "AS", "ID": "AS", "TH": "AS",
+    "VN": "AS", "MY": "AS", "SG": "AS", "PH": "AS", "TW": "AS", "HK": "AS",
+    "BD": "AS", "PK": "AS", "LK": "AS", "NP": "AS", "MM": "AS", "KH": "AS",
+    "LA": "AS", "MN": "AS", "KZ": "AS", "UZ": "AS", "TM": "AS", "TJ": "AS",
+    "KG": "AS", "AZ": "AS", "AM": "AS", "GE": "AS",
+    
+    # Middle East (part of Asia)
+    "TR": "AS", "IR": "AS", "IQ": "AS", "SA": "AS", "AE": "AS", "IL": "AS",
+    "JO": "AS", "LB": "AS", "SY": "AS", "YE": "AS", "OM": "AS", "KW": "AS",
+    "QA": "AS", "BH": "AS", "PS": "AS", "AF": "AS",
+    
+    # Africa
+    "ZA": "AF", "EG": "AF", "NG": "AF", "KE": "AF", "ET": "AF", "GH": "AF",
+    "TZ": "AF", "UG": "AF", "MA": "AF", "DZ": "AF", "TN": "AF", "LY": "AF",
+    "SD": "AF", "AO": "AF", "MZ": "AF", "ZW": "AF", "ZM": "AF", "BW": "AF",
+    "NA": "AF", "CI": "AF", "CM": "AF", "SN": "AF", "ML": "AF", "NE": "AF",
+    "BF": "AF", "MG": "AF", "MW": "AF", "RW": "AF", "SO": "AF", "CD": "AF",
+    "CG": "AF", "GA": "AF", "MU": "AF", "SC": "AF", "CV": "AF",
+    
+    # Oceania
+    "AU": "OC", "NZ": "OC", "FJ": "OC", "PG": "OC", "NC": "OC", "VU": "OC",
+    "WS": "OC", "TO": "OC", "PF": "OC", "GU": "OC", "FM": "OC", "SB": "OC",
+    
+    # Russia spans Europe/Asia - categorize as Europe for routing
+    "RU": "EU",
+}
+
+
+def get_continent(country_code: Optional[str]) -> Optional[str]:
+    """
+    Get continent code from ISO 3166-1 alpha-2 country code.
+    
+    Args:
+        country_code: Two-letter country code (e.g., "US", "DE")
+        
+    Returns:
+        Two-letter continent code or None if not found
+    """
+    if not country_code:
+        return None
+    return COUNTRY_TO_CONTINENT.get(country_code.upper())
+
+
+def compute_region_score(
+    router_region: Optional[str],
+    preferred_region: Optional[str],
+) -> float:
+    """
+    Compute region match score for router selection.
+    
+    Scoring tiers:
+    - Same region (country): 1.0 (full match)
+    - Same continent: 0.5 (partial match)
+    - Different continent or unknown: 0.0 (no match)
+    
+    Args:
+        router_region: Router's region (country code)
+        preferred_region: Requested region preference (country code)
+        
+    Returns:
+        Score between 0.0 and 1.0
+    """
+    if not preferred_region or not router_region:
+        return 0.0
+    
+    # Normalize to uppercase
+    router_region = router_region.upper()
+    preferred_region = preferred_region.upper()
+    
+    # Same country = full match
+    if router_region == preferred_region:
+        return 1.0
+    
+    # Same continent = partial match
+    router_continent = get_continent(router_region)
+    preferred_continent = get_continent(preferred_region)
+    
+    if router_continent and preferred_continent and router_continent == preferred_continent:
+        return 0.5
+    
+    # Different continent or unknown
+    return 0.0
+
+
+# =============================================================================
+# SEED PEERING / GOSSIP
+# =============================================================================
+
+
+class SeedPeerManager:
+    """
+    Manages peering and gossip between seed nodes.
+    
+    Implements:
+    - Periodic gossip exchanges with peer seeds
+    - Router registry synchronization (subset-based, not full)
+    - Deduplication of routers by ID
+    - Filtering of stale/unhealthy routers before propagation
+    
+    Gossip protocol:
+    - Each seed maintains a list of peer seed URLs
+    - Periodically (configurable interval), seeds exchange router subsets
+    - Only healthy, fresh routers are shared
+    - Routers are deduplicated by router_id (newer wins)
+    """
+    
+    def __init__(self, seed: "SeedNode"):
+        self.seed = seed
+        self._running = False
+        self._gossip_task: Optional[asyncio.Task] = None
+        self._peer_states: Dict[str, Dict[str, Any]] = {}  # peer_url -> state
+        
+    @property
+    def peer_seeds(self) -> List[str]:
+        """Get list of peer seed URLs."""
+        return self.seed.config.peer_seeds
+    
+    @property
+    def gossip_interval(self) -> float:
+        """Get gossip interval in seconds."""
+        return self.seed.config.gossip_interval_seconds
+    
+    @property
+    def batch_size(self) -> int:
+        """Get max routers per gossip exchange."""
+        return self.seed.config.gossip_batch_size
+    
+    async def start(self) -> None:
+        """Start the gossip loop."""
+        if self._running:
+            return
+        
+        if not self.seed.config.gossip_enabled:
+            logger.info("Gossip disabled by configuration")
+            return
+        
+        if not self.peer_seeds:
+            logger.info("No peer seeds configured, gossip not started")
+            return
+        
+        self._running = True
+        self._gossip_task = asyncio.create_task(self._gossip_loop())
+        logger.info(
+            f"Seed peer manager started with {len(self.peer_seeds)} peers, "
+            f"gossip interval={self.gossip_interval}s"
+        )
+    
+    async def stop(self) -> None:
+        """Stop the gossip loop."""
+        self._running = False
+        if self._gossip_task:
+            self._gossip_task.cancel()
+            try:
+                await self._gossip_task
+            except asyncio.CancelledError:
+                pass
+            self._gossip_task = None
+        logger.info("Seed peer manager stopped")
+    
+    async def _gossip_loop(self) -> None:
+        """Periodically gossip with peer seeds."""
+        # Initial delay to let seed start up
+        await asyncio.sleep(5)
+        
+        while self._running:
+            try:
+                await self._gossip_round()
+            except Exception as e:
+                logger.error(f"Gossip round failed: {e}")
+            
+            await asyncio.sleep(self.gossip_interval)
+    
+    async def _gossip_round(self) -> None:
+        """Execute one round of gossip with all peers."""
+        if not self.peer_seeds:
+            return
+        
+        logger.debug(f"Starting gossip round with {len(self.peer_seeds)} peers")
+        
+        # Gather routers to share
+        routers_to_share = self._select_routers_for_gossip()
+        
+        if not routers_to_share:
+            logger.debug("No routers to share in gossip")
+        
+        # Exchange with each peer concurrently
+        tasks = [
+            self._exchange_with_peer(peer_url, routers_to_share)
+            for peer_url in self.peer_seeds
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        successful = sum(1 for r in results if r is True)
+        logger.info(
+            f"Gossip round complete: {successful}/{len(self.peer_seeds)} peers exchanged, "
+            f"shared {len(routers_to_share)} routers"
+        )
+    
+    def _select_routers_for_gossip(self) -> List[Dict[str, Any]]:
+        """
+        Select a subset of routers to share in gossip.
+        
+        Filters:
+        - Only healthy routers (based on health monitor)
+        - Only fresh routers (seen within max_router_age)
+        - Limited to batch_size
+        - Randomized selection for fairness
+        """
+        now = time.time()
+        max_age = self.seed.config.gossip_max_router_age_seconds
+        
+        candidates = []
+        for router_id, router in self.seed.router_registry.items():
+            # Check freshness
+            last_seen = router.health.get("last_seen", 0)
+            if now - last_seen > max_age:
+                continue
+            
+            # Check health via health monitor
+            if not self.seed.health_monitor.is_healthy_for_discovery(router_id):
+                continue
+            
+            # Check legacy health status
+            if not self.seed._is_healthy(router, now):
+                continue
+            
+            candidates.append(router)
+        
+        # Randomize and limit
+        if len(candidates) > self.batch_size:
+            candidates = random.sample(candidates, self.batch_size)
+        
+        return [r.to_dict() for r in candidates]
+    
+    async def _exchange_with_peer(
+        self,
+        peer_url: str,
+        routers_to_share: List[Dict[str, Any]],
+    ) -> bool:
+        """
+        Exchange router info with a single peer seed.
+        
+        Returns True if exchange was successful.
+        """
+        try:
+            # Normalize URL
+            if not peer_url.startswith("http"):
+                peer_url = f"http://{peer_url}"
+            
+            exchange_url = f"{peer_url.rstrip('/')}/gossip/exchange"
+            
+            payload = {
+                "seed_id": self.seed.seed_id,
+                "timestamp": time.time(),
+                "routers": routers_to_share,
+            }
+            
+            timeout = aiohttp.ClientTimeout(
+                total=self.seed.config.gossip_timeout_seconds
+            )
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(exchange_url, json=payload) as resp:
+                    if resp.status != 200:
+                        logger.warning(
+                            f"Gossip exchange with {peer_url} failed: "
+                            f"status {resp.status}"
+                        )
+                        self._update_peer_state(peer_url, success=False)
+                        return False
+                    
+                    data = await resp.json()
+                    
+                    # Process received routers
+                    received_routers = data.get("routers", [])
+                    merged_count = self._merge_routers(received_routers, peer_url)
+                    
+                    self._update_peer_state(peer_url, success=True)
+                    
+                    logger.debug(
+                        f"Gossip with {peer_url}: sent {len(routers_to_share)}, "
+                        f"received {len(received_routers)}, merged {merged_count}"
+                    )
+                    
+                    return True
+                    
+        except asyncio.TimeoutError:
+            logger.warning(f"Gossip exchange with {peer_url} timed out")
+            self._update_peer_state(peer_url, success=False, error="timeout")
+            return False
+        except Exception as e:
+            logger.warning(f"Gossip exchange with {peer_url} failed: {e}")
+            self._update_peer_state(peer_url, success=False, error=str(e))
+            return False
+    
+    def _merge_routers(
+        self,
+        received_routers: List[Dict[str, Any]],
+        source_peer: str,
+    ) -> int:
+        """
+        Merge received routers into local registry.
+        
+        Deduplication rules:
+        - If router_id doesn't exist, add it
+        - If router_id exists, keep the one with more recent last_seen
+        
+        Returns number of routers actually merged (new or updated).
+        """
+        now = time.time()
+        max_age = self.seed.config.gossip_max_router_age_seconds
+        merged = 0
+        
+        for router_data in received_routers:
+            try:
+                router_id = router_data.get("router_id")
+                if not router_id:
+                    continue
+                
+                # Check freshness of received router
+                last_seen = router_data.get("health", {}).get("last_seen", 0)
+                if now - last_seen > max_age:
+                    logger.debug(
+                        f"Skipping stale router {router_id[:20]}... from gossip "
+                        f"(age={now - last_seen:.0f}s)"
+                    )
+                    continue
+                
+                # Check if we should merge
+                existing = self.seed.router_registry.get(router_id)
+                
+                if existing is None:
+                    # New router - add it
+                    router = RouterRecord.from_dict(router_data)
+                    router.source_ip = f"gossip:{source_peer}"
+                    self.seed.router_registry[router_id] = router
+                    
+                    # Initialize health state
+                    self.seed.health_monitor.record_heartbeat(router_id)
+                    
+                    merged += 1
+                    logger.debug(
+                        f"Added router {router_id[:20]}... from gossip "
+                        f"(peer={source_peer})"
+                    )
+                else:
+                    # Existing router - compare freshness
+                    existing_last_seen = existing.health.get("last_seen", 0)
+                    
+                    if last_seen > existing_last_seen:
+                        # Received router is newer - update
+                        router = RouterRecord.from_dict(router_data)
+                        router.source_ip = existing.source_ip  # Preserve original source
+                        router.registered_at = existing.registered_at  # Preserve registration time
+                        self.seed.router_registry[router_id] = router
+                        
+                        merged += 1
+                        logger.debug(
+                            f"Updated router {router_id[:20]}... from gossip "
+                            f"(peer={source_peer}, delta={last_seen - existing_last_seen:.0f}s)"
+                        )
+                        
+            except Exception as e:
+                logger.warning(f"Failed to merge router from gossip: {e}")
+                continue
+        
+        return merged
+    
+    def _update_peer_state(
+        self,
+        peer_url: str,
+        success: bool,
+        error: Optional[str] = None,
+    ) -> None:
+        """Update state tracking for a peer."""
+        now = time.time()
+        
+        if peer_url not in self._peer_states:
+            self._peer_states[peer_url] = {
+                "first_seen": now,
+                "successful_exchanges": 0,
+                "failed_exchanges": 0,
+                "last_success": None,
+                "last_failure": None,
+                "last_error": None,
+            }
+        
+        state = self._peer_states[peer_url]
+        
+        if success:
+            state["successful_exchanges"] += 1
+            state["last_success"] = now
+        else:
+            state["failed_exchanges"] += 1
+            state["last_failure"] = now
+            state["last_error"] = error
+    
+    def get_peer_stats(self) -> Dict[str, Any]:
+        """Get statistics about peer connections."""
+        return {
+            "peer_count": len(self.peer_seeds),
+            "gossip_enabled": self.seed.config.gossip_enabled,
+            "gossip_interval_seconds": self.gossip_interval,
+            "peer_states": {
+                url: {
+                    "successful": state["successful_exchanges"],
+                    "failed": state["failed_exchanges"],
+                    "last_success": state["last_success"],
+                    "last_error": state["last_error"],
+                }
+                for url, state in self._peer_states.items()
+            },
+        }
+    
+    async def handle_gossip_exchange(self, request: web.Request) -> web.Response:
+        """
+        Handle incoming gossip exchange from peer seed.
+        
+        POST /gossip/exchange
+        {
+            "seed_id": "peer-seed-001",
+            "timestamp": 1706789012.345,
+            "routers": [...]
+        }
+        
+        Response:
+        {
+            "seed_id": "this-seed-id",
+            "timestamp": 1706789012.456,
+            "routers": [...]  // Our routers to share back
+        }
+        """
+        try:
+            data = await request.json()
+        except Exception as e:
+            return web.json_response(
+                {"status": "error", "reason": "invalid_json", "detail": str(e)},
+                status=400
+            )
+        
+        peer_seed_id = data.get("seed_id", "unknown")
+        received_routers = data.get("routers", [])
+        
+        # Merge received routers
+        merged_count = self._merge_routers(received_routers, peer_seed_id)
+        
+        # Select our routers to send back
+        routers_to_share = self._select_routers_for_gossip()
+        
+        logger.debug(
+            f"Gossip exchange from {peer_seed_id}: "
+            f"received {len(received_routers)}, merged {merged_count}, "
+            f"sending {len(routers_to_share)}"
+        )
+        
+        return web.json_response({
+            "seed_id": self.seed.seed_id,
+            "timestamp": time.time(),
+            "routers": routers_to_share,
+        })
 
 
 # =============================================================================
@@ -401,10 +928,12 @@ class RouterRecord:
     router_signature: str  # Signature of registration data
     proof_of_work: Optional[Dict[str, Any]] = None  # PoW proof
     source_ip: Optional[str] = None  # IP address that registered this router
+    region: Optional[str] = None  # ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
+    coordinates: Optional[List[float]] = None  # [latitude, longitude]
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "router_id": self.router_id,
             "endpoints": self.endpoints,
             "capacity": self.capacity,
@@ -414,10 +943,21 @@ class RouterRecord:
             "registered_at": self.registered_at,
             "router_signature": self.router_signature,
         }
+        if self.region:
+            result["region"] = self.region
+        if self.coordinates:
+            result["coordinates"] = self.coordinates
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RouterRecord":
         """Create from dictionary."""
+        coords = data.get("coordinates")
+        if coords and isinstance(coords, (list, tuple)) and len(coords) == 2:
+            coordinates = [float(coords[0]), float(coords[1])]
+        else:
+            coordinates = None
+            
         return cls(
             router_id=data["router_id"],
             endpoints=data.get("endpoints", []),
@@ -429,6 +969,8 @@ class RouterRecord:
             router_signature=data.get("router_signature", ""),
             proof_of_work=data.get("proof_of_work"),
             source_ip=data.get("source_ip"),
+            region=data.get("region"),
+            coordinates=coordinates,
         )
 
 
@@ -455,6 +997,9 @@ class SeedNode:
     # Health monitoring
     _health_monitor: Optional[HealthMonitor] = field(default=None, repr=False)
     
+    # Seed peering / gossip
+    _peer_manager: Optional[SeedPeerManager] = field(default=None, repr=False)
+    
     # Runtime state
     _app: Optional[web.Application] = field(default=None, repr=False)
     _runner: Optional[web.AppRunner] = field(default=None, repr=False)
@@ -477,6 +1022,13 @@ class SeedNode:
         if self._health_monitor is None:
             self._health_monitor = HealthMonitor(self)
         return self._health_monitor
+    
+    @property
+    def peer_manager(self) -> SeedPeerManager:
+        """Get the peer manager, creating if needed."""
+        if self._peer_manager is None:
+            self._peer_manager = SeedPeerManager(self)
+        return self._peer_manager
     
     # -------------------------------------------------------------------------
     # ROUTER SELECTION
@@ -513,37 +1065,141 @@ class SeedNode:
     
     def _score_router(self, router: RouterRecord, preferences: Dict[str, Any]) -> float:
         """
-        Score a router for selection.
+        Score a router for selection using load-aware balancing.
         
         Higher score = better candidate.
+        
+        Load metrics considered:
+        - Connection load: current_connections / max_connections
+        - Queue depth: penalize routers with deep queues
+        - Message throughput: consider current message rate
+        - Recovery state: ramp up slowly to avoid thundering herd
+        
+        Args:
+            router: The router to score
+            preferences: Selection preferences (region, features, etc.)
+            
+        Returns:
+            Score between 0.0 and ~1.0 (can exceed with bonuses)
         """
         score = 0.0
+        now = time.time()
         
         # Health component (0-1, weighted)
         uptime = router.health.get("uptime_pct", 0) / 100.0
         score += uptime * self.config.weight_health
         
-        # Capacity component (0-1, weighted) - prefer lower load
-        load = router.capacity.get("current_load_pct", 100) / 100.0
-        score += (1 - load) * self.config.weight_capacity
+        # Load component (0-1, weighted) - prefer lower connection load
+        # Use connection ratio if available, fall back to load_pct
+        current_conn = router.capacity.get("active_connections", 0)
+        max_conn = router.capacity.get("max_connections", 100)
+        if max_conn > 0 and current_conn > 0:
+            connection_load = current_conn / max_conn
+        else:
+            connection_load = router.capacity.get("current_load_pct", 0) / 100.0
         
-        # Region match bonus
-        preferred_region = preferences.get("region")
-        if preferred_region and preferred_region in router.regions:
-            score += self.config.weight_region
+        # Invert: low load = high score
+        load_score = 1.0 - min(connection_load, 1.0)
+        score += load_score * self.config.weight_load
+        
+        # Queue depth penalty (0-1, weighted)
+        # Deep queues indicate backpressure - penalize proportionally
+        queue_depth = router.capacity.get("queue_depth", 0)
+        # Normalize: 0 queue = 1.0, 100+ queue = 0.0
+        queue_penalty = max(0.0, 1.0 - (queue_depth / 100.0))
+        score += queue_penalty * self.config.weight_queue
+        
+        # Throughput consideration (0-1, weighted)
+        # Moderate throughput is good (router is active), very high may indicate stress
+        msg_per_sec = router.capacity.get("messages_per_sec", 0)
+        # Normalize: 0-50 msg/s is good, 50-100 starts to penalize
+        if msg_per_sec <= 50:
+            throughput_score = 1.0
+        elif msg_per_sec <= 100:
+            throughput_score = 1.0 - ((msg_per_sec - 50) / 100.0)
+        else:
+            throughput_score = 0.5  # Still usable but not preferred
+        score += throughput_score * self.config.weight_throughput
+        
+        # Recovery ramp-up (thundering herd prevention)
+        # If router recently recovered, scale down its attractiveness
+        recovery_factor = self._get_recovery_factor(router, now)
+        if recovery_factor < 1.0:
+            # Scale down the non-random portion of score
+            non_random_score = score
+            score = non_random_score * recovery_factor
+        
+        # Region match bonus with tiered geographic scoring
+        # Supports both 'preferred_region' (new) and 'region' (legacy) keys
+        preferred_region = preferences.get("preferred_region") or preferences.get("region")
+        if preferred_region:
+            # Use new region field (country code) for geographic routing
+            # Tiered: same country = 1.0, same continent = 0.5, different = 0.0
+            region_score = compute_region_score(router.region, preferred_region)
+            score += region_score * self.config.weight_region
+            
+            # Legacy: also check regions list for backward compatibility
+            if region_score == 0 and preferred_region in router.regions:
+                score += self.config.weight_region * 0.25  # Smaller bonus for legacy match
         
         # Feature match bonus (partial)
         required_features = set(preferences.get("features", []))
         if required_features:
             router_features = set(router.features)
             match_ratio = len(required_features & router_features) / len(required_features)
-            score += match_ratio * 0.1  # Small bonus for feature match
+            score += match_ratio * 0.05  # Small bonus for feature match
         
         # Deterministic random factor (based on router_id for consistency)
+        # This provides some load distribution even among equally-scored routers
         random_component = (hash(router.router_id) % 100) / 100.0
         score += random_component * self.config.weight_random
         
         return score
+    
+    def _get_recovery_factor(self, router: RouterRecord, now: float) -> float:
+        """
+        Calculate recovery factor for thundering herd prevention.
+        
+        When a router comes back online after being unhealthy, we don't want
+        all traffic to immediately flood it. This method returns a factor
+        between recovery_initial_weight and 1.0 that ramps up over time.
+        
+        Args:
+            router: The router to check
+            now: Current timestamp
+            
+        Returns:
+            Factor between 0.0 and 1.0 to multiply the router's score
+        """
+        router_id = router.router_id
+        health_state = self.health_monitor.get_health_state(router_id)
+        
+        if health_state is None:
+            return 1.0  # New router, no recovery needed
+        
+        # Check if router recently recovered from unhealthy state
+        # We track this via the health state's last status change
+        last_heartbeat = health_state.last_heartbeat
+        
+        # If router was marked as recovered recently (within ramp duration)
+        # we check by comparing last_heartbeat time to now
+        # A router that just sent its first heartbeat after being down
+        # will have a very recent last_heartbeat
+        
+        # Check the router's recovery time if tracked
+        recovery_time = getattr(health_state, 'recovery_time', None)
+        if recovery_time is None:
+            return 1.0  # No recovery tracking, full weight
+        
+        elapsed = now - recovery_time
+        if elapsed >= self.config.recovery_ramp_duration:
+            return 1.0  # Fully ramped up
+        
+        # Linear ramp from initial_weight to 1.0 over ramp_duration
+        progress = elapsed / self.config.recovery_ramp_duration
+        factor = self.config.recovery_initial_weight + (1.0 - self.config.recovery_initial_weight) * progress
+        
+        return factor
     
     def select_routers(
         self,
@@ -944,6 +1600,13 @@ class SeedNode:
         
         now = time.time()
         
+        # Parse coordinates if provided
+        coords_data = data.get("coordinates")
+        if coords_data and isinstance(coords_data, (list, tuple)) and len(coords_data) == 2:
+            coordinates = [float(coords_data[0]), float(coords_data[1])]
+        else:
+            coordinates = None
+        
         # Create or update record
         record = RouterRecord(
             router_id=router_id,
@@ -961,6 +1624,8 @@ class SeedNode:
             router_signature=signature,
             proof_of_work=proof_of_work,
             source_ip=source_ip,
+            region=data.get("region"),  # ISO 3166-1 alpha-2 country code
+            coordinates=coordinates,
         )
         
         self.router_registry[router_id] = record
@@ -970,9 +1635,10 @@ class SeedNode:
             self._ip_router_count[source_ip] += 1
         
         action = "updated" if is_update else "registered"
+        region_info = f", region={record.region}" if record.region else ""
         logger.info(
             f"Router {action}: {router_id[:20]}... "
-            f"endpoints={endpoints}, regions={record.regions}, source_ip={source_ip}"
+            f"endpoints={endpoints}, regions={record.regions}{region_info}, source_ip={source_ip}"
         )
         
         return web.json_response({
@@ -1055,9 +1721,20 @@ class SeedNode:
             record.capacity["active_connections"] = int(data["current_connections"])
         elif "active_connections" in data:
             record.capacity["active_connections"] = int(data["active_connections"])
+        
+        # Store max_connections for load ratio calculation
+        if "max_connections" in data:
+            record.capacity["max_connections"] = int(data["max_connections"])
             
         if "messages_relayed" in data:
             record.capacity["messages_relayed"] = int(data["messages_relayed"])
+        
+        # New load metrics for distributed load balancing
+        if "messages_per_sec" in data:
+            record.capacity["messages_per_sec"] = float(data["messages_per_sec"])
+        
+        if "queue_depth" in data:
+            record.capacity["queue_depth"] = int(data["queue_depth"])
         
         # Update endpoints if provided
         if "endpoints" in data:
@@ -1097,6 +1774,9 @@ class SeedNode:
         # Get health monitor stats
         health_stats = self.health_monitor.get_stats()
         
+        # Get peer manager stats
+        peer_stats = self.peer_manager.get_peer_stats() if self._peer_manager else {}
+        
         return web.json_response({
             "seed_id": self.seed_id,
             "status": "running" if self._running else "stopped",
@@ -1107,6 +1787,7 @@ class SeedNode:
             },
             "health_monitor": health_stats,
             "known_seeds": len(self.known_seeds),
+            "peering": peer_stats,
         })
     
     async def handle_health(self, request: web.Request) -> web.Response:
@@ -1125,6 +1806,9 @@ class SeedNode:
         app.router.add_post("/discover", self.handle_discover)
         app.router.add_post("/register", self.handle_register)
         app.router.add_post("/heartbeat", self.handle_heartbeat)
+        
+        # Gossip endpoints (seed-to-seed)
+        app.router.add_post("/gossip/exchange", self.peer_manager.handle_gossip_exchange)
         
         # Status endpoints
         app.router.add_get("/status", self.handle_status)
@@ -1152,6 +1836,9 @@ class SeedNode:
         # Start health monitoring
         await self.health_monitor.start()
         
+        # Start seed peering / gossip
+        await self.peer_manager.start()
+        
         self._running = True
         logger.info(
             f"Seed node {self.seed_id} listening on "
@@ -1162,6 +1849,10 @@ class SeedNode:
         """Stop the seed node server."""
         if not self._running:
             return
+        
+        # Stop seed peering / gossip
+        if self._peer_manager:
+            await self._peer_manager.stop()
         
         # Stop health monitoring
         if self._health_monitor:
@@ -1202,6 +1893,7 @@ def create_seed_node(
     host: str = "0.0.0.0",
     port: int = 8470,
     known_seeds: Optional[List[str]] = None,
+    peer_seeds: Optional[List[str]] = None,
     **kwargs,
 ) -> SeedNode:
     """Create a seed node with the given configuration."""
@@ -1209,6 +1901,7 @@ def create_seed_node(
         host=host,
         port=port,
         known_seeds=known_seeds or [],
+        peer_seeds=peer_seeds or [],
         **kwargs,
     )
     return SeedNode(config=config)

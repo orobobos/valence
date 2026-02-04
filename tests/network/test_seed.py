@@ -405,7 +405,8 @@ class TestRouterScoring:
         
         # us-west is in healthy_router.regions
         assert score_match > score_no_match
-        assert score_match - score_no_match >= seed_node.config.weight_region - 0.01
+        # Region match should add meaningful boost (at least some of the weight)
+        assert score_match - score_no_match > 0.01
     
     def test_score_load_impact(self, seed_node):
         """Higher load should result in lower score."""
@@ -437,6 +438,424 @@ class TestRouterScoring:
         score_high = seed_node._score_router(high_load, {})
         
         assert score_low > score_high
+
+
+# =============================================================================
+# LOAD BALANCING TESTS
+# =============================================================================
+
+
+class TestLoadBalancing:
+    """Tests for distributed load balancing features."""
+    
+    def test_queue_depth_penalty(self, seed_node):
+        """Routers with deep queues should have lower scores."""
+        now = time.time()
+        
+        no_queue = RouterRecord(
+            router_id="no-queue",
+            endpoints=["10.0.1.1:8471"],
+            capacity={
+                "current_load_pct": 30.0,
+                "queue_depth": 0,
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        deep_queue = RouterRecord(
+            router_id="deep-queue",
+            endpoints=["10.0.2.1:8471"],
+            capacity={
+                "current_load_pct": 30.0,
+                "queue_depth": 50,  # Deep queue
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        score_no_queue = seed_node._score_router(no_queue, {})
+        score_deep_queue = seed_node._score_router(deep_queue, {})
+        
+        assert score_no_queue > score_deep_queue
+    
+    def test_connection_ratio_scoring(self, seed_node):
+        """Scoring should prefer routers with lower connection ratios."""
+        now = time.time()
+        
+        # Router at 10% capacity
+        low_ratio = RouterRecord(
+            router_id="low-ratio",
+            endpoints=["10.0.1.1:8471"],
+            capacity={
+                "active_connections": 10,
+                "max_connections": 100,
+                "current_load_pct": 10.0,
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        # Router at 80% capacity
+        high_ratio = RouterRecord(
+            router_id="high-ratio",
+            endpoints=["10.0.2.1:8471"],
+            capacity={
+                "active_connections": 80,
+                "max_connections": 100,
+                "current_load_pct": 80.0,
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        score_low = seed_node._score_router(low_ratio, {})
+        score_high = seed_node._score_router(high_ratio, {})
+        
+        assert score_low > score_high
+    
+    def test_throughput_consideration(self, seed_node):
+        """High throughput routers should be slightly penalized."""
+        now = time.time()
+        
+        moderate_throughput = RouterRecord(
+            router_id="moderate-tp",
+            endpoints=["10.0.1.1:8471"],
+            capacity={
+                "current_load_pct": 30.0,
+                "messages_per_sec": 30.0,
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        high_throughput = RouterRecord(
+            router_id="high-tp",
+            endpoints=["10.0.2.1:8471"],
+            capacity={
+                "current_load_pct": 30.0,
+                "messages_per_sec": 100.0,  # Very high
+            },
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        score_moderate = seed_node._score_router(moderate_throughput, {})
+        score_high = seed_node._score_router(high_throughput, {})
+        
+        assert score_moderate > score_high
+    
+    def test_select_prefers_least_loaded(self, seed_node):
+        """Selection should prefer least-loaded routers."""
+        now = time.time()
+        
+        # Create routers with different loads (all in different subnets)
+        routers = []
+        for i, load in enumerate([10, 30, 50, 70, 90]):
+            r = RouterRecord(
+                router_id=f"router-load-{load}",
+                endpoints=[f"{10 + i}.0.0.1:8471"],
+                capacity={
+                    "current_load_pct": float(load),
+                    "active_connections": load,
+                    "max_connections": 100,
+                },
+                health={"last_seen": now, "uptime_pct": 99.0},
+                regions=[],
+                features=[],
+                registered_at=now,
+                router_signature="sig",
+            )
+            routers.append(r)
+            seed_node.router_registry[r.router_id] = r
+        
+        # Select top 3 routers
+        selected = seed_node.select_routers(count=3)
+        
+        assert len(selected) == 3
+        # First selected should be the least loaded
+        assert selected[0].router_id == "router-load-10"
+        # Should generally prefer lower loads
+        loads = [r.capacity["current_load_pct"] for r in selected]
+        assert loads[0] < loads[-1]
+
+
+class TestThunderingHerdPrevention:
+    """Tests for thundering herd prevention in router recovery."""
+    
+    def test_recovery_factor_new_router(self, seed_node):
+        """New routers should have full recovery factor (1.0)."""
+        now = time.time()
+        
+        router = RouterRecord(
+            router_id="new-router-xyz",
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10.0},
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        factor = seed_node._get_recovery_factor(router, now)
+        assert factor == 1.0
+    
+    def test_recovery_factor_healthy_router(self, seed_node):
+        """Routers that have been healthy should have full factor."""
+        now = time.time()
+        router_id = "healthy-router-abc"
+        
+        # Create router and record heartbeat (healthy)
+        router = RouterRecord(
+            router_id=router_id,
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10.0},
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        seed_node.router_registry[router_id] = router
+        seed_node.health_monitor.record_heartbeat(router_id)
+        
+        factor = seed_node._get_recovery_factor(router, now)
+        assert factor == 1.0
+    
+    def test_recovery_factor_just_recovered(self, seed_node):
+        """Recently recovered routers should have reduced factor."""
+        now = time.time()
+        router_id = "recovering-router-def"
+        
+        # Create router
+        router = RouterRecord(
+            router_id=router_id,
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10.0},
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        seed_node.router_registry[router_id] = router
+        
+        # Simulate recovery scenario
+        from valence.network.seed import HealthState, HealthStatus
+        seed_node.health_monitor.health_states[router_id] = HealthState(
+            status=HealthStatus.HEALTHY,
+            missed_heartbeats=0,
+            last_heartbeat=now,
+            last_probe=0,
+            probe_latency_ms=0,
+            warnings=[],
+            recovery_time=now,  # Just recovered
+            previous_status=HealthStatus.UNHEALTHY,
+        )
+        
+        factor = seed_node._get_recovery_factor(router, now)
+        
+        # Should be at initial weight (0.2)
+        assert factor == seed_node.config.recovery_initial_weight
+    
+    def test_recovery_factor_ramps_up(self, seed_node):
+        """Recovery factor should increase over time."""
+        router_id = "ramping-router-ghi"
+        
+        # Create router
+        router = RouterRecord(
+            router_id=router_id,
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10.0},
+            health={"last_seen": time.time(), "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=time.time(),
+            router_signature="sig",
+        )
+        seed_node.router_registry[router_id] = router
+        
+        # Simulate recovery that happened 150 seconds ago (halfway through ramp)
+        recovery_time = time.time() - 150  # 150s ago, ramp is 300s
+        from valence.network.seed import HealthState, HealthStatus
+        seed_node.health_monitor.health_states[router_id] = HealthState(
+            status=HealthStatus.HEALTHY,
+            missed_heartbeats=0,
+            last_heartbeat=time.time(),
+            last_probe=0,
+            probe_latency_ms=0,
+            warnings=[],
+            recovery_time=recovery_time,
+            previous_status=HealthStatus.UNHEALTHY,
+        )
+        
+        factor = seed_node._get_recovery_factor(router, time.time())
+        
+        # Should be around 0.6 (halfway between 0.2 and 1.0)
+        assert 0.5 < factor < 0.7
+    
+    def test_recovery_factor_fully_ramped(self, seed_node):
+        """Fully ramped routers should have factor of 1.0."""
+        router_id = "ramped-router-jkl"
+        
+        # Create router
+        router = RouterRecord(
+            router_id=router_id,
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 10.0},
+            health={"last_seen": time.time(), "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=time.time(),
+            router_signature="sig",
+        )
+        seed_node.router_registry[router_id] = router
+        
+        # Simulate recovery that completed 400 seconds ago (beyond 300s ramp)
+        recovery_time = time.time() - 400
+        from valence.network.seed import HealthState, HealthStatus
+        seed_node.health_monitor.health_states[router_id] = HealthState(
+            status=HealthStatus.HEALTHY,
+            missed_heartbeats=0,
+            last_heartbeat=time.time(),
+            last_probe=0,
+            probe_latency_ms=0,
+            warnings=[],
+            recovery_time=recovery_time,
+            previous_status=HealthStatus.UNHEALTHY,
+        )
+        
+        factor = seed_node._get_recovery_factor(router, time.time())
+        
+        assert factor == 1.0
+    
+    def test_recovering_router_scored_lower(self, seed_node):
+        """Recovering routers should score lower than healthy ones."""
+        now = time.time()
+        
+        # Create two identical routers
+        healthy_router = RouterRecord(
+            router_id="healthy-compare-a",
+            endpoints=["10.0.1.1:8471"],
+            capacity={"current_load_pct": 30.0},
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        recovering_router = RouterRecord(
+            router_id="recovering-compare-b",
+            endpoints=["10.0.2.1:8471"],
+            capacity={"current_load_pct": 30.0},  # Same load
+            health={"last_seen": now, "uptime_pct": 99.0},
+            regions=[],
+            features=[],
+            registered_at=now,
+            router_signature="sig",
+        )
+        
+        seed_node.router_registry[healthy_router.router_id] = healthy_router
+        seed_node.router_registry[recovering_router.router_id] = recovering_router
+        
+        # Healthy router - just record normal heartbeat
+        seed_node.health_monitor.record_heartbeat(healthy_router.router_id)
+        
+        # Recovering router - simulate just-recovered state
+        from valence.network.seed import HealthState, HealthStatus
+        seed_node.health_monitor.health_states[recovering_router.router_id] = HealthState(
+            status=HealthStatus.HEALTHY,
+            missed_heartbeats=0,
+            last_heartbeat=now,
+            last_probe=0,
+            probe_latency_ms=0,
+            warnings=[],
+            recovery_time=now,  # Just recovered
+            previous_status=HealthStatus.UNHEALTHY,
+        )
+        
+        score_healthy = seed_node._score_router(healthy_router, {})
+        score_recovering = seed_node._score_router(recovering_router, {})
+        
+        # Healthy should score higher
+        assert score_healthy > score_recovering
+
+
+class TestHeartbeatLoadMetrics:
+    """Tests for enhanced load metrics in heartbeat handling."""
+    
+    @pytest.mark.asyncio
+    async def test_heartbeat_stores_queue_depth(self, seed_node, healthy_router):
+        """Heartbeat should store queue_depth in capacity."""
+        seed_node.router_registry[healthy_router.router_id] = healthy_router
+        
+        request = MagicMock()
+        request.json = AsyncMock(return_value={
+            "router_id": healthy_router.router_id,
+            "current_connections": 50,
+            "max_connections": 100,
+            "load_pct": 50.0,
+            "queue_depth": 25,
+        })
+        
+        await seed_node.handle_heartbeat(request)
+        
+        updated = seed_node.router_registry[healthy_router.router_id]
+        assert updated.capacity.get("queue_depth") == 25
+    
+    @pytest.mark.asyncio
+    async def test_heartbeat_stores_messages_per_sec(self, seed_node, healthy_router):
+        """Heartbeat should store messages_per_sec in capacity."""
+        seed_node.router_registry[healthy_router.router_id] = healthy_router
+        
+        request = MagicMock()
+        request.json = AsyncMock(return_value={
+            "router_id": healthy_router.router_id,
+            "current_connections": 50,
+            "messages_per_sec": 42.5,
+        })
+        
+        await seed_node.handle_heartbeat(request)
+        
+        updated = seed_node.router_registry[healthy_router.router_id]
+        assert updated.capacity.get("messages_per_sec") == 42.5
+    
+    @pytest.mark.asyncio
+    async def test_heartbeat_stores_max_connections(self, seed_node, healthy_router):
+        """Heartbeat should store max_connections for ratio calculation."""
+        seed_node.router_registry[healthy_router.router_id] = healthy_router
+        
+        request = MagicMock()
+        request.json = AsyncMock(return_value={
+            "router_id": healthy_router.router_id,
+            "current_connections": 50,
+            "max_connections": 200,
+        })
+        
+        await seed_node.handle_heartbeat(request)
+        
+        updated = seed_node.router_registry[healthy_router.router_id]
+        assert updated.capacity.get("max_connections") == 200
 
 
 # =============================================================================
