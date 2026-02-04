@@ -377,7 +377,7 @@ class TestDiscoverCommand:
             
             assert result == 0
             captured = capsys.readouterr()
-            output = json.loads(captured.out.split('\n')[-2])  # Last non-empty line
+            output = json.loads(captured.out)  # Full output is JSON when --json flag
             assert output["id"] == "did:vkb:web:valence.example.com"
 
 
@@ -394,7 +394,7 @@ class TestListCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_node_list") as mock_list:
+        with patch("valence.federation.tools.federation_node_list") as mock_list:
             mock_list.return_value = mock_node_list
             
             result = await cmd_list(args)
@@ -413,7 +413,7 @@ class TestListCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_node_list") as mock_list:
+        with patch("valence.federation.tools.federation_node_list") as mock_list:
             mock_list.return_value = {"success": True, "nodes": [], "count": 0}
             
             result = await cmd_list(args)
@@ -432,7 +432,7 @@ class TestListCommand:
             json=True,
         )
         
-        with patch("valence.cli.federation.federation_node_list") as mock_list:
+        with patch("valence.federation.tools.federation_node_list") as mock_list:
             mock_list.return_value = mock_node_list
             
             result = await cmd_list(args)
@@ -459,8 +459,8 @@ class TestTrustCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_trust_get") as mock_get, \
-             patch("valence.cli.federation.federation_trust_set_preference") as mock_set:
+        with patch("valence.federation.tools.federation_trust_get") as mock_get, \
+             patch("valence.federation.tools.federation_trust_set_preference") as mock_set:
             
             mock_get.return_value = {"success": True, "effective_trust": 0.5}
             mock_set.return_value = {"success": True, "effective_trust": 0.75}
@@ -499,7 +499,7 @@ class TestTrustCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_trust_get") as mock_get:
+        with patch("valence.federation.tools.federation_trust_get") as mock_get:
             mock_get.return_value = {"success": False, "error": "Node not found"}
             
             result = await cmd_trust(args)
@@ -521,7 +521,7 @@ class TestSyncCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_sync_trigger") as mock_trigger:
+        with patch("valence.federation.tools.federation_sync_trigger") as mock_trigger:
             mock_trigger.return_value = {
                 "success": True,
                 "queued_nodes": 3,
@@ -544,7 +544,7 @@ class TestSyncCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_sync_trigger") as mock_trigger:
+        with patch("valence.federation.tools.federation_sync_trigger") as mock_trigger:
             mock_trigger.return_value = {"success": True}
             
             result = await cmd_sync(args)
@@ -561,7 +561,7 @@ class TestSyncCommand:
             json=False,
         )
         
-        with patch("valence.cli.federation.federation_sync_trigger") as mock_trigger:
+        with patch("valence.federation.tools.federation_sync_trigger") as mock_trigger:
             mock_trigger.return_value = {"success": False, "error": "No active nodes"}
             
             result = await cmd_sync(args)
@@ -583,19 +583,26 @@ class TestFederationRequest:
     async def test_federation_request_success(self):
         """Test successful HTTP request."""
         with patch("aiohttp.ClientSession") as mock_session_class:
-            mock_response = AsyncMock()
+            # Response mock - needs async json() method
+            mock_response = MagicMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value={"status": "ok"})
             
-            mock_context = AsyncMock()
-            mock_context.__aenter__.return_value = mock_response
+            # Request context manager (async with session.request(...))
+            mock_request_ctx = MagicMock()
+            mock_request_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_request_ctx.__aexit__ = AsyncMock(return_value=None)
             
-            mock_session = AsyncMock()
-            mock_session.request.return_value = mock_context
-            mock_session.__aenter__.return_value = mock_session
-            mock_session.__aexit__.return_value = None
+            # Session mock - request() returns context manager directly (not a coroutine)
+            mock_session = MagicMock()
+            mock_session.request = MagicMock(return_value=mock_request_ctx)
             
-            mock_session_class.return_value = mock_session
+            # Session class context manager (async with ClientSession(...))
+            mock_session_ctx = MagicMock()
+            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+            
+            mock_session_class.return_value = mock_session_ctx
             
             result = await federation_request("GET", "https://example.com/test")
             
@@ -605,19 +612,26 @@ class TestFederationRequest:
     async def test_federation_request_error(self):
         """Test HTTP request error handling."""
         with patch("aiohttp.ClientSession") as mock_session_class:
-            mock_response = AsyncMock()
+            # Response mock for error case
+            mock_response = MagicMock()
             mock_response.status = 500
             mock_response.text = AsyncMock(return_value="Internal Server Error")
             
-            mock_context = AsyncMock()
-            mock_context.__aenter__.return_value = mock_response
+            # Request context manager
+            mock_request_ctx = MagicMock()
+            mock_request_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_request_ctx.__aexit__ = AsyncMock(return_value=None)
             
-            mock_session = AsyncMock()
-            mock_session.request.return_value = mock_context
-            mock_session.__aenter__.return_value = mock_session
-            mock_session.__aexit__.return_value = None
+            # Session mock
+            mock_session = MagicMock()
+            mock_session.request = MagicMock(return_value=mock_request_ctx)
             
-            mock_session_class.return_value = mock_session
+            # Session class context manager
+            mock_session_ctx = MagicMock()
+            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+            
+            mock_session_class.return_value = mock_session_ctx
             
             result = await federation_request("GET", "https://example.com/test")
             

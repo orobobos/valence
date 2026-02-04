@@ -203,7 +203,8 @@ async def cmd_discover(args: argparse.Namespace) -> int:
     
     # Fetch node metadata
     metadata_url = f"{endpoint}/.well-known/vfp-node-metadata"
-    print(f"Discovering node at {metadata_url}...")
+    if not args.json:
+        print(f"Discovering node at {metadata_url}...")
     
     result = await federation_request("GET", metadata_url)
     
@@ -213,7 +214,12 @@ async def cmd_discover(args: argparse.Namespace) -> int:
             print(f"   {result['message']}", file=sys.stderr)
         return 1
     
-    # Display discovered node info
+    # JSON output mode - just print and return
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    
+    # Display discovered node info (human-readable)
     did = result.get("id", "unknown")
     print(f"\n✅ Discovered node: {did}")
     
@@ -261,9 +267,6 @@ async def cmd_discover(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"❌ Registration error: {e}", file=sys.stderr)
             return 1
-    
-    if args.json:
-        print(json.dumps(result, indent=2))
     
     return 0
 
