@@ -6,14 +6,18 @@ This module implements:
 - Trust phase transitions (observer → contributor → participant)
 - Trust decay over time
 - Effective trust calculation with user overrides
+
+Refactored in Issue #31 to delegate to specialized components:
+- TrustRegistry: Basic CRUD operations
+- ThreatDetector: Signal analysis and threat assessment
+- TrustPolicy: Phase transitions and decay
 """
 
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -30,12 +34,21 @@ from .models import (
     TrustAttestation,
     TRUST_WEIGHTS,
 )
+from .trust_registry import TrustRegistry
+from .threat_detector import ThreatDetector, THREAT_THRESHOLDS
+from .trust_policy import (
+    TrustPolicy,
+    DECAY_HALF_LIFE_DAYS,
+    DECAY_MIN_THRESHOLD,
+    PHASE_TRANSITION,
+    PREFERENCE_MULTIPLIERS,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# CONSTANTS
+# CONSTANTS (re-exported for backward compatibility)
 # =============================================================================
 
 
@@ -47,53 +60,6 @@ SIGNAL_WEIGHTS = {
     "sync_success": 0.005,      # Per successful sync
     "sync_failure": -0.01,      # Per failed sync
     "aggregation_participation": 0.01,  # Per aggregation contribution
-}
-
-# Trust decay parameters
-DECAY_HALF_LIFE_DAYS = 30  # Trust decays by half over this period without interaction
-DECAY_MIN_THRESHOLD = 0.1  # Minimum trust after decay
-
-# Phase transition thresholds
-PHASE_TRANSITION = {
-    TrustPhase.OBSERVER: {
-        "min_days": 7,
-        "min_trust": 0.0,  # Observer is the starting phase
-        "min_interactions": 0,
-    },
-    TrustPhase.CONTRIBUTOR: {
-        "min_days": 7,
-        "min_trust": 0.15,
-        "min_interactions": 5,
-    },
-    TrustPhase.PARTICIPANT: {
-        "min_days": 30,
-        "min_trust": 0.4,
-        "min_interactions": 20,
-    },
-    TrustPhase.ANCHOR: {
-        "min_days": 90,
-        "min_trust": 0.8,
-        "min_interactions": 100,
-        "min_endorsements": 3,
-    },
-}
-
-# Threat level thresholds
-THREAT_THRESHOLDS = {
-    ThreatLevel.NONE: 0.0,
-    ThreatLevel.LOW: 0.2,
-    ThreatLevel.MEDIUM: 0.4,
-    ThreatLevel.HIGH: 0.6,
-    ThreatLevel.CRITICAL: 0.8,
-}
-
-# User preference multipliers
-PREFERENCE_MULTIPLIERS = {
-    TrustPreference.BLOCKED: 0.0,
-    TrustPreference.REDUCED: 0.5,
-    TrustPreference.AUTOMATIC: 1.0,
-    TrustPreference.ELEVATED: 1.2,
-    TrustPreference.ANCHOR: 1.5,
 }
 
 
@@ -133,6 +99,11 @@ class TrustManager:
     - Managing trust phase transitions
     - Applying trust decay over time
     - Handling threat assessment
+    
+    Internally delegates to:
+    - TrustRegistry: CRUD operations
+    - ThreatDetector: Threat analysis
+    - TrustPolicy: Phase transitions and decay
     """
 
     def __init__(
@@ -148,50 +119,27 @@ class TrustManager:
         """
         self.decay_half_life_days = decay_half_life_days
         self.decay_min_threshold = decay_min_threshold
+        
+        # Initialize delegate components
+        self._registry = TrustRegistry()
+        self._threat_detector = ThreatDetector(self._registry)
+        self._policy = TrustPolicy(
+            self._registry,
+            decay_half_life_days=decay_half_life_days,
+            decay_min_threshold=decay_min_threshold,
+        )
 
     # -------------------------------------------------------------------------
-    # TRUST RETRIEVAL
+    # TRUST RETRIEVAL (delegated to registry)
     # -------------------------------------------------------------------------
 
     def get_node_trust(self, node_id: UUID) -> NodeTrust | None:
-        """Get trust record for a node.
-
-        Args:
-            node_id: The node's UUID
-
-        Returns:
-            NodeTrust if found, None otherwise
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("SELECT * FROM node_trust WHERE node_id = %s", (node_id,))
-                row = cur.fetchone()
-                if row:
-                    return NodeTrust.from_row(row)
-                return None
-        except Exception as e:
-            logger.warning(f"Error getting trust for node {node_id}: {e}")
-            return None
+        """Get trust record for a node."""
+        return self._registry.get_node_trust(node_id)
 
     def get_user_trust_preference(self, node_id: UUID) -> UserNodeTrust | None:
-        """Get user's trust preference for a node.
-
-        Args:
-            node_id: The node's UUID
-
-        Returns:
-            UserNodeTrust if found, None otherwise
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("SELECT * FROM user_node_trust WHERE node_id = %s", (node_id,))
-                row = cur.fetchone()
-                if row:
-                    return UserNodeTrust.from_row(row)
-                return None
-        except Exception as e:
-            logger.warning(f"Error getting user trust preference for node {node_id}: {e}")
-            return None
+        """Get user's trust preference for a node."""
+        return self._registry.get_user_trust_preference(node_id)
 
     def get_effective_trust(
         self,
@@ -199,44 +147,8 @@ class TrustManager:
         domain: str | None = None,
         apply_decay: bool = True,
     ) -> float:
-        """Get effective trust score for a node.
-
-        Combines computed trust with user overrides and decay.
-
-        Args:
-            node_id: The node's UUID
-            domain: Optional domain for domain-specific trust
-            apply_decay: Whether to apply time-based decay
-
-        Returns:
-            Effective trust score (0.0 to 1.0)
-        """
-        node_trust = self.get_node_trust(node_id)
-        if not node_trust:
-            return 0.1  # Default for unknown nodes
-
-        # Get base trust (domain-specific if applicable)
-        base_trust = node_trust.get_domain_trust(domain) if domain else node_trust.overall
-
-        # Apply decay based on last interaction
-        if apply_decay and node_trust.last_interaction_at:
-            base_trust = self._apply_decay(base_trust, node_trust.last_interaction_at)
-
-        # Get user preference
-        user_pref = self.get_user_trust_preference(node_id)
-        if user_pref:
-            # Get preference (possibly domain-specific)
-            pref = user_pref.get_effective_preference(domain)
-
-            # Check for manual trust score override
-            if user_pref.manual_trust_score is not None:
-                return user_pref.manual_trust_score
-
-            # Apply preference multiplier
-            multiplier = PREFERENCE_MULTIPLIERS.get(pref, 1.0)
-            base_trust *= multiplier
-
-        return max(0.0, min(1.0, base_trust))
+        """Get effective trust score for a node."""
+        return self._policy.get_effective_trust(node_id, domain, apply_decay)
 
     # -------------------------------------------------------------------------
     # TRUST SIGNALS
@@ -251,7 +163,7 @@ class TrustManager:
         Returns:
             Updated NodeTrust if successful, None on error
         """
-        node_trust = self.get_node_trust(signal.node_id)
+        node_trust = self._registry.get_node_trust(signal.node_id)
         if not node_trust:
             logger.warning(f"No trust record for node {signal.node_id}")
             return None
@@ -309,7 +221,7 @@ class TrustManager:
         node_trust.recalculate_overall()
 
         # Persist changes
-        return self._save_node_trust(node_trust)
+        return self._registry.save_node_trust(node_trust)
 
     def process_corroboration(
         self,
@@ -317,16 +229,7 @@ class TrustManager:
         belief_id: UUID | None = None,
         domain: str | None = None,
     ) -> NodeTrust | None:
-        """Process a corroboration signal.
-
-        Args:
-            node_id: The node that provided the corroborated belief
-            belief_id: Optional related belief ID
-            domain: Optional domain for domain-specific trust
-
-        Returns:
-            Updated NodeTrust if successful
-        """
+        """Process a corroboration signal."""
         signal = TrustSignal(
             node_id=node_id,
             signal_type="corroboration",
@@ -342,17 +245,7 @@ class TrustManager:
         domain: str | None = None,
         severity: float = 1.0,
     ) -> NodeTrust | None:
-        """Process a dispute signal.
-
-        Args:
-            node_id: The node that provided the disputed belief
-            belief_id: Optional related belief ID
-            domain: Optional domain for domain-specific trust
-            severity: Severity multiplier (1.0 = normal)
-
-        Returns:
-            Updated NodeTrust if successful
-        """
+        """Process a dispute signal."""
         signal = TrustSignal(
             node_id=node_id,
             signal_type="dispute",
@@ -368,16 +261,7 @@ class TrustManager:
         endorser_node_id: UUID,
         attestation: TrustAttestation | None = None,
     ) -> NodeTrust | None:
-        """Process an endorsement from another node.
-
-        Args:
-            subject_node_id: The node being endorsed
-            endorser_node_id: The node giving the endorsement
-            attestation: Optional attestation with specific dimensions
-
-        Returns:
-            Updated NodeTrust if successful
-        """
+        """Process an endorsement from another node."""
         # Get endorser's trust to weight the endorsement
         endorser_trust = self.get_effective_trust(endorser_node_id)
         weight = endorser_trust  # Weight endorsement by endorser's trust
@@ -408,144 +292,29 @@ class TrustManager:
                     node_trust.domain_expertise[domain] = min(1.0, current + boost)
 
             node_trust.recalculate_overall()
-            node_trust = self._save_node_trust(node_trust)
+            node_trust = self._registry.save_node_trust(node_trust)
 
         return node_trust
 
     # -------------------------------------------------------------------------
-    # TRUST DECAY
+    # TRUST DECAY (delegated to policy)
     # -------------------------------------------------------------------------
 
-    def _apply_decay(
-        self,
-        trust: float,
-        last_interaction: datetime,
-    ) -> float:
-        """Apply time-based decay to trust.
-
-        Uses exponential decay with configurable half-life.
-
-        Args:
-            trust: Current trust value
-            last_interaction: Timestamp of last interaction
-
-        Returns:
-            Decayed trust value
-        """
-        days_since_interaction = (datetime.now() - last_interaction).days
-        if days_since_interaction <= 0:
-            return trust
-
-        # Exponential decay: trust * 0.5^(days / half_life)
-        decay_factor = 0.5 ** (days_since_interaction / self.decay_half_life_days)
-        decayed = trust * decay_factor
-
-        # Don't decay below minimum threshold
-        return max(self.decay_min_threshold, decayed)
+    def _apply_decay(self, trust: float, last_interaction: datetime) -> float:
+        """Apply time-based decay to trust."""
+        return self._policy._apply_decay(trust, last_interaction)
 
     def apply_decay_to_all_nodes(self) -> int:
-        """Apply trust decay to all nodes that haven't interacted recently.
-
-        Returns:
-            Number of nodes updated
-        """
-        count = 0
-        try:
-            with get_cursor() as cur:
-                # Find nodes that haven't interacted recently
-                threshold = datetime.now() - timedelta(days=7)
-                cur.execute("""
-                    SELECT nt.* FROM node_trust nt
-                    WHERE nt.last_interaction_at < %s
-                    OR nt.last_interaction_at IS NULL
-                """, (threshold,))
-                rows = cur.fetchall()
-
-                for row in rows:
-                    node_trust = NodeTrust.from_row(row)
-                    if node_trust.last_interaction_at:
-                        old_trust = node_trust.overall
-                        decayed = self._apply_decay(old_trust, node_trust.last_interaction_at)
-                        if decayed != old_trust:
-                            node_trust.overall = decayed
-                            self._save_node_trust(node_trust)
-                            count += 1
-
-        except Exception as e:
-            logger.exception(f"Error applying trust decay: {e}")
-
-        return count
+        """Apply trust decay to all nodes that haven't interacted recently."""
+        return self._policy.apply_decay_to_all_nodes()
 
     # -------------------------------------------------------------------------
-    # PHASE TRANSITIONS
+    # PHASE TRANSITIONS (delegated to policy)
     # -------------------------------------------------------------------------
 
-    def check_phase_transition(
-        self,
-        node_id: UUID,
-    ) -> TrustPhase | None:
-        """Check if a node qualifies for a phase transition.
-
-        Args:
-            node_id: The node's UUID
-
-        Returns:
-            New phase if transition is warranted, None otherwise
-        """
-        # Get node and trust
-        node = self._get_node(node_id)
-        if not node:
-            return None
-
-        node_trust = self.get_node_trust(node_id)
-        if not node_trust:
-            return None
-
-        current_phase = node.trust_phase
-        days_in_phase = (datetime.now() - node.phase_started_at).days
-
-        # Determine total interactions
-        total_interactions = (
-            node_trust.beliefs_received +
-            node_trust.sync_requests_served +
-            node_trust.aggregation_participations
-        )
-
-        # Check for demotion first (trust fell too low)
-        if current_phase != TrustPhase.OBSERVER:
-            prev_phases = [TrustPhase.OBSERVER, TrustPhase.CONTRIBUTOR, TrustPhase.PARTICIPANT]
-            current_idx = prev_phases.index(current_phase) if current_phase in prev_phases else len(prev_phases)
-
-            for i in range(current_idx - 1, -1, -1):
-                phase = prev_phases[i]
-                req = PHASE_TRANSITION[prev_phases[i + 1] if i + 1 < len(prev_phases) else TrustPhase.ANCHOR]
-                if node_trust.overall < req["min_trust"] * 0.8:  # 20% below threshold
-                    return phase
-
-        # Check for promotion
-        next_phase_map = {
-            TrustPhase.OBSERVER: TrustPhase.CONTRIBUTOR,
-            TrustPhase.CONTRIBUTOR: TrustPhase.PARTICIPANT,
-            TrustPhase.PARTICIPANT: TrustPhase.ANCHOR,
-        }
-
-        next_phase = next_phase_map.get(current_phase)
-        if not next_phase:
-            return None  # Already at ANCHOR
-
-        req = PHASE_TRANSITION[next_phase]
-
-        # Check requirements
-        if days_in_phase < req["min_days"]:
-            return None
-        if node_trust.overall < req["min_trust"]:
-            return None
-        if total_interactions < req["min_interactions"]:
-            return None
-        if "min_endorsements" in req and node_trust.endorsements_received < req["min_endorsements"]:
-            return None
-
-        return next_phase
+    def check_phase_transition(self, node_id: UUID) -> TrustPhase | None:
+        """Check if a node qualifies for a phase transition."""
+        return self._policy.check_phase_transition(node_id)
 
     def transition_phase(
         self,
@@ -553,150 +322,20 @@ class TrustManager:
         new_phase: TrustPhase,
         reason: str | None = None,
     ) -> bool:
-        """Transition a node to a new trust phase.
-
-        Args:
-            node_id: The node's UUID
-            new_phase: The new trust phase
-            reason: Optional reason for transition
-
-        Returns:
-            True if successful
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("""
-                    UPDATE federation_nodes
-                    SET trust_phase = %s,
-                        phase_started_at = NOW(),
-                        metadata = jsonb_set(
-                            COALESCE(metadata, '{}'),
-                            '{phase_transition_reason}',
-                            %s::jsonb
-                        )
-                    WHERE id = %s
-                """, (new_phase.value, f'"{reason}"' if reason else 'null', node_id))
-
-                logger.info(f"Node {node_id} transitioned to phase {new_phase.value}: {reason}")
-                return True
-
-        except Exception as e:
-            logger.exception(f"Error transitioning node {node_id} to phase {new_phase.value}")
-            return False
+        """Transition a node to a new trust phase."""
+        return self._policy.transition_phase(node_id, new_phase, reason)
 
     def check_and_apply_transitions(self) -> list[tuple[UUID, TrustPhase, TrustPhase]]:
-        """Check all nodes for phase transitions and apply them.
-
-        Returns:
-            List of (node_id, old_phase, new_phase) for transitions that occurred
-        """
-        transitions = []
-
-        try:
-            with get_cursor() as cur:
-                cur.execute("SELECT id, trust_phase FROM federation_nodes WHERE status != 'unreachable'")
-                rows = cur.fetchall()
-
-            for row in rows:
-                node_id = row["id"]
-                old_phase = TrustPhase(row["trust_phase"])
-
-                new_phase = self.check_phase_transition(node_id)
-                if new_phase and new_phase != old_phase:
-                    direction = "promoted" if new_phase.value > old_phase.value else "demoted"
-                    reason = f"Automatically {direction} based on trust metrics"
-
-                    if self.transition_phase(node_id, new_phase, reason):
-                        transitions.append((node_id, old_phase, new_phase))
-
-        except Exception as e:
-            logger.exception(f"Error checking phase transitions: {e}")
-
-        return transitions
+        """Check all nodes for phase transitions and apply them."""
+        return self._policy.check_and_apply_transitions()
 
     # -------------------------------------------------------------------------
-    # THREAT ASSESSMENT
+    # THREAT ASSESSMENT (delegated to threat detector)
     # -------------------------------------------------------------------------
 
-    def assess_threat_level(
-        self,
-        node_id: UUID,
-    ) -> tuple[ThreatLevel, dict[str, Any]]:
-        """Assess the threat level of a node based on behavior signals.
-
-        Args:
-            node_id: The node's UUID
-
-        Returns:
-            Tuple of (threat level, assessment details)
-        """
-        node_trust = self.get_node_trust(node_id)
-        if not node_trust:
-            return ThreatLevel.NONE, {"reason": "No trust record"}
-
-        assessment = {
-            "signals": [],
-            "threat_score": 0.0,
-        }
-
-        # Signal 1: High dispute ratio
-        if node_trust.beliefs_received > 10:
-            dispute_ratio = node_trust.beliefs_disputed / node_trust.beliefs_received
-            if dispute_ratio > 0.3:
-                assessment["signals"].append({
-                    "type": "high_dispute_ratio",
-                    "value": dispute_ratio,
-                    "contribution": min(0.3, dispute_ratio),
-                })
-                assessment["threat_score"] += min(0.3, dispute_ratio)
-
-        # Signal 2: Very low trust after significant interaction
-        total_interactions = (
-            node_trust.beliefs_received +
-            node_trust.sync_requests_served +
-            node_trust.aggregation_participations
-        )
-        if total_interactions > 20 and node_trust.overall < 0.2:
-            assessment["signals"].append({
-                "type": "persistently_low_trust",
-                "value": node_trust.overall,
-                "contribution": 0.2,
-            })
-            assessment["threat_score"] += 0.2
-
-        # Signal 3: Trust declined rapidly
-        # This would require historical tracking; for now use a heuristic
-        if node_trust.beliefs_corroborated > 0:
-            corroboration_ratio = node_trust.beliefs_corroborated / max(1, node_trust.beliefs_received)
-            if corroboration_ratio < 0.1:
-                assessment["signals"].append({
-                    "type": "low_corroboration",
-                    "value": corroboration_ratio,
-                    "contribution": 0.15,
-                })
-                assessment["threat_score"] += 0.15
-
-        # Signal 4: Rapid volume (potential spam/Sybil)
-        if node_trust.beliefs_received > 100:
-            days_active = max(1, (datetime.now() - node_trust.relationship_started_at).days)
-            daily_rate = node_trust.beliefs_received / days_active
-            if daily_rate > 50:  # More than 50 beliefs per day
-                assessment["signals"].append({
-                    "type": "high_volume",
-                    "value": daily_rate,
-                    "contribution": min(0.2, (daily_rate - 50) / 200),
-                })
-                assessment["threat_score"] += min(0.2, (daily_rate - 50) / 200)
-
-        # Determine threat level from score
-        threat_level = ThreatLevel.NONE
-        for level, threshold in sorted(THREAT_THRESHOLDS.items(), key=lambda x: x[1], reverse=True):
-            if assessment["threat_score"] >= threshold:
-                threat_level = level
-                break
-
-        assessment["level"] = threat_level.value
-        return threat_level, assessment
+    def assess_threat_level(self, node_id: UUID) -> tuple[ThreatLevel, dict[str, Any]]:
+        """Assess the threat level of a node based on behavior signals."""
+        return self._threat_detector.assess_threat_level(node_id)
 
     def apply_threat_response(
         self,
@@ -704,109 +343,11 @@ class TrustManager:
         threat_level: ThreatLevel,
         assessment: dict[str, Any],
     ) -> bool:
-        """Apply graduated response based on threat level.
-
-        Per PRINCIPLES: "reduced access rather than exile"
-
-        Args:
-            node_id: The node's UUID
-            threat_level: Assessed threat level
-            assessment: Assessment details
-
-        Returns:
-            True if response was applied
-        """
-        node_trust = self.get_node_trust(node_id)
-        if not node_trust:
-            return False
-
-        if threat_level == ThreatLevel.NONE:
-            return True  # No action needed
-
-        # Level 1: Low - Increased scrutiny (log, no penalty)
-        if threat_level == ThreatLevel.LOW:
-            logger.warning(
-                f"Node {node_id} at LOW threat level: {assessment['signals']}"
-            )
-            return True
-
-        # Level 2: Medium - Reduce trust
-        if threat_level == ThreatLevel.MEDIUM:
-            penalty = -0.1
-            node_trust.manual_trust_adjustment += penalty
-            node_trust.adjustment_reason = f"Automated penalty: {threat_level.value}"
-            node_trust.recalculate_overall()
-            self._save_node_trust(node_trust)
-            logger.warning(
-                f"Node {node_id} at MEDIUM threat level, applied trust penalty: {penalty}"
-            )
-            return True
-
-        # Level 3: High - Quarantine from sensitive operations
-        if threat_level == ThreatLevel.HIGH:
-            penalty = -0.3
-            node_trust.manual_trust_adjustment += penalty
-            node_trust.adjustment_reason = f"Quarantine: {threat_level.value}"
-            node_trust.recalculate_overall()
-            self._save_node_trust(node_trust)
-
-            # Mark in metadata for exclusion from consensus
-            try:
-                with get_cursor() as cur:
-                    cur.execute("""
-                        UPDATE federation_nodes
-                        SET metadata = jsonb_set(
-                            COALESCE(metadata, '{}'),
-                            '{quarantine_until}',
-                            to_jsonb((NOW() + INTERVAL '7 days')::TEXT)
-                        )
-                        WHERE id = %s
-                    """, (node_id,))
-            except Exception as e:
-                logger.exception(f"Error setting quarantine: {e}")
-
-            logger.warning(
-                f"Node {node_id} at HIGH threat level, quarantined for 7 days"
-            )
-            return True
-
-        # Level 4: Critical - Functional isolation (read-only)
-        if threat_level == ThreatLevel.CRITICAL:
-            penalty = -0.5
-            node_trust.manual_trust_adjustment = max(-0.9, node_trust.manual_trust_adjustment + penalty)
-            node_trust.adjustment_reason = f"Isolation: {threat_level.value}"
-            node_trust.recalculate_overall()
-            self._save_node_trust(node_trust)
-
-            # Mark as read-only (can still receive, not contribute)
-            try:
-                with get_cursor() as cur:
-                    cur.execute("""
-                        UPDATE federation_nodes
-                        SET metadata = jsonb_set(
-                            jsonb_set(
-                                COALESCE(metadata, '{}'),
-                                '{read_only}',
-                                'true'
-                            ),
-                            '{isolation_reason}',
-                            %s::jsonb
-                        ),
-                        status = 'suspended'
-                        WHERE id = %s
-                    """, (f'"{assessment}"', node_id))
-            except Exception as e:
-                logger.exception(f"Error setting isolation: {e}")
-
-            logger.error(
-                f"Node {node_id} at CRITICAL threat level, isolated"
-            )
-            return True
-
-        return False
+        """Apply graduated response based on threat level."""
+        return self._threat_detector.apply_threat_response(node_id, threat_level, assessment)
 
     # -------------------------------------------------------------------------
-    # USER TRUST PREFERENCES
+    # USER TRUST PREFERENCES (delegated to registry)
     # -------------------------------------------------------------------------
 
     def set_user_preference(
@@ -817,78 +358,25 @@ class TrustManager:
         reason: str | None = None,
         domain_overrides: dict[str, str] | None = None,
     ) -> UserNodeTrust | None:
-        """Set user's trust preference for a node.
+        """Set user's trust preference for a node."""
+        return self._registry.set_user_preference(
+            node_id=node_id,
+            preference=preference,
+            manual_score=manual_score,
+            reason=reason,
+            domain_overrides=domain_overrides,
+        )
 
-        Args:
-            node_id: The node's UUID
-            preference: Trust preference level
-            manual_score: Optional manual trust score override
-            reason: Reason for the preference
-            domain_overrides: Domain-specific preference overrides
-
-        Returns:
-            UserNodeTrust if successful
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("""
-                    INSERT INTO user_node_trust (node_id, trust_preference, manual_trust_score, reason, domain_overrides)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (node_id) DO UPDATE SET
-                        trust_preference = EXCLUDED.trust_preference,
-                        manual_trust_score = EXCLUDED.manual_trust_score,
-                        reason = EXCLUDED.reason,
-                        domain_overrides = COALESCE(user_node_trust.domain_overrides, '{}'::jsonb) || COALESCE(EXCLUDED.domain_overrides, '{}'::jsonb),
-                        modified_at = NOW()
-                    RETURNING *
-                """, (
-                    node_id,
-                    preference.value,
-                    manual_score,
-                    reason,
-                    domain_overrides or {},
-                ))
-                row = cur.fetchone()
-                if row:
-                    return UserNodeTrust.from_row(row)
-                return None
-
-        except Exception as e:
-            logger.exception(f"Error setting user preference for node {node_id}")
-            return None
-
-    def block_node(
-        self,
-        node_id: UUID,
-        reason: str | None = None,
-    ) -> UserNodeTrust | None:
-        """Block a node (user-level, not federation-level).
-
-        Args:
-            node_id: The node's UUID
-            reason: Reason for blocking
-
-        Returns:
-            UserNodeTrust if successful
-        """
+    def block_node(self, node_id: UUID, reason: str | None = None) -> UserNodeTrust | None:
+        """Block a node (user-level, not federation-level)."""
         return self.set_user_preference(
             node_id=node_id,
             preference=TrustPreference.BLOCKED,
             reason=reason or "Manually blocked by user",
         )
 
-    def unblock_node(
-        self,
-        node_id: UUID,
-    ) -> UserNodeTrust | None:
-        """Unblock a previously blocked node.
-
-        Args:
-            node_id: The node's UUID
-
-        Returns:
-            UserNodeTrust if successful
-        """
+    def unblock_node(self, node_id: UUID) -> UserNodeTrust | None:
+        """Unblock a previously blocked node."""
         return self.set_user_preference(
             node_id=node_id,
             preference=TrustPreference.AUTOMATIC,
@@ -896,7 +384,7 @@ class TrustManager:
         )
 
     # -------------------------------------------------------------------------
-    # BELIEF ANNOTATIONS
+    # BELIEF ANNOTATIONS (delegated to registry)
     # -------------------------------------------------------------------------
 
     def annotate_belief(
@@ -908,136 +396,31 @@ class TrustManager:
         attestation: dict[str, Any] | None = None,
         expires_at: datetime | None = None,
     ) -> BeliefTrustAnnotation | None:
-        """Add a trust annotation to a belief.
+        """Add a trust annotation to a belief."""
+        return self._registry.annotate_belief(
+            belief_id=belief_id,
+            annotation_type=annotation_type,
+            source_node_id=source_node_id,
+            confidence_delta=confidence_delta,
+            attestation=attestation,
+            expires_at=expires_at,
+        )
 
-        Args:
-            belief_id: The belief's UUID
-            annotation_type: Type of annotation
-            source_node_id: Source node for the annotation
-            confidence_delta: Change to apply to belief confidence
-            attestation: Corroboration attestation data
-            expires_at: When this annotation expires
-
-        Returns:
-            BeliefTrustAnnotation if successful
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("""
-                    INSERT INTO belief_trust_annotations
-                    (belief_id, type, source_node_id, confidence_delta, corroboration_attestation, expires_at)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING *
-                """, (
-                    belief_id,
-                    annotation_type.value,
-                    source_node_id,
-                    confidence_delta,
-                    attestation,
-                    expires_at,
-                ))
-                row = cur.fetchone()
-                if row:
-                    return BeliefTrustAnnotation.from_row(row)
-                return None
-
-        except Exception as e:
-            logger.exception(f"Error annotating belief {belief_id}")
-            return None
-
-    def get_belief_trust_adjustments(
-        self,
-        belief_id: UUID,
-    ) -> float:
-        """Get total trust adjustment for a belief from all annotations.
-
-        Args:
-            belief_id: The belief's UUID
-
-        Returns:
-            Total confidence delta from annotations
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("""
-                    SELECT COALESCE(SUM(confidence_delta), 0) as total_delta
-                    FROM belief_trust_annotations
-                    WHERE belief_id = %s
-                    AND (expires_at IS NULL OR expires_at > NOW())
-                """, (belief_id,))
-                row = cur.fetchone()
-                return float(row["total_delta"]) if row else 0.0
-
-        except Exception as e:
-            logger.warning(f"Error getting belief trust adjustments: {e}")
-            return 0.0
+    def get_belief_trust_adjustments(self, belief_id: UUID) -> float:
+        """Get total trust adjustment for a belief from all annotations."""
+        return self._registry.get_belief_trust_adjustments(belief_id)
 
     # -------------------------------------------------------------------------
-    # HELPERS
+    # INTERNAL HELPERS (for backward compatibility)
     # -------------------------------------------------------------------------
 
     def _get_node(self, node_id: UUID) -> FederationNode | None:
         """Get a federation node by ID."""
-        try:
-            with get_cursor() as cur:
-                cur.execute("SELECT * FROM federation_nodes WHERE id = %s", (node_id,))
-                row = cur.fetchone()
-                if row:
-                    return FederationNode.from_row(row)
-                return None
-        except Exception as e:
-            logger.warning(f"Error getting node {node_id}: {e}")
-            return None
+        return self._registry.get_node(node_id)
 
     def _save_node_trust(self, node_trust: NodeTrust) -> NodeTrust | None:
-        """Persist node trust changes to database.
-
-        Args:
-            node_trust: The NodeTrust to save
-
-        Returns:
-            Updated NodeTrust if successful
-        """
-        try:
-            with get_cursor() as cur:
-                cur.execute("""
-                    UPDATE node_trust SET
-                        trust = %s,
-                        beliefs_received = %s,
-                        beliefs_corroborated = %s,
-                        beliefs_disputed = %s,
-                        sync_requests_served = %s,
-                        aggregation_participations = %s,
-                        endorsements_received = %s,
-                        endorsements_given = %s,
-                        last_interaction_at = %s,
-                        manual_trust_adjustment = %s,
-                        adjustment_reason = %s,
-                        modified_at = NOW()
-                    WHERE node_id = %s
-                    RETURNING *
-                """, (
-                    node_trust.to_trust_dict(),
-                    node_trust.beliefs_received,
-                    node_trust.beliefs_corroborated,
-                    node_trust.beliefs_disputed,
-                    node_trust.sync_requests_served,
-                    node_trust.aggregation_participations,
-                    node_trust.endorsements_received,
-                    node_trust.endorsements_given,
-                    node_trust.last_interaction_at,
-                    node_trust.manual_trust_adjustment,
-                    node_trust.adjustment_reason,
-                    node_trust.node_id,
-                ))
-                row = cur.fetchone()
-                if row:
-                    return NodeTrust.from_row(row)
-                return None
-
-        except Exception as e:
-            logger.exception(f"Error saving node trust for {node_trust.node_id}")
-            return None
+        """Persist node trust changes to database."""
+        return self._registry.save_node_trust(node_trust)
 
 
 # =============================================================================
@@ -1061,15 +444,7 @@ def get_effective_trust(
     node_id: UUID,
     domain: str | None = None,
 ) -> float:
-    """Get effective trust for a node (convenience function).
-
-    Args:
-        node_id: The node's UUID
-        domain: Optional domain for domain-specific trust
-
-    Returns:
-        Effective trust score
-    """
+    """Get effective trust for a node (convenience function)."""
     return get_trust_manager().get_effective_trust(node_id, domain)
 
 
@@ -1095,14 +470,7 @@ def process_dispute(
 def assess_and_respond_to_threat(
     node_id: UUID,
 ) -> tuple[ThreatLevel, dict[str, Any]]:
-    """Assess threat level and apply appropriate response.
-
-    Args:
-        node_id: The node's UUID
-
-    Returns:
-        Tuple of (threat level, assessment details)
-    """
+    """Assess threat level and apply appropriate response."""
     manager = get_trust_manager()
     level, assessment = manager.assess_threat_level(node_id)
     manager.apply_threat_response(node_id, level, assessment)
