@@ -974,7 +974,7 @@ class TestDelegationPolicy:
             source_did="did:key:alice",
             target_did="did:key:bob",
             competence=0.9,
-
+            can_delegate=True,
             delegation_depth=2,
         )
         assert edge.can_delegate is True
@@ -1016,7 +1016,7 @@ class TestDelegationPolicy:
             source_did="did:key:alice",
             target_did="did:key:bob",
             competence=0.9,
-
+            can_delegate=True,
             delegation_depth=5,
         )
         
@@ -1029,7 +1029,7 @@ class TestDelegationPolicy:
         edge = TrustEdge(
             source_did="did:key:a",
             target_did="did:key:b",
-
+            can_delegate=True,
             delegation_depth=2,
         )
         
@@ -1071,7 +1071,7 @@ class TestComputeDelegatedTrust:
             target_did="did:key:bob",
             competence=0.9,
             judgment=0.8,
-
+            can_delegate=True,
         )
         
         # Bob trusts Carol
@@ -1094,7 +1094,7 @@ class TestComputeDelegatedTrust:
             target_did="did:key:bob",
             competence=0.9,
             judgment=0.8,
-
+            can_delegate=True,
             delegation_depth=2,
         )
         
@@ -1103,7 +1103,7 @@ class TestComputeDelegatedTrust:
             source_did="did:key:bob",
             target_did="did:key:carol",
             competence=0.8,
-
+            can_delegate=True,
             delegation_depth=0,  # Unlimited
         )
         
@@ -1872,11 +1872,15 @@ class TestDelegatedTrustComputation:
         result = service.compute_delegated_trust(alice, dave)
         
         assert result is not None
-        # First hop: min(0.9, 0.9) * 0.5 = 0.45
-        # Second hop: min(0.45, 0.9) * 0.5 = 0.225
+        # Path: Alice->Bob->Carol->Dave (3 edges = 2 delegation hops)
+        # First delegation (Alice->Bob to Bob->Carol):
+        #   comp = min(0.9, 0.9) * 0.5 = 0.45
+        #   judg = min(0.5, 0.5) * 0.5 = 0.25
+        # Second delegation (result to Carol->Dave):
+        #   comp = min(0.45, 0.9) * 0.25 = 0.1125
         # Trust decays significantly over multiple hops
-        assert result.competence < 0.3
-        assert abs(result.competence - 0.225) < 0.01
+        assert result.competence < 0.15
+        assert abs(result.competence - 0.1125) < 0.01
     
     def test_delegation_depth_respected(self, service, alice, bob, carol, dave):
         """Test that delegation_depth limits are respected."""

@@ -318,8 +318,47 @@ class TrustEdge:
             confidentiality=self.confidentiality,
             judgment=self.judgment,
             domain=self.domain,
+            can_delegate=self.can_delegate,
+            delegation_depth=self.delegation_depth,
             decay_rate=decay_rate,
             decay_model=decay_model,
+            last_refreshed=self.last_refreshed,
+            id=self.id,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            expires_at=self.expires_at,
+        )
+    
+    def with_delegation(
+        self,
+        can_delegate: bool = True,
+        delegation_depth: int = 0,
+    ) -> "TrustEdge":
+        """Create a copy of this edge with delegation settings.
+        
+        Args:
+            can_delegate: Whether trust can be transitively delegated
+            delegation_depth: Maximum delegation chain length (0 = no limit)
+            
+        Returns:
+            New TrustEdge with delegation settings applied
+            
+        Example:
+            >>> # Allow 2-hop delegation
+            >>> delegatable_edge = edge.with_delegation(can_delegate=True, delegation_depth=2)
+        """
+        return TrustEdge(
+            source_did=self.source_did,
+            target_did=self.target_did,
+            competence=self.competence,
+            integrity=self.integrity,
+            confidentiality=self.confidentiality,
+            judgment=self.judgment,
+            domain=self.domain,
+            can_delegate=can_delegate,
+            delegation_depth=delegation_depth,
+            decay_rate=self.decay_rate,
+            decay_model=self.decay_model,
             last_refreshed=self.last_refreshed,
             id=self.id,
             created_at=self.created_at,
@@ -452,6 +491,8 @@ class TrustEdge:
             confidentiality=float(data.get("confidentiality", 0.5)),
             judgment=float(data.get("judgment", 0.1)),
             domain=data.get("domain"),
+            can_delegate=bool(data.get("can_delegate", False)),
+            delegation_depth=int(data.get("delegation_depth", 0)),
             decay_rate=float(data.get("decay_rate", 0.0)),
             decay_model=decay_model,
             last_refreshed=last_refreshed,
@@ -469,12 +510,17 @@ TrustEdge4D = TrustEdge
 def compute_delegated_trust(
     direct_edge: TrustEdge,
     delegated_edge: TrustEdge,
-) -> TrustEdge:
+    remaining_depth: int | None = None,
+) -> TrustEdge | None:
     """Compute transitive trust through delegation.
     
     When A trusts B, and B trusts C, this computes A's delegated trust in C.
     The key insight: A's trust in B's judgment affects how much weight
     B's trust in C gets.
+    
+    Delegation policy is enforced:
+    - If direct_edge.can_delegate is False, returns None (no transitive trust)
+    - If delegation_depth limits are exceeded, returns None
     
     Formula for each dimension:
         delegated_trust = direct_trust * (judgment_weight * delegated_value)
@@ -484,10 +530,20 @@ def compute_delegated_trust(
     Args:
         direct_edge: A's trust in B (the intermediary)
         delegated_edge: B's trust in C (what B thinks of C)
+        remaining_depth: Remaining delegation hops allowed (None = use edge's depth)
         
     Returns:
-        A new TrustEdge representing A's delegated trust in C
+        A new TrustEdge representing A's delegated trust in C, or None if
+        delegation is not allowed by policy
     """
+    # Check delegation policy on the direct edge
+    if not direct_edge.can_delegate:
+        return None  # This edge does not allow transitive trust
+    
+    # Check depth limits
+    if remaining_depth is not None and remaining_depth <= 0:
+        return None  # Exceeded depth limit
+    
     # A's trust in B's judgment determines how much we weight B's opinions
     judgment_weight = direct_edge.judgment
     
@@ -503,6 +559,20 @@ def compute_delegated_trust(
         # Scale by how much we trust B's judgment
         return base * judgment_weight
     
+    # Compute new delegation depth for the resulting edge
+    # The result can delegate if both edges allow it
+    result_can_delegate = direct_edge.can_delegate and delegated_edge.can_delegate
+    
+    # New depth is the minimum of both, decremented by 1 if either has a limit
+    if direct_edge.delegation_depth == 0 and delegated_edge.delegation_depth == 0:
+        result_depth = 0  # Both unlimited
+    elif direct_edge.delegation_depth == 0:
+        result_depth = max(0, delegated_edge.delegation_depth - 1)
+    elif delegated_edge.delegation_depth == 0:
+        result_depth = max(0, direct_edge.delegation_depth - 1)
+    else:
+        result_depth = max(0, min(direct_edge.delegation_depth, delegated_edge.delegation_depth) - 1)
+    
     return TrustEdge(
         source_did=direct_edge.source_did,
         target_did=delegated_edge.target_did,
@@ -514,6 +584,8 @@ def compute_delegated_trust(
         # For judgment of C, we also apply A's trust in B's judgment
         judgment=delegate_dimension(direct_edge.judgment, delegated_edge.judgment),
         domain=delegated_edge.domain,  # Use the target edge's domain
+        can_delegate=result_can_delegate,
+        delegation_depth=result_depth,
     )
 
 
@@ -1498,7 +1570,13 @@ class TrustService:
             current_did, path, remaining_depth = queue.popleft()
             current_hops = len(path)
             
-            # Check if we've found a better path to this node already
+            # Found target - collect ALL paths to target (don't prune)
+            if current_did == target:
+                found_paths.append(path)
+                continue
+            
+            # Check if we've found a better path to this intermediate node already
+            # (only prune intermediate nodes, not the target)
             if current_did in visited:
                 prev_hops, prev_remaining = visited[current_did]
                 # Skip if we've reached this node in fewer hops
@@ -1512,11 +1590,6 @@ class TrustService:
                         continue
             
             visited[current_did] = (current_hops, remaining_depth)
-            
-            # Found target - this is a valid delegation path
-            if current_did == target:
-                found_paths.append(path)
-                continue
             
             # Can't go further if depth exhausted
             if remaining_depth is not None and remaining_depth <= 0:
