@@ -2,8 +2,16 @@
 
 Provides tools for:
 - Belief management (query, create, supersede, get)
+- Semantic search (belief_search with embeddings)
 - Entity operations (get, search, merge)
 - Tension handling (list, resolve)
+- Trust checking (who do I trust on topics)
+- Confidence explanation (why this confidence score)
+
+Resources:
+- valence://beliefs/recent - Recent beliefs
+- valence://trust/graph - Trust relationships
+- valence://stats - Database statistics
 """
 
 from __future__ import annotations
@@ -13,16 +21,22 @@ import asyncio
 import json
 import logging
 import sys
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, Resource, ResourceContents, TextResourceContents
 
-from ..core.db import get_cursor, init_schema
+from ..core.db import get_cursor, init_schema, DatabaseStats
 from ..core.models import Belief, Entity, Tension
-from ..core.confidence import DimensionalConfidence
+from ..core.confidence import (
+    DimensionalConfidence, 
+    ConfidenceDimension,
+    DEFAULT_WEIGHTS,
+    confidence_label,
+)
 from ..core.health import startup_checks, cli_health_check
 from ..core.exceptions import DatabaseException, ValidationException
 
@@ -68,6 +82,39 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "default": 20,
+                        "description": "Maximum results"
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="belief_search",
+            description="Semantic search for beliefs using vector embeddings. Best for finding conceptually related beliefs even with different wording.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language query to find semantically similar beliefs"
+                    },
+                    "min_similarity": {
+                        "type": "number",
+                        "default": 0.5,
+                        "description": "Minimum similarity threshold (0-1)"
+                    },
+                    "min_confidence": {
+                        "type": "number",
+                        "description": "Filter by minimum overall confidence"
+                    },
+                    "domain_filter": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by domain path"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10,
                         "description": "Maximum results"
                     },
                 },
@@ -269,7 +316,259 @@ async def list_tools() -> list[Tool]:
                 "required": ["tension_id", "resolution", "action"],
             },
         ),
+        # Trust tools
+        Tool(
+            name="trust_check",
+            description="Check trust levels for entities or federation nodes on a specific topic/domain.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "Topic or domain to check trust for"
+                    },
+                    "entity_name": {
+                        "type": "string",
+                        "description": "Specific entity to check trust for"
+                    },
+                    "include_federated": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Include federated node trust"
+                    },
+                    "min_trust": {
+                        "type": "number",
+                        "default": 0.3,
+                        "description": "Minimum trust threshold"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10
+                    },
+                },
+                "required": ["topic"],
+            },
+        ),
+        # Confidence explanation tool
+        Tool(
+            name="confidence_explain",
+            description="Explain why a belief has a particular confidence score, showing all contributing dimensions.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "belief_id": {
+                        "type": "string",
+                        "description": "UUID of the belief to explain"
+                    },
+                },
+                "required": ["belief_id"],
+            },
+        ),
     ]
+
+
+# ============================================================================
+# Resource Definitions
+# ============================================================================
+
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    """List available resources."""
+    return [
+        Resource(
+            uri="valence://beliefs/recent",
+            name="Recent Beliefs",
+            description="Most recently created or modified beliefs",
+            mimeType="application/json",
+        ),
+        Resource(
+            uri="valence://trust/graph",
+            name="Trust Graph",
+            description="Trust relationships between entities and federation nodes",
+            mimeType="application/json",
+        ),
+        Resource(
+            uri="valence://stats",
+            name="Database Statistics",
+            description="Current statistics about the Valence knowledge base",
+            mimeType="application/json",
+        ),
+    ]
+
+
+@server.read_resource()
+async def read_resource(uri: str) -> ResourceContents:
+    """Read a resource by URI."""
+    if uri == "valence://beliefs/recent":
+        data = get_recent_beliefs()
+    elif uri == "valence://trust/graph":
+        data = get_trust_graph()
+    elif uri == "valence://stats":
+        data = get_stats()
+    else:
+        data = {"error": f"Unknown resource: {uri}"}
+
+    return [TextResourceContents(
+        uri=uri,
+        mimeType="application/json",
+        text=json.dumps(data, indent=2, default=str),
+    )]
+
+
+def get_recent_beliefs(limit: int = 20) -> dict[str, Any]:
+    """Get recent beliefs for the resource."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT b.*, array_agg(DISTINCT e.name) FILTER (WHERE e.name IS NOT NULL) as entity_names
+            FROM beliefs b
+            LEFT JOIN belief_entities be ON b.id = be.belief_id
+            LEFT JOIN entities e ON be.entity_id = e.id
+            WHERE b.status = 'active'
+            GROUP BY b.id
+            ORDER BY b.modified_at DESC
+            LIMIT %s
+            """,
+            (limit,)
+        )
+        rows = cur.fetchall()
+        
+        beliefs = []
+        for row in rows:
+            belief = Belief.from_row(dict(row))
+            belief_dict = belief.to_dict()
+            belief_dict["entity_names"] = row.get("entity_names") or []
+            beliefs.append(belief_dict)
+        
+        return {
+            "beliefs": beliefs,
+            "count": len(beliefs),
+            "as_of": datetime.now().isoformat(),
+        }
+
+
+def get_trust_graph() -> dict[str, Any]:
+    """Get trust relationships for the resource."""
+    result = {
+        "entities": [],
+        "federation_nodes": [],
+        "as_of": datetime.now().isoformat(),
+    }
+    
+    with get_cursor() as cur:
+        # Get entities with belief counts (as proxy for trust/authority)
+        cur.execute(
+            """
+            SELECT e.id, e.name, e.type, COUNT(be.belief_id) as belief_count,
+                   AVG((b.confidence->>'overall')::numeric) as avg_confidence
+            FROM entities e
+            LEFT JOIN belief_entities be ON e.id = be.entity_id
+            LEFT JOIN beliefs b ON be.belief_id = b.id AND b.status = 'active'
+            WHERE e.canonical_id IS NULL
+            GROUP BY e.id
+            HAVING COUNT(be.belief_id) > 0
+            ORDER BY belief_count DESC
+            LIMIT 50
+            """
+        )
+        for row in cur.fetchall():
+            result["entities"].append({
+                "id": str(row["id"]),
+                "name": row["name"],
+                "type": row["type"],
+                "belief_count": row["belief_count"],
+                "avg_confidence": float(row["avg_confidence"]) if row["avg_confidence"] else None,
+            })
+        
+        # Get federation nodes with trust scores
+        try:
+            cur.execute(
+                """
+                SELECT fn.id, fn.name, fn.instance_url, fn.status,
+                       nt.trust, nt.beliefs_received, nt.beliefs_corroborated, nt.beliefs_disputed
+                FROM federation_nodes fn
+                LEFT JOIN node_trust nt ON fn.id = nt.node_id
+                WHERE fn.status != 'blocked'
+                ORDER BY (nt.trust->>'overall')::numeric DESC NULLS LAST
+                LIMIT 20
+                """
+            )
+            for row in cur.fetchall():
+                node_data = {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "instance_url": row["instance_url"],
+                    "status": row["status"],
+                }
+                if row["trust"]:
+                    node_data["trust"] = row["trust"]
+                    node_data["beliefs_received"] = row["beliefs_received"]
+                    node_data["beliefs_corroborated"] = row["beliefs_corroborated"]
+                    node_data["beliefs_disputed"] = row["beliefs_disputed"]
+                result["federation_nodes"].append(node_data)
+        except Exception as e:
+            logger.debug(f"Federation tables may not exist: {e}")
+    
+    return result
+
+
+def get_stats() -> dict[str, Any]:
+    """Get database statistics for the resource."""
+    stats = DatabaseStats.collect()
+    
+    with get_cursor() as cur:
+        # Get domain distribution
+        cur.execute(
+            """
+            SELECT domain_path[1] as domain, COUNT(*) as count
+            FROM beliefs
+            WHERE status = 'active' AND array_length(domain_path, 1) > 0
+            GROUP BY domain_path[1]
+            ORDER BY count DESC
+            LIMIT 10
+            """
+        )
+        domains = {row["domain"]: row["count"] for row in cur.fetchall()}
+        
+        # Get confidence distribution
+        cur.execute(
+            """
+            SELECT 
+                CASE 
+                    WHEN (confidence->>'overall')::numeric >= 0.9 THEN 'very_high'
+                    WHEN (confidence->>'overall')::numeric >= 0.75 THEN 'high'
+                    WHEN (confidence->>'overall')::numeric >= 0.5 THEN 'moderate'
+                    WHEN (confidence->>'overall')::numeric >= 0.25 THEN 'low'
+                    ELSE 'very_low'
+                END as confidence_level,
+                COUNT(*) as count
+            FROM beliefs
+            WHERE status = 'active'
+            GROUP BY confidence_level
+            ORDER BY count DESC
+            """
+        )
+        confidence_dist = {row["confidence_level"]: row["count"] for row in cur.fetchall()}
+        
+        # Get entity type distribution
+        cur.execute(
+            """
+            SELECT type, COUNT(*) as count
+            FROM entities
+            WHERE canonical_id IS NULL
+            GROUP BY type
+            ORDER BY count DESC
+            """
+        )
+        entity_types = {row["type"]: row["count"] for row in cur.fetchall()}
+    
+    return {
+        "totals": stats.to_dict(),
+        "domains": domains,
+        "confidence_distribution": confidence_dist,
+        "entity_types": entity_types,
+        "as_of": datetime.now().isoformat(),
+    }
 
 
 # ============================================================================
@@ -321,6 +620,72 @@ def belief_query(
             "success": True,
             "beliefs": beliefs,
             "total_count": len(beliefs),
+        }
+
+
+def belief_search(
+    query: str,
+    min_similarity: float = 0.5,
+    min_confidence: float | None = None,
+    domain_filter: list[str] | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Semantic search for beliefs using embeddings."""
+    try:
+        from ..embeddings.service import generate_embedding, vector_to_pgvector
+    except ImportError as e:
+        return {
+            "success": False,
+            "error": "Embeddings service not available. Install openai package.",
+        }
+    
+    try:
+        # Generate query embedding
+        query_vector = generate_embedding(query)
+        query_str = vector_to_pgvector(query_vector)
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to generate embedding: {str(e)}",
+        }
+    
+    with get_cursor() as cur:
+        # Build query with similarity filter
+        sql = """
+            SELECT b.*, 1 - (b.embedding <=> %s::vector) as similarity
+            FROM beliefs b
+            WHERE b.embedding IS NOT NULL
+            AND b.status = 'active'
+            AND 1 - (b.embedding <=> %s::vector) >= %s
+        """
+        params: list[Any] = [query_str, query_str, min_similarity]
+        
+        if min_confidence is not None:
+            sql += " AND (b.confidence->>'overall')::numeric >= %s"
+            params.append(min_confidence)
+        
+        if domain_filter:
+            sql += " AND b.domain_path && %s"
+            params.append(domain_filter)
+        
+        sql += " ORDER BY b.embedding <=> %s::vector LIMIT %s"
+        params.extend([query_str, limit])
+        
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        
+        beliefs = []
+        for row in rows:
+            belief = Belief.from_row(dict(row))
+            belief_dict = belief.to_dict()
+            belief_dict["similarity"] = float(row["similarity"])
+            beliefs.append(belief_dict)
+        
+        return {
+            "success": True,
+            "beliefs": beliefs,
+            "total_count": len(beliefs),
+            "query_embedded": True,
         }
 
 
@@ -724,6 +1089,188 @@ def tension_resolve(
         }
 
 
+def trust_check(
+    topic: str,
+    entity_name: str | None = None,
+    include_federated: bool = True,
+    min_trust: float = 0.3,
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Check trust levels for a topic/domain."""
+    result = {
+        "success": True,
+        "topic": topic,
+        "trusted_entities": [],
+        "trusted_nodes": [],
+    }
+    
+    with get_cursor() as cur:
+        # Find entities that have high-confidence beliefs in this domain
+        entity_sql = """
+            SELECT e.id, e.name, e.type,
+                   COUNT(b.id) as belief_count,
+                   AVG((b.confidence->>'overall')::numeric) as avg_confidence,
+                   MAX((b.confidence->>'overall')::numeric) as max_confidence
+            FROM entities e
+            JOIN belief_entities be ON e.id = be.entity_id
+            JOIN beliefs b ON be.belief_id = b.id
+            WHERE b.status = 'active'
+            AND (
+                b.domain_path && ARRAY[%s]
+                OR b.content ILIKE %s
+            )
+        """
+        params: list[Any] = [topic, f"%{topic}%"]
+        
+        if entity_name:
+            entity_sql += " AND e.name ILIKE %s"
+            params.append(f"%{entity_name}%")
+        
+        entity_sql += """
+            GROUP BY e.id
+            HAVING AVG((b.confidence->>'overall')::numeric) >= %s
+            ORDER BY avg_confidence DESC, belief_count DESC
+            LIMIT %s
+        """
+        params.extend([min_trust, limit])
+        
+        cur.execute(entity_sql, params)
+        for row in cur.fetchall():
+            result["trusted_entities"].append({
+                "id": str(row["id"]),
+                "name": row["name"],
+                "type": row["type"],
+                "belief_count": row["belief_count"],
+                "avg_confidence": float(row["avg_confidence"]) if row["avg_confidence"] else None,
+                "max_confidence": float(row["max_confidence"]) if row["max_confidence"] else None,
+                "trust_reason": f"Has {row['belief_count']} beliefs about {topic} with avg confidence {float(row['avg_confidence']):.2f}",
+            })
+        
+        # Check federated node trust if enabled
+        if include_federated:
+            try:
+                cur.execute(
+                    """
+                    SELECT fn.id, fn.name, fn.instance_url,
+                           nt.trust, nt.beliefs_corroborated, nt.beliefs_disputed
+                    FROM federation_nodes fn
+                    JOIN node_trust nt ON fn.id = nt.node_id
+                    WHERE fn.status = 'active'
+                    AND (nt.trust->>'overall')::numeric >= %s
+                    ORDER BY (nt.trust->>'overall')::numeric DESC
+                    LIMIT %s
+                    """,
+                    (min_trust, limit)
+                )
+                for row in cur.fetchall():
+                    trust_score = row["trust"].get("overall", 0) if row["trust"] else 0
+                    result["trusted_nodes"].append({
+                        "id": str(row["id"]),
+                        "name": row["name"],
+                        "instance_url": row["instance_url"],
+                        "trust_score": trust_score,
+                        "beliefs_corroborated": row["beliefs_corroborated"],
+                        "beliefs_disputed": row["beliefs_disputed"],
+                        "trust_reason": f"Corroborated {row['beliefs_corroborated']} beliefs, disputed {row['beliefs_disputed']}",
+                    })
+            except Exception as e:
+                logger.debug(f"Federation tables may not exist: {e}")
+    
+    return result
+
+
+def confidence_explain(belief_id: str) -> dict[str, Any]:
+    """Explain confidence score for a belief."""
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM beliefs WHERE id = %s", (belief_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"success": False, "error": f"Belief not found: {belief_id}"}
+        
+        belief = Belief.from_row(dict(row))
+        conf = belief.confidence
+        
+        # Build explanation
+        explanation = {
+            "success": True,
+            "belief_id": belief_id,
+            "content_preview": belief.content[:100] + "..." if len(belief.content) > 100 else belief.content,
+            "overall_confidence": conf.overall,
+            "overall_label": confidence_label(conf.overall),
+            "dimensions": {},
+            "computation_method": "weighted_geometric_mean",
+            "weights_used": {},
+        }
+        
+        # Document each dimension
+        dimension_explanations = {
+            "source_reliability": "How trustworthy is the information source? Higher for verified sources, lower for hearsay.",
+            "method_quality": "How rigorous was the method of acquiring this knowledge? Higher for systematic analysis, lower for casual observation.",
+            "internal_consistency": "Does this belief align with other beliefs? Higher if consistent, lower if it contradicts known facts.",
+            "temporal_freshness": "How recent is this information? Higher for fresh data, decays over time.",
+            "corroboration": "Is this supported by multiple independent sources? Higher with more confirmation.",
+            "domain_applicability": "How relevant is this to the current context/domain? Higher if directly applicable.",
+        }
+        
+        for dim in ConfidenceDimension:
+            if dim == ConfidenceDimension.OVERALL:
+                continue
+            
+            value = getattr(conf, dim.value, None)
+            if value is not None:
+                weight = DEFAULT_WEIGHTS.get(dim, 0)
+                explanation["dimensions"][dim.value] = {
+                    "value": value,
+                    "label": confidence_label(value),
+                    "weight": weight,
+                    "explanation": dimension_explanations.get(dim.value, ""),
+                }
+                explanation["weights_used"][dim.value] = weight
+        
+        # Add recommendations
+        recommendations = []
+        if conf.source_reliability is not None and conf.source_reliability < 0.5:
+            recommendations.append("Consider verifying the source or finding corroborating evidence")
+        if conf.corroboration is not None and conf.corroboration < 0.3:
+            recommendations.append("This belief has low corroboration - seek additional sources")
+        if conf.temporal_freshness is not None and conf.temporal_freshness < 0.5:
+            recommendations.append("This information may be outdated - consider refreshing")
+        if conf.internal_consistency is not None and conf.internal_consistency < 0.5:
+            recommendations.append("This belief may conflict with other knowledge - review tensions")
+        
+        if recommendations:
+            explanation["recommendations"] = recommendations
+        else:
+            explanation["recommendations"] = ["Confidence dimensions are balanced - no immediate concerns"]
+        
+        # Check for trust annotations
+        try:
+            cur.execute(
+                """
+                SELECT type, confidence_delta, created_at
+                FROM belief_trust_annotations
+                WHERE belief_id = %s
+                AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY created_at DESC
+                """,
+                (belief_id,)
+            )
+            annotations = cur.fetchall()
+            if annotations:
+                explanation["trust_annotations"] = [
+                    {
+                        "type": a["type"],
+                        "confidence_delta": float(a["confidence_delta"]),
+                        "created_at": a["created_at"].isoformat(),
+                    }
+                    for a in annotations
+                ]
+        except Exception as e:
+            logger.debug(f"Trust annotations table may not exist: {e}")
+        
+        return explanation
+
+
 # ============================================================================
 # Tool Router
 # ============================================================================
@@ -741,6 +1288,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 entity_id=arguments.get("entity_id"),
                 include_superseded=arguments.get("include_superseded", False),
                 limit=arguments.get("limit", 20),
+            )
+        elif name == "belief_search":
+            result = belief_search(
+                query=arguments["query"],
+                min_similarity=arguments.get("min_similarity", 0.5),
+                min_confidence=arguments.get("min_confidence"),
+                domain_filter=arguments.get("domain_filter"),
+                limit=arguments.get("limit", 10),
             )
         elif name == "belief_create":
             result = belief_create(
@@ -788,6 +1343,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 tension_id=arguments["tension_id"],
                 resolution=arguments["resolution"],
                 action=arguments["action"],
+            )
+        elif name == "trust_check":
+            result = trust_check(
+                topic=arguments["topic"],
+                entity_name=arguments.get("entity_name"),
+                include_federated=arguments.get("include_federated", True),
+                min_trust=arguments.get("min_trust", 0.3),
+                limit=arguments.get("limit", 10),
+            )
+        elif name == "confidence_explain":
+            result = confidence_explain(
+                belief_id=arguments["belief_id"],
             )
         else:
             result = {"success": False, "error": f"Unknown tool: {name}"}
