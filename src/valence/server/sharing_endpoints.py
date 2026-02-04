@@ -4,6 +4,7 @@ Implements:
 - POST /api/v1/share - Share a belief with a recipient
 - GET /api/v1/shares - List shares
 - GET /api/v1/shares/{id} - Get share details
+- POST /api/v1/shares/{id}/revoke - Revoke a share
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from starlette.responses import JSONResponse
 from ..privacy.sharing import (
     ShareRequest,
     ShareResult,
+    RevokeRequest,
+    RevokeResult,
     Share,
     ConsentChainEntry,
     SharingService,
@@ -147,6 +150,7 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
         sharer_did: Filter by sharer DID (optional)
         recipient_did: Filter by recipient DID (optional)
         limit: Maximum results (optional, default 100)
+        revoked: Include revoked shares (optional, default false)
         
     Returns:
         200: List of shares
@@ -162,6 +166,10 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
     sharer_did = request.query_params.get("sharer_did")
     recipient_did = request.query_params.get("recipient_did")
     
+    # Parse include_revoked param
+    revoked_param = request.query_params.get("revoked", "false").lower()
+    include_revoked = revoked_param in ("true", "1", "yes")
+    
     try:
         limit = int(request.query_params.get("limit", "100"))
         limit = min(limit, 1000)  # Cap at 1000
@@ -173,6 +181,7 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
             sharer_did=sharer_did,
             recipient_did=recipient_did,
             limit=limit,
+            include_revoked=include_revoked,
         )
         
         return JSONResponse(
@@ -236,6 +245,96 @@ async def get_share_endpoint(request: Request) -> JSONResponse:
         
     except Exception as e:
         logger.exception(f"Error getting share: {e}")
+        return JSONResponse(
+            {"error": "Internal server error", "success": False},
+            status_code=500,
+        )
+
+
+async def revoke_share_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/shares/{id}/revoke - Revoke a share.
+    
+    Path Parameters:
+        id: Share UUID
+        
+    Request Body (JSON, optional):
+        {
+            "reason": "Optional reason for revocation"
+        }
+        
+    Returns:
+        200: Revocation result with share_id, consent_chain_id, revoked_at, affected_recipients
+        400: Invalid request (validation error, already revoked)
+        403: Permission denied (not the original sharer)
+        404: Share not found
+        500: Server error
+    """
+    service = get_sharing_service()
+    if service is None:
+        return JSONResponse(
+            {"error": "Sharing service not initialized"},
+            status_code=503,
+        )
+    
+    share_id = request.path_params.get("id")
+    if not share_id:
+        return JSONResponse(
+            {"error": "Share ID is required"},
+            status_code=400,
+        )
+    
+    # Parse optional reason from body
+    reason = None
+    try:
+        body = await request.json()
+        reason = body.get("reason")
+    except json.JSONDecodeError:
+        # Body is optional, so empty/invalid JSON is OK
+        pass
+    
+    # Create revoke request
+    revoke_request = RevokeRequest(
+        share_id=share_id,
+        reason=reason,
+    )
+    
+    # Get revoker DID from authenticated context
+    # For now, use identity service's local DID
+    revoker_did = service.identity.get_did()
+    
+    try:
+        result = await service.revoke_share(revoke_request, revoker_did)
+        
+        return JSONResponse(
+            {
+                "success": True,
+                "share_id": result.share_id,
+                "consent_chain_id": result.consent_chain_id,
+                "revoked_at": result.revoked_at,
+                "affected_recipients": result.affected_recipients,
+            },
+            status_code=200,
+        )
+        
+    except ValueError as e:
+        # Share not found, consent chain not found, or already revoked
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            return JSONResponse(
+                {"error": error_msg, "success": False},
+                status_code=404,
+            )
+        return JSONResponse(
+            {"error": error_msg, "success": False},
+            status_code=400,
+        )
+    except PermissionError as e:
+        return JSONResponse(
+            {"error": str(e), "success": False},
+            status_code=403,
+        )
+    except Exception as e:
+        logger.exception(f"Error revoking share: {e}")
         return JSONResponse(
             {"error": "Internal server error", "success": False},
             status_code=500,

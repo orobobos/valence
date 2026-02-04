@@ -10,6 +10,8 @@ import hashlib
 from valence.privacy.sharing import (
     ShareRequest,
     ShareResult,
+    RevokeRequest,
+    RevokeResult,
     SharingService,
     Share,
     ConsentChainEntry,
@@ -56,6 +58,9 @@ class MockDatabase:
             "chain_hash": chain_hash,
             "hops": [],
             "revoked": False,
+            "revoked_at": None,
+            "revoked_by": None,
+            "revoke_reason": None,
         }
     
     async def create_share(
@@ -93,11 +98,17 @@ class MockDatabase:
         sharer_did: Optional[str] = None,
         recipient_did: Optional[str] = None,
         limit: int = 100,
+        include_revoked: bool = False,
     ) -> list[Share]:
         results = []
         for data in self.shares.values():
             if recipient_did and data["recipient_did"] != recipient_did:
                 continue
+            # Filter out revoked shares unless include_revoked is True
+            if not include_revoked:
+                consent_chain = self.consent_chains.get(data["consent_chain_id"])
+                if consent_chain and consent_chain.get("revoked"):
+                    continue
             # Note: sharer_did filtering would need consent_chain lookup
             results.append(Share(
                 id=data["id"],
@@ -125,7 +136,42 @@ class MockDatabase:
             hops=data["hops"],
             chain_hash=data["chain_hash"],
             revoked=data["revoked"],
+            revoked_at=data.get("revoked_at"),
+            revoked_by=data.get("revoked_by"),
+            revoke_reason=data.get("revoke_reason"),
         )
+    
+    async def revoke_consent_chain(
+        self,
+        consent_chain_id: str,
+        revoked_at: float,
+        revoked_by: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Mark a consent chain as revoked."""
+        if consent_chain_id in self.consent_chains:
+            self.consent_chains[consent_chain_id]["revoked"] = True
+            self.consent_chains[consent_chain_id]["revoked_at"] = revoked_at
+            self.consent_chains[consent_chain_id]["revoked_by"] = revoked_by
+            self.consent_chains[consent_chain_id]["revoke_reason"] = reason
+    
+    async def get_shares_by_consent_chain(
+        self,
+        consent_chain_id: str,
+    ) -> list[Share]:
+        """Get all shares associated with a consent chain."""
+        results = []
+        for data in self.shares.values():
+            if data["consent_chain_id"] == consent_chain_id:
+                results.append(Share(
+                    id=data["id"],
+                    consent_chain_id=data["consent_chain_id"],
+                    encrypted_envelope=data["encrypted_envelope"],
+                    recipient_did=data["recipient_did"],
+                    created_at=data["created_at"],
+                    accessed_at=data["accessed_at"],
+                ))
+        return results
 
 
 class MockIdentityService:
@@ -517,3 +563,196 @@ class TestShareRetrieval:
         shares = await service.list_shares(recipient_did="did:key:r-1")
         assert len(shares) == 1
         assert shares[0].recipient_did == "did:key:r-1"
+
+
+class TestRevocation:
+    """Tests for share revocation functionality."""
+    
+    @pytest.fixture
+    def db(self):
+        return MockDatabase()
+    
+    @pytest.fixture
+    def identity(self):
+        return MockIdentityService()
+    
+    @pytest.fixture
+    def service(self, db, identity):
+        return SharingService(db, identity)
+    
+    async def _create_share(self, service, db, identity, belief_id="belief-revoke-001"):
+        """Helper to create a share for testing."""
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Content to revoke")
+        recipient_did = "did:key:recipient-revoke"
+        identity.add_identity(recipient_did)
+        
+        request = ShareRequest(belief_id=belief_id, recipient_did=recipient_did)
+        return await service.share(request, identity.get_did())
+    
+    @pytest.mark.asyncio
+    async def test_revoke_share_success(self, service, db, identity):
+        """Test successful revocation of a share."""
+        # Create a share
+        share_result = await self._create_share(service, db, identity)
+        
+        # Revoke it
+        revoke_request = RevokeRequest(
+            share_id=share_result.share_id,
+            reason="Testing revocation",
+        )
+        result = await service.revoke_share(revoke_request, identity.get_did())
+        
+        # Verify result
+        assert result.share_id == share_result.share_id
+        assert result.consent_chain_id == share_result.consent_chain_id
+        assert result.revoked_at > 0
+        assert result.affected_recipients == 1
+        
+        # Verify consent chain is marked revoked
+        chain = db.consent_chains[share_result.consent_chain_id]
+        assert chain["revoked"] is True
+        assert chain["revoked_at"] == result.revoked_at
+        assert chain["revoked_by"] == identity.get_did()
+        assert chain["revoke_reason"] == "Testing revocation"
+    
+    @pytest.mark.asyncio
+    async def test_revoke_share_not_found(self, service, db, identity):
+        """Test revocation of non-existent share."""
+        revoke_request = RevokeRequest(share_id="nonexistent-share-id")
+        
+        with pytest.raises(ValueError, match="Share not found"):
+            await service.revoke_share(revoke_request, identity.get_did())
+    
+    @pytest.mark.asyncio
+    async def test_revoke_share_permission_denied(self, service, db, identity):
+        """Test that only original sharer can revoke."""
+        # Create a share
+        share_result = await self._create_share(service, db, identity)
+        
+        # Try to revoke as different DID
+        revoke_request = RevokeRequest(share_id=share_result.share_id)
+        
+        with pytest.raises(PermissionError, match="Only original sharer can revoke"):
+            await service.revoke_share(revoke_request, "did:key:imposter")
+    
+    @pytest.mark.asyncio
+    async def test_revoke_share_already_revoked(self, service, db, identity):
+        """Test that already revoked share cannot be revoked again."""
+        # Create and revoke a share
+        share_result = await self._create_share(service, db, identity)
+        
+        revoke_request = RevokeRequest(share_id=share_result.share_id)
+        await service.revoke_share(revoke_request, identity.get_did())
+        
+        # Try to revoke again
+        with pytest.raises(ValueError, match="Share already revoked"):
+            await service.revoke_share(revoke_request, identity.get_did())
+    
+    @pytest.mark.asyncio
+    async def test_revoke_without_reason(self, service, db, identity):
+        """Test revocation without providing a reason."""
+        # Create a share
+        share_result = await self._create_share(service, db, identity, "belief-no-reason")
+        
+        # Revoke without reason
+        revoke_request = RevokeRequest(share_id=share_result.share_id)
+        result = await service.revoke_share(revoke_request, identity.get_did())
+        
+        assert result.share_id == share_result.share_id
+        
+        # Verify reason is None in consent chain
+        chain = db.consent_chains[share_result.consent_chain_id]
+        assert chain["revoke_reason"] is None
+
+
+class TestRevocationFiltering:
+    """Tests for filtering revoked shares from listings."""
+    
+    @pytest.fixture
+    def db(self):
+        return MockDatabase()
+    
+    @pytest.fixture
+    def identity(self):
+        return MockIdentityService()
+    
+    @pytest.fixture
+    def service(self, db, identity):
+        return SharingService(db, identity)
+    
+    @pytest.mark.asyncio
+    async def test_list_shares_excludes_revoked_by_default(self, service, db, identity):
+        """Test that revoked shares are excluded from listings by default."""
+        # Create two shares
+        for i in range(2):
+            belief_id = f"belief-filter-revoke-{i}"
+            db.beliefs[belief_id] = MockBelief(id=belief_id, content=f"Content {i}")
+            identity.add_identity(f"did:key:filter-r-{i}")
+            
+            request = ShareRequest(
+                belief_id=belief_id,
+                recipient_did=f"did:key:filter-r-{i}",
+            )
+            result = await service.share(request, identity.get_did())
+            
+            # Revoke the first share
+            if i == 0:
+                revoke_request = RevokeRequest(share_id=result.share_id)
+                await service.revoke_share(revoke_request, identity.get_did())
+        
+        # List without including revoked
+        shares = await service.list_shares()
+        assert len(shares) == 1
+        assert shares[0].recipient_did == "did:key:filter-r-1"
+    
+    @pytest.mark.asyncio
+    async def test_list_shares_includes_revoked_when_requested(self, service, db, identity):
+        """Test that revoked shares are included when explicitly requested."""
+        # Create two shares
+        share_ids = []
+        for i in range(2):
+            belief_id = f"belief-include-revoke-{i}"
+            db.beliefs[belief_id] = MockBelief(id=belief_id, content=f"Content {i}")
+            identity.add_identity(f"did:key:include-r-{i}")
+            
+            request = ShareRequest(
+                belief_id=belief_id,
+                recipient_did=f"did:key:include-r-{i}",
+            )
+            result = await service.share(request, identity.get_did())
+            share_ids.append(result.share_id)
+            
+            # Revoke the first share
+            if i == 0:
+                revoke_request = RevokeRequest(share_id=result.share_id)
+                await service.revoke_share(revoke_request, identity.get_did())
+        
+        # List with including revoked
+        shares = await service.list_shares(include_revoked=True)
+        assert len(shares) == 2
+    
+    @pytest.mark.asyncio
+    async def test_get_consent_chain_shows_revocation_details(self, service, db, identity):
+        """Test that consent chain includes revocation details after revocation."""
+        # Create and revoke a share
+        belief_id = "belief-chain-details"
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Content")
+        identity.add_identity("did:key:chain-recipient")
+        
+        request = ShareRequest(belief_id=belief_id, recipient_did="did:key:chain-recipient")
+        share_result = await service.share(request, identity.get_did())
+        
+        revoke_request = RevokeRequest(
+            share_id=share_result.share_id,
+            reason="Detailed revocation test",
+        )
+        revoke_result = await service.revoke_share(revoke_request, identity.get_did())
+        
+        # Get consent chain and check revocation details
+        chain = await service.get_consent_chain(share_result.consent_chain_id)
+        
+        assert chain is not None
+        assert chain.revoked is True
+        assert chain.revoked_at == revoke_result.revoked_at
+        assert chain.revoked_by == identity.get_did()
+        assert chain.revoke_reason == "Detailed revocation test"

@@ -24,6 +24,14 @@ from valence.network.discovery import (
     create_discovery_client,
     discover_routers,
 )
+from valence.network.node import (
+    NodeClient,
+    RouterConnection,
+    PendingMessage,
+    NodeError,
+    NoRoutersAvailableError,
+    create_node_client,
+)
 
 __all__ = [
     # Crypto
@@ -51,4 +59,11 @@ __all__ = [
     "SignatureVerificationError",
     "create_discovery_client",
     "discover_routers",
+    # Node
+    "NodeClient",
+    "RouterConnection",
+    "PendingMessage",
+    "NodeError",
+    "NoRoutersAvailableError",
+    "create_node_client",
 ]

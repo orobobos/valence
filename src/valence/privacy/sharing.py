@@ -38,6 +38,24 @@ class ShareResult:
 
 
 @dataclass
+class RevokeRequest:
+    """Request to revoke a previously shared belief."""
+    
+    share_id: str
+    reason: Optional[str] = None
+
+
+@dataclass
+class RevokeResult:
+    """Result of a successful revoke operation."""
+    
+    share_id: str
+    consent_chain_id: str
+    revoked_at: float
+    affected_recipients: int
+
+
+@dataclass
 class ConsentChainEntry:
     """A consent chain tracking the origin and path of a share."""
     
@@ -50,6 +68,9 @@ class ConsentChainEntry:
     hops: list
     chain_hash: bytes
     revoked: bool = False
+    revoked_at: Optional[float] = None
+    revoked_by: Optional[str] = None
+    revoke_reason: Optional[str] = None
 
 
 @dataclass
@@ -103,12 +124,30 @@ class DatabaseProtocol(Protocol):
         sharer_did: Optional[str] = None,
         recipient_did: Optional[str] = None,
         limit: int = 100,
+        include_revoked: bool = False,
     ) -> list[Share]:
         """List shares, optionally filtered by sharer or recipient."""
         ...
     
     async def get_consent_chain(self, chain_id: str) -> Optional[ConsentChainEntry]:
         """Get a consent chain by ID."""
+        ...
+    
+    async def revoke_consent_chain(
+        self,
+        consent_chain_id: str,
+        revoked_at: float,
+        revoked_by: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Mark a consent chain as revoked."""
+        ...
+    
+    async def get_shares_by_consent_chain(
+        self,
+        consent_chain_id: str,
+    ) -> list[Share]:
+        """Get all shares associated with a consent chain."""
         ...
 
 
@@ -263,6 +302,7 @@ class SharingService:
         sharer_did: Optional[str] = None,
         recipient_did: Optional[str] = None,
         limit: int = 100,
+        include_revoked: bool = False,
     ) -> list[Share]:
         """List shares, optionally filtered.
         
@@ -270,6 +310,7 @@ class SharingService:
             sharer_did: Filter by sharer DID
             recipient_did: Filter by recipient DID
             limit: Maximum number of results
+            include_revoked: Whether to include revoked shares (default False)
             
         Returns:
             List of Share objects
@@ -278,6 +319,7 @@ class SharingService:
             sharer_did=sharer_did,
             recipient_did=recipient_did,
             limit=limit,
+            include_revoked=include_revoked,
         )
     
     async def get_consent_chain(self, chain_id: str) -> Optional[ConsentChainEntry]:
@@ -290,3 +332,109 @@ class SharingService:
             ConsentChainEntry or None if not found
         """
         return await self.db.get_consent_chain(chain_id)
+    
+    async def revoke_share(self, request: RevokeRequest, revoker_did: str) -> RevokeResult:
+        """Revoke a previously shared belief.
+        
+        Args:
+            request: The revoke request containing share_id and optional reason
+            revoker_did: The DID of the entity revoking the share
+            
+        Returns:
+            RevokeResult with revocation details
+            
+        Raises:
+            ValueError: If share not found, consent chain not found, or already revoked
+            PermissionError: If revoker is not the original sharer
+        """
+        # Get the share
+        share = await self.db.get_share(request.share_id)
+        if not share:
+            raise ValueError("Share not found")
+        
+        # Get consent chain
+        consent_chain = await self.db.get_consent_chain(share.consent_chain_id)
+        if not consent_chain:
+            raise ValueError("Consent chain not found")
+        
+        # Verify revoker is the original sharer
+        if consent_chain.origin_sharer != revoker_did:
+            raise PermissionError("Only original sharer can revoke")
+        
+        # Check if already revoked
+        if consent_chain.revoked:
+            raise ValueError("Share already revoked")
+        
+        # Mark as revoked
+        revoked_at = time.time()
+        await self.db.revoke_consent_chain(
+            consent_chain_id=share.consent_chain_id,
+            revoked_at=revoked_at,
+            revoked_by=revoker_did,
+            reason=request.reason,
+        )
+        
+        # Count affected recipients (for DIRECT, just 1)
+        affected = 1
+        
+        # Trigger revocation propagation (for future BOUNDED/CASCADING)
+        # This will notify downstream recipients
+        await self._propagate_revocation(consent_chain, revoker_did)
+        
+        logger.info(
+            f"Revoked share {request.share_id} (consent_chain={consent_chain.id}) "
+            f"by {revoker_did}, reason: {request.reason}"
+        )
+        
+        return RevokeResult(
+            share_id=request.share_id,
+            consent_chain_id=share.consent_chain_id,
+            revoked_at=revoked_at,
+            affected_recipients=affected,
+        )
+    
+    async def _propagate_revocation(
+        self, consent_chain: ConsentChainEntry, revoker_did: str
+    ) -> None:
+        """Propagate revocation to downstream recipients.
+        
+        For DIRECT shares, notifies the single recipient.
+        For BOUNDED/CASCADING, traverses hops and notifies all.
+        
+        Args:
+            consent_chain: The consent chain being revoked
+            revoker_did: The DID of the revoker
+        """
+        # Get all shares from this consent chain
+        shares = await self.db.get_shares_by_consent_chain(consent_chain.id)
+        
+        for share in shares:
+            # Queue revocation notification for recipient
+            await self._queue_revocation_notification(
+                recipient_did=share.recipient_did,
+                consent_chain_id=consent_chain.id,
+                revoked_by=revoker_did,
+            )
+    
+    async def _queue_revocation_notification(
+        self,
+        recipient_did: str,
+        consent_chain_id: str,
+        revoked_by: str,
+    ) -> None:
+        """Queue a revocation notification for delivery.
+        
+        This will be sent via the network layer when available.
+        For now, just logs the notification intent.
+        
+        Args:
+            recipient_did: The DID of the notification recipient
+            consent_chain_id: The revoked consent chain ID
+            revoked_by: The DID of the revoker
+        """
+        # This will be sent via the network layer when available
+        # For now, just log it
+        logger.debug(
+            f"Queued revocation notification: recipient={recipient_did}, "
+            f"consent_chain={consent_chain_id}, revoked_by={revoked_by}"
+        )

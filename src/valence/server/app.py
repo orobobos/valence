@@ -55,6 +55,7 @@ from .sharing_endpoints import (
     share_belief_endpoint,
     list_shares_endpoint,
     get_share_endpoint,
+    revoke_share_endpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -845,10 +846,11 @@ def create_app() -> Starlette:
         # Compliance endpoints (Issue #25: GDPR deletion)
         Route(f"{API_V1}/users/{{id}}/data", delete_user_data_endpoint, methods=["DELETE"]),
         Route(f"{API_V1}/tombstones/{{id}}/verification", get_deletion_verification_endpoint, methods=["GET"]),
-        # Sharing endpoints (Issue #50: share() API)
+        # Sharing endpoints (Issue #50: share() API, Issue #54: revoke API)
         Route(f"{API_V1}/share", share_belief_endpoint, methods=["POST"]),
         Route(f"{API_V1}/shares", list_shares_endpoint, methods=["GET"]),
         Route(f"{API_V1}/shares/{{id}}", get_share_endpoint, methods=["GET"]),
+        Route(f"{API_V1}/shares/{{id}}/revoke", revoke_share_endpoint, methods=["POST"]),
     ]
 
     # Define middleware
