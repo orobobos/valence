@@ -9,23 +9,28 @@ load balancing. This module provides:
 - Keepalive and automatic failure detection
 - Message queueing during failover
 - IP diversity enforcement (different /16 subnets)
+- Connection state persistence and recovery (Issue #111)
 
 Architecture:
 - Each node connects to target_connections (default 5) routers
 - Routers are selected based on ACK success rate and load
 - Connections are monitored via periodic pings
 - Failed connections are replaced automatically via discovery
+- State is persisted locally for recovery after disconnection
 """
 
 from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import logging
+import os
 import random
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import aiohttp
@@ -35,9 +40,100 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X
 
 from .discovery import DiscoveryClient, RouterInfo
 from .crypto import encrypt_message, decrypt_message
-from .messages import AckMessage, DeliverPayload
+from .messages import AckMessage, DeliverPayload, HealthGossip, RouterHealthObservation
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# STATE PERSISTENCE (Issue #111)
+# =============================================================================
+
+# Version for state file format - increment on breaking changes
+STATE_VERSION = 1
+
+
+@dataclass
+class ConnectionState:
+    """
+    Serializable connection state for persistence and recovery.
+    
+    This captures the essential state needed to recover after a
+    disconnect/reconnect cycle:
+    - Pending ACKs (messages awaiting acknowledgment)
+    - Message queue (messages pending delivery)
+    - Seen messages (for idempotent delivery)
+    - Failover states (router cooldown tracking)
+    
+    Attributes:
+        version: State format version for compatibility checking
+        node_id: The node's identity
+        saved_at: Timestamp when state was saved
+        sequence_number: Monotonic counter to detect stale state
+        pending_acks: List of serialized PendingAck records
+        message_queue: List of serialized PendingMessage records
+        seen_messages: Set of message IDs already processed
+        failover_states: Dict of router_id -> serialized FailoverState
+        stats: Accumulated statistics
+    """
+    
+    version: int = STATE_VERSION
+    node_id: str = ""
+    saved_at: float = 0.0
+    sequence_number: int = 0
+    pending_acks: List[Dict[str, Any]] = field(default_factory=list)
+    message_queue: List[Dict[str, Any]] = field(default_factory=list)
+    seen_messages: List[str] = field(default_factory=list)
+    failover_states: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    stats: Dict[str, int] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary for JSON storage."""
+        return {
+            "version": self.version,
+            "node_id": self.node_id,
+            "saved_at": self.saved_at,
+            "sequence_number": self.sequence_number,
+            "pending_acks": self.pending_acks,
+            "message_queue": self.message_queue,
+            "seen_messages": self.seen_messages,
+            "failover_states": self.failover_states,
+            "stats": self.stats,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConnectionState":
+        """Deserialize from dictionary."""
+        return cls(
+            version=data.get("version", 1),
+            node_id=data.get("node_id", ""),
+            saved_at=data.get("saved_at", 0.0),
+            sequence_number=data.get("sequence_number", 0),
+            pending_acks=data.get("pending_acks", []),
+            message_queue=data.get("message_queue", []),
+            seen_messages=data.get("seen_messages", []),
+            failover_states=data.get("failover_states", {}),
+            stats=data.get("stats", {}),
+        )
+    
+    def to_json(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict(), indent=2)
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> "ConnectionState":
+        """Deserialize from JSON string."""
+        return cls.from_dict(json.loads(json_str))
+
+
+class StateConflictError(Exception):
+    """Raised when there's a conflict between saved and current state."""
+    pass
+
+
+class StaleStateError(Exception):
+    """Raised when saved state is too old to be useful."""
+    pass
 
 
 # =============================================================================
@@ -58,6 +154,44 @@ class PendingAck:
     timeout_ms: int = 30000  # 30 seconds default
     retries: int = 0
     max_retries: int = 2  # Retry once via same router, then via different router
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for state persistence (without the public key object)."""
+        return {
+            "message_id": self.message_id,
+            "recipient_id": self.recipient_id,
+            "content": self.content.hex() if isinstance(self.content, bytes) else self.content,
+            "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
+            "sent_at": self.sent_at,
+            "router_id": self.router_id,
+            "timeout_ms": self.timeout_ms,
+            "retries": self.retries,
+            "max_retries": self.max_retries,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PendingAck":
+        """Deserialize from state persistence."""
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
+        
+        content = data["content"]
+        if isinstance(content, str):
+            content = bytes.fromhex(content)
+        
+        pub_key_hex = data["recipient_public_key_hex"]
+        pub_key = X25519PublicKey.from_public_bytes(bytes.fromhex(pub_key_hex))
+        
+        return cls(
+            message_id=data["message_id"],
+            recipient_id=data["recipient_id"],
+            content=content,
+            recipient_public_key=pub_key,
+            sent_at=data["sent_at"],
+            router_id=data["router_id"],
+            timeout_ms=data.get("timeout_ms", 30000),
+            retries=data.get("retries", 0),
+            max_retries=data.get("max_retries", 2),
+        )
 
 
 # =============================================================================
@@ -101,6 +235,19 @@ class RouterConnection:
     ack_failure: int = 0
     ping_latency_ms: float = 0.0
     
+    # Back-pressure state
+    back_pressure_active: bool = False
+    back_pressure_until: float = 0.0  # Timestamp when back-pressure expires
+    back_pressure_retry_ms: int = 1000  # Suggested retry delay
+    
+    @property
+    def is_under_back_pressure(self) -> bool:
+        """Check if this router is currently under back-pressure."""
+        if not self.back_pressure_active:
+            return False
+        # Check if back-pressure has expired (retry_after_ms elapsed)
+        return time.time() < self.back_pressure_until
+    
     @property
     def ack_success_rate(self) -> float:
         """Calculate ACK success rate (0.0 to 1.0)."""
@@ -137,6 +284,40 @@ class PendingMessage:
     queued_at: float
     retries: int = 0
     max_retries: int = 3
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for state persistence."""
+        return {
+            "message_id": self.message_id,
+            "recipient_id": self.recipient_id,
+            "content": self.content.hex() if isinstance(self.content, bytes) else self.content,
+            "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
+            "queued_at": self.queued_at,
+            "retries": self.retries,
+            "max_retries": self.max_retries,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PendingMessage":
+        """Deserialize from state persistence."""
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
+        
+        content = data["content"]
+        if isinstance(content, str):
+            content = bytes.fromhex(content)
+        
+        pub_key_hex = data["recipient_public_key_hex"]
+        pub_key = X25519PublicKey.from_public_bytes(bytes.fromhex(pub_key_hex))
+        
+        return cls(
+            message_id=data["message_id"],
+            recipient_id=data["recipient_id"],
+            content=content,
+            recipient_public_key=pub_key,
+            queued_at=data["queued_at"],
+            retries=data.get("retries", 0),
+            max_retries=data.get("max_retries", 3),
+        )
 
 
 @dataclass
@@ -161,6 +342,31 @@ class FailoverState:
     def remaining_cooldown(self) -> float:
         """Get remaining cooldown time in seconds."""
         return max(0, self.cooldown_until - time.time())
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for state persistence."""
+        return {
+            "router_id": self.router_id,
+            "failed_at": self.failed_at,
+            "fail_count": self.fail_count,
+            "cooldown_until": self.cooldown_until,
+            "queued_messages": [msg.to_dict() for msg in self.queued_messages],
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FailoverState":
+        """Deserialize from state persistence."""
+        queued = [
+            PendingMessage.from_dict(msg_data)
+            for msg_data in data.get("queued_messages", [])
+        ]
+        return cls(
+            router_id=data["router_id"],
+            failed_at=data["failed_at"],
+            fail_count=data["fail_count"],
+            cooldown_until=data["cooldown_until"],
+            queued_messages=queued,
+        )
 
 
 # =============================================================================
@@ -186,6 +392,17 @@ class NodeClient:
         await node.send_message(recipient_id, recipient_pub_key, b"Hello!")
         await node.stop()
     
+    With custom seeds (Issue #108 - Seed Redundancy):
+        node = NodeClient(
+            node_id="abc123...",
+            private_key=my_ed25519_private_key,
+            encryption_private_key=my_x25519_private_key,
+            seed_urls=[
+                "https://primary-seed.example.com:8470",
+                "https://backup-seed.example.com:8470",
+            ],
+        )
+    
     Attributes:
         node_id: Our Ed25519 public key (hex)
         private_key: Our Ed25519 private key for signing
@@ -193,6 +410,7 @@ class NodeClient:
         min_connections: Minimum router connections to maintain
         target_connections: Ideal number of router connections
         max_connections: Maximum router connections allowed
+        seed_urls: List of seed URLs for router discovery (primary first)
     """
     
     # Identity
@@ -204,6 +422,9 @@ class NodeClient:
     min_connections: int = 3
     target_connections: int = 5
     max_connections: int = 8
+    
+    # Seed configuration (Issue #108)
+    seed_urls: List[str] = field(default_factory=list)
     
     # Timing config
     keepalive_interval: float = 2.0  # seconds between pings (fast detection)
@@ -239,14 +460,23 @@ class NodeClient:
     default_ack_timeout_ms: int = 30000  # 30 seconds
     max_seen_messages: int = 10000  # Limit seen message cache size
     
+    # State persistence configuration (Issue #111)
+    state_file: Optional[str] = None  # Path to state file, None to disable
+    state_save_interval: float = 30.0  # Save state every N seconds
+    max_state_age: float = 86400.0  # Maximum age of state to recover (24 hours)
+    recover_state_on_start: bool = True  # Whether to recover state on start
+    
     # Callbacks for message handling
     on_message: Optional[Callable[[str, bytes], None]] = None
     on_ack_timeout: Optional[Callable[[str, str], None]] = None  # (message_id, recipient_id)
+    on_state_recovered: Optional[Callable[[ConnectionState], None]] = None  # Called after state recovery
     
     # Internal state
     _running: bool = field(default=False, repr=False)
     _tasks: List[asyncio.Task] = field(default_factory=list, repr=False)
     _connected_subnets: Set[str] = field(default_factory=set, repr=False)
+    _state_sequence: int = field(default=0, repr=False)  # Monotonic counter for conflict detection
+    _last_state_save: float = field(default=0.0, repr=False)
     
     # Statistics
     _stats: Dict[str, int] = field(default_factory=lambda: {
@@ -261,7 +491,35 @@ class NodeClient:
         "ack_successes": 0,
         "ack_failures": 0,
         "acks_sent": 0,
+        "gossip_sent": 0,
+        "gossip_received": 0,
     })
+    
+    # -------------------------------------------------------------------------
+    # HEALTH GOSSIP CONFIGURATION
+    # -------------------------------------------------------------------------
+    
+    # Gossip timing
+    gossip_interval: float = 30.0  # Seconds between gossip broadcasts
+    gossip_ttl: int = 2  # Max hops for gossip propagation
+    
+    # Observation aggregation weights
+    own_observation_weight: float = 0.7  # Weight for own observations
+    peer_observation_weight: float = 0.3  # Weight for peer observations
+    
+    # Observation limits
+    max_observations_per_gossip: int = 10  # Limit observations per gossip message
+    max_peer_observations: int = 100  # Max peer observations to cache
+    observation_max_age: float = 300.0  # Max age of observations (5 minutes)
+    
+    # Peer health observations: {peer_node_id: {router_id: RouterHealthObservation}}
+    _peer_observations: Dict[str, Dict[str, Any]] = field(default_factory=dict, repr=False)
+    
+    # Our own router health observations: {router_id: RouterHealthObservation}
+    _own_observations: Dict[str, Any] = field(default_factory=dict, repr=False)
+    
+    # Connected peers (nodes we can gossip with)
+    _connected_peers: Set[str] = field(default_factory=set, repr=False)
     
     # Queue limits
     MAX_QUEUE_SIZE: int = 1000
@@ -277,6 +535,13 @@ class NodeClient:
         
         This initiates router discovery, establishes connections,
         and starts background maintenance tasks.
+        
+        If seed_urls were provided during initialization, they will be
+        configured on the discovery client (primary seed first, with
+        automatic fallback to secondaries).
+        
+        If state recovery is enabled and a state file exists, the node
+        will attempt to recover pending state from the previous session.
         """
         if self._running:
             logger.warning("Node already running")
@@ -285,6 +550,26 @@ class NodeClient:
         self._running = True
         logger.info(f"Starting node {self.node_id[:16]}...")
         
+        # Attempt state recovery (Issue #111)
+        if self.recover_state_on_start and self.state_file:
+            try:
+                recovered = await self._recover_state()
+                if recovered:
+                    logger.info(
+                        f"Recovered state: {len(self.pending_acks)} pending ACKs, "
+                        f"{len(self.message_queue)} queued messages"
+                    )
+            except (StaleStateError, StateConflictError) as e:
+                logger.warning(f"State recovery skipped: {e}")
+            except Exception as e:
+                logger.warning(f"State recovery failed: {e}")
+        
+        # Configure discovery client with seed URLs (Issue #108)
+        if self.seed_urls:
+            for seed_url in self.seed_urls:
+                self.discovery.add_seed(seed_url)
+            logger.info(f"Configured {len(self.seed_urls)} seed URLs for discovery")
+        
         # Initial connection establishment
         await self._ensure_connections()
         
@@ -292,18 +577,35 @@ class NodeClient:
         self._tasks.append(asyncio.create_task(self._connection_maintenance()))
         self._tasks.append(asyncio.create_task(self._keepalive_loop()))
         self._tasks.append(asyncio.create_task(self._queue_processor()))
+        self._tasks.append(asyncio.create_task(self._gossip_loop()))
+        
+        # Start state persistence task if enabled (Issue #111)
+        if self.state_file:
+            self._tasks.append(asyncio.create_task(self._state_persistence_loop()))
         
         logger.info(
             f"Node started with {len(self.connections)} router connections"
         )
     
     async def stop(self) -> None:
-        """Stop the node and close all connections."""
+        """Stop the node and close all connections.
+        
+        If state persistence is enabled, saves the current state
+        before shutting down for recovery on next start.
+        """
         if not self._running:
             return
         
         self._running = False
         logger.info("Stopping node...")
+        
+        # Save state before stopping (Issue #111)
+        if self.state_file:
+            try:
+                await self._save_state()
+                logger.info("State saved for recovery")
+            except Exception as e:
+                logger.warning(f"Failed to save state: {e}")
         
         # Cancel background tasks
         for task in self._tasks:
@@ -412,7 +714,13 @@ class NodeClient:
                 1 for state in self.failover_states.values()
                 if state.is_in_cooldown()
             ),
+            "routers_under_back_pressure": sum(
+                1 for conn in self.connections.values()
+                if conn.is_under_back_pressure
+            ),
             "direct_mode": self.direct_mode,
+            "own_health_observations": len(self._own_observations),
+            "peer_observation_sources": len(self._peer_observations),
         }
     
     def get_connections(self) -> List[Dict[str, Any]]:
@@ -428,9 +736,266 @@ class NodeClient:
                 "ping_latency_ms": round(conn.ping_latency_ms, 1),
                 "messages_sent": conn.messages_sent,
                 "messages_received": conn.messages_received,
+                "back_pressure_active": conn.back_pressure_active,
+                "under_back_pressure": conn.is_under_back_pressure,
             }
             for router_id, conn in self.connections.items()
         ]
+    
+    # -------------------------------------------------------------------------
+    # STATE PERSISTENCE (Issue #111)
+    # -------------------------------------------------------------------------
+    
+    def _get_connection_state(self) -> ConnectionState:
+        """
+        Create a ConnectionState snapshot of current recoverable state.
+        
+        Returns:
+            ConnectionState object with serialized pending state
+        """
+        self._state_sequence += 1
+        
+        return ConnectionState(
+            version=STATE_VERSION,
+            node_id=self.node_id,
+            saved_at=time.time(),
+            sequence_number=self._state_sequence,
+            pending_acks=[ack.to_dict() for ack in self.pending_acks.values()],
+            message_queue=[msg.to_dict() for msg in self.message_queue],
+            seen_messages=list(self.seen_messages)[-self.max_seen_messages:],
+            failover_states={
+                router_id: state.to_dict()
+                for router_id, state in self.failover_states.items()
+            },
+            stats=dict(self._stats),
+        )
+    
+    async def _save_state(self) -> None:
+        """
+        Save current connection state to disk.
+        
+        State is saved atomically by writing to a temp file first,
+        then renaming to prevent corruption on crash.
+        
+        Raises:
+            IOError: If state file cannot be written
+        """
+        if not self.state_file:
+            return
+        
+        state = self._get_connection_state()
+        state_json = state.to_json()
+        
+        # Write atomically via temp file
+        state_path = Path(self.state_file)
+        temp_path = state_path.with_suffix('.tmp')
+        
+        try:
+            # Ensure parent directory exists
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write to temp file
+            temp_path.write_text(state_json)
+            
+            # Atomic rename
+            temp_path.rename(state_path)
+            
+            self._last_state_save = time.time()
+            logger.debug(
+                f"Saved state: seq={state.sequence_number}, "
+                f"pending_acks={len(state.pending_acks)}, "
+                f"queue={len(state.message_queue)}"
+            )
+        except Exception as e:
+            # Clean up temp file on error
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+            raise IOError(f"Failed to save state: {e}") from e
+    
+    async def _load_state(self) -> Optional[ConnectionState]:
+        """
+        Load saved connection state from disk.
+        
+        Returns:
+            ConnectionState if file exists and is valid, None otherwise
+            
+        Raises:
+            StaleStateError: If saved state is too old
+            StateConflictError: If saved state doesn't match this node
+        """
+        if not self.state_file:
+            return None
+        
+        state_path = Path(self.state_file)
+        if not state_path.exists():
+            logger.debug("No state file found")
+            return None
+        
+        try:
+            state_json = state_path.read_text()
+            state = ConnectionState.from_json(state_json)
+        except Exception as e:
+            logger.warning(f"Failed to parse state file: {e}")
+            return None
+        
+        # Version check
+        if state.version != STATE_VERSION:
+            logger.warning(
+                f"State version mismatch: file={state.version}, "
+                f"current={STATE_VERSION}"
+            )
+            return None
+        
+        # Node ID check - prevent applying state from different node
+        if state.node_id != self.node_id:
+            raise StateConflictError(
+                f"State file belongs to different node: {state.node_id[:16]}..."
+            )
+        
+        # Age check
+        state_age = time.time() - state.saved_at
+        if state_age > self.max_state_age:
+            raise StaleStateError(
+                f"State is {state_age/3600:.1f} hours old "
+                f"(max: {self.max_state_age/3600:.1f} hours)"
+            )
+        
+        logger.info(
+            f"Loaded state: seq={state.sequence_number}, "
+            f"age={state_age:.0f}s, pending_acks={len(state.pending_acks)}"
+        )
+        return state
+    
+    async def _recover_state(self) -> bool:
+        """
+        Recover pending state from saved state file.
+        
+        This restores:
+        - Pending ACKs (messages awaiting acknowledgment)
+        - Message queue (messages pending delivery)
+        - Seen messages (for idempotent delivery)
+        - Failover states (router cooldown tracking)
+        - Statistics
+        
+        Returns:
+            True if state was recovered, False if no state to recover
+            
+        Raises:
+            StaleStateError: If saved state is too old
+            StateConflictError: If saved state doesn't match this node
+        """
+        state = await self._load_state()
+        if not state:
+            return False
+        
+        # Restore pending ACKs
+        recovered_acks = 0
+        for ack_data in state.pending_acks:
+            try:
+                ack = PendingAck.from_dict(ack_data)
+                # Only recover if not expired
+                age = time.time() - ack.sent_at
+                if age < (ack.timeout_ms / 1000) * 2:  # 2x timeout as max age
+                    self.pending_acks[ack.message_id] = ack
+                    recovered_acks += 1
+                    # Schedule ACK wait
+                    asyncio.create_task(self._wait_for_ack(ack.message_id))
+            except Exception as e:
+                logger.warning(f"Failed to recover pending ACK: {e}")
+        
+        # Restore message queue
+        recovered_msgs = 0
+        for msg_data in state.message_queue:
+            try:
+                msg = PendingMessage.from_dict(msg_data)
+                # Only recover if not expired
+                age = time.time() - msg.queued_at
+                if age < self.MAX_QUEUE_AGE:
+                    self.message_queue.append(msg)
+                    recovered_msgs += 1
+            except Exception as e:
+                logger.warning(f"Failed to recover queued message: {e}")
+        
+        # Restore seen messages
+        self.seen_messages.update(state.seen_messages)
+        
+        # Restore failover states (only if still in cooldown)
+        for router_id, fs_data in state.failover_states.items():
+            try:
+                fs = FailoverState.from_dict(fs_data)
+                # Only restore if still in cooldown
+                if fs.is_in_cooldown():
+                    self.failover_states[router_id] = fs
+            except Exception as e:
+                logger.warning(f"Failed to recover failover state: {e}")
+        
+        # Restore statistics
+        for key, value in state.stats.items():
+            if key in self._stats:
+                self._stats[key] = value
+        
+        # Update sequence number to prevent conflicts
+        self._state_sequence = state.sequence_number
+        
+        logger.info(
+            f"Recovered state: {recovered_acks} pending ACKs, "
+            f"{recovered_msgs} queued messages, "
+            f"{len(self.seen_messages)} seen messages"
+        )
+        
+        # Notify callback if registered
+        if self.on_state_recovered:
+            try:
+                self.on_state_recovered(state)
+            except Exception as e:
+                logger.warning(f"on_state_recovered callback error: {e}")
+        
+        # Delete state file after successful recovery
+        try:
+            Path(self.state_file).unlink()
+            logger.debug("Deleted state file after recovery")
+        except Exception as e:
+            logger.warning(f"Failed to delete state file: {e}")
+        
+        return True
+    
+    async def _state_persistence_loop(self) -> None:
+        """Background task to periodically save state."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.state_save_interval)
+                if not self._running:
+                    break
+                
+                # Only save if there's something to save
+                if self.pending_acks or self.message_queue:
+                    await self._save_state()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"State persistence error: {e}")
+    
+    def delete_state_file(self) -> bool:
+        """
+        Delete the state file if it exists.
+        
+        Useful for testing or when you want to start fresh.
+        
+        Returns:
+            True if file was deleted, False if it didn't exist
+        """
+        if not self.state_file:
+            return False
+        
+        state_path = Path(self.state_file)
+        if state_path.exists():
+            state_path.unlink()
+            logger.info("Deleted state file")
+            return True
+        return False
     
     # -------------------------------------------------------------------------
     # CONNECTION MANAGEMENT
@@ -816,10 +1381,16 @@ class NodeClient:
                     elif msg_type == "ack":
                         await self._handle_ack(data, conn)
                     
+                    elif msg_type == "back_pressure":
+                        await self._handle_back_pressure(data, conn)
+                    
                     elif msg_type == "error":
                         logger.warning(
                             f"Router error: {data.get('message', 'unknown')}"
                         )
+                    
+                    elif msg_type == "gossip":
+                        await self._handle_gossip_message(data, conn)
                     
                     else:
                         logger.debug(f"Unknown message type from router: {msg_type}")
@@ -944,6 +1515,9 @@ class NodeClient:
         sent_at = data.get("sent_at")
         if sent_at:
             conn.ping_latency_ms = (time.time() - sent_at) * 1000
+            
+            # Update our own health observation for this router
+            self._update_own_observation(conn.router.router_id, conn)
     
     async def _handle_ack(
         self,
@@ -961,6 +1535,107 @@ class NodeClient:
         else:
             conn.ack_failure += 1
             logger.debug(f"Message {message_id} delivery failed")
+        
+        # Update health observation after ACK
+        self._update_own_observation(conn.router.router_id, conn)
+    
+    async def _handle_gossip_message(
+        self,
+        data: Dict[str, Any],
+        conn: RouterConnection,
+    ) -> None:
+        """Handle incoming health gossip from router."""
+        payload = data.get("payload", {})
+        
+        try:
+            gossip = HealthGossip.from_dict(payload)
+            self._handle_gossip(gossip)
+            
+            # Optionally propagate if TTL > 1
+            if gossip.ttl > 1:
+                # Decrement TTL and forward to other routers
+                gossip.ttl -= 1
+                await self._propagate_gossip(gossip, exclude_router=conn.router.router_id)
+                
+        except Exception as e:
+            logger.warning(f"Failed to process gossip: {e}")
+    
+    async def _propagate_gossip(
+        self,
+        gossip: HealthGossip,
+        exclude_router: Optional[str] = None,
+    ) -> None:
+        """
+        Propagate gossip to other connected routers (excluding source).
+        
+        This enables multi-hop gossip propagation for better network coverage.
+        """
+        gossip_data = gossip.to_dict()
+        
+        for router_id, conn in list(self.connections.items()):
+            # Skip the router we received from
+            if router_id == exclude_router:
+                continue
+            
+            if conn.websocket.closed:
+                continue
+            
+            try:
+                await conn.websocket.send_json({
+                    "type": "gossip",
+                    "payload": gossip_data,
+                })
+                logger.debug(f"Propagated gossip to router {router_id[:16]}...")
+            except Exception as e:
+                logger.debug(f"Failed to propagate gossip to {router_id[:16]}...: {e}")
+    
+    async def _handle_back_pressure(
+        self,
+        data: Dict[str, Any],
+        conn: RouterConnection,
+    ) -> None:
+        """Handle back-pressure signal from router.
+        
+        When a router signals back-pressure, we should:
+        1. Mark the router as under back-pressure
+        2. Avoid sending to this router until the suggested retry delay
+        3. Try alternative routers for pending messages
+        
+        Args:
+            data: Back-pressure message with active, load_pct, retry_after_ms
+            conn: The router connection that sent the signal
+        """
+        active = data.get("active", True)
+        load_pct = data.get("load_pct", 0)
+        retry_after_ms = data.get("retry_after_ms", 1000)
+        reason = data.get("reason", "")
+        
+        router_id = conn.router.router_id
+        
+        if active:
+            # Router is under load - mark it and set retry time
+            conn.back_pressure_active = True
+            conn.back_pressure_until = time.time() + (retry_after_ms / 1000)
+            conn.back_pressure_retry_ms = retry_after_ms
+            
+            logger.warning(
+                f"Router {router_id[:16]}... signaled BACK-PRESSURE: "
+                f"load={load_pct:.1f}%, retry_after={retry_after_ms}ms, reason={reason}"
+            )
+            
+            # Update stats
+            self._stats["back_pressure_received"] = self._stats.get("back_pressure_received", 0) + 1
+        else:
+            # Back-pressure released
+            conn.back_pressure_active = False
+            conn.back_pressure_until = 0.0
+            
+            logger.info(
+                f"Router {router_id[:16]}... RELEASED back-pressure: load={load_pct:.1f}%"
+            )
+            
+            # Update stats
+            self._stats["back_pressure_released"] = self._stats.get("back_pressure_released", 0) + 1
     
     # -------------------------------------------------------------------------
     # E2E ACK HANDLING
@@ -1181,14 +1856,21 @@ class NodeClient:
     # ROUTER SELECTION
     # -------------------------------------------------------------------------
     
-    def _select_router(self) -> Optional[RouterInfo]:
+    def _select_router(self, exclude_back_pressured: bool = True) -> Optional[RouterInfo]:
         """
-        Select the best router based on health metrics.
+        Select the best router based on aggregated health metrics.
         
-        Uses weighted random selection based on:
-        - ACK success rate
-        - Current load
-        - Ping latency
+        Uses weighted random selection combining:
+        - Own observations (direct connection metrics)
+        - Peer observations (gossip from other nodes)
+        - Back-pressure status (avoid overloaded routers)
+        
+        Own observations are weighted higher (default 0.7 vs 0.3 for peers)
+        to ensure we trust our own experience more than hearsay.
+        
+        Args:
+            exclude_back_pressured: If True, exclude routers under back-pressure.
+                                   Set to False to include all routers as fallback.
         
         Returns:
             Selected RouterInfo or None if no routers available
@@ -1205,8 +1887,41 @@ class NodeClient:
         if not candidates:
             return None
         
-        # Calculate weights based on health score
-        weights = [max(0.01, conn.health_score) for conn in candidates]
+        # Filter out routers under back-pressure if requested
+        if exclude_back_pressured:
+            non_bp_candidates = [
+                conn for conn in candidates
+                if not conn.is_under_back_pressure
+            ]
+            
+            if non_bp_candidates:
+                candidates = non_bp_candidates
+            elif candidates:
+                # All routers are under back-pressure - log warning and use anyway
+                logger.warning(
+                    f"All {len(candidates)} routers under back-pressure, "
+                    "selecting least loaded"
+                )
+                # Sort by back_pressure_until (prefer ones that will release soonest)
+                candidates.sort(key=lambda c: c.back_pressure_until)
+        
+        # Calculate weights using aggregated health (own + peer observations)
+        weights = []
+        for conn in candidates:
+            # Get aggregated score combining own and peer observations
+            aggregated = self._get_aggregated_health(conn.router.router_id)
+            
+            # Combine with direct connection health for robustness
+            direct_score = conn.health_score
+            
+            # Blend: 60% aggregated (includes peer gossip), 40% direct
+            combined_score = (aggregated * 0.6) + (direct_score * 0.4)
+            
+            # Apply penalty for back-pressured routers (if included)
+            if conn.is_under_back_pressure:
+                combined_score *= 0.1  # 90% penalty
+            
+            weights.append(max(0.01, combined_score))
         
         # Weighted random selection
         selected = random.choices(candidates, weights=weights, k=1)[0]
@@ -1573,6 +2288,280 @@ class NodeClient:
         }
 
 
+    # -------------------------------------------------------------------------
+    # HEALTH GOSSIP
+    # -------------------------------------------------------------------------
+    
+    def _update_own_observation(self, router_id: str, conn: RouterConnection) -> None:
+        """
+        Update our own health observation for a router based on connection metrics.
+        
+        Called after receiving pong, after ACK success/failure, etc.
+        """
+        now = time.time()
+        
+        obs = RouterHealthObservation(
+            router_id=router_id,
+            latency_ms=conn.ping_latency_ms,
+            success_rate=conn.ack_success_rate,
+            failure_count=conn.ack_failure,
+            success_count=conn.ack_success,
+            last_seen=now,
+            load_pct=conn.router.capacity.get("current_load_pct", 0),
+        )
+        
+        self._own_observations[router_id] = obs
+    
+    def _get_aggregated_health(self, router_id: str) -> float:
+        """
+        Get aggregated health score for a router combining own and peer observations.
+        
+        Own observations are weighted higher (default 0.7 vs 0.3 for peers).
+        
+        Returns:
+            Health score from 0.0 to 1.0
+        """
+        own_obs = self._own_observations.get(router_id)
+        
+        # Collect peer observations for this router
+        peer_obs_list = []
+        now = time.time()
+        
+        for peer_id, peer_data in self._peer_observations.items():
+            obs = peer_data.get(router_id)
+            if obs:
+                # Check observation age
+                obs_age = now - obs.last_seen if hasattr(obs, 'last_seen') else float('inf')
+                if obs_age <= self.observation_max_age:
+                    peer_obs_list.append(obs)
+        
+        # Calculate own health score
+        if own_obs:
+            own_score = self._calculate_observation_score(own_obs)
+        else:
+            own_score = None
+        
+        # Calculate average peer health score
+        if peer_obs_list:
+            peer_scores = [self._calculate_observation_score(obs) for obs in peer_obs_list]
+            peer_score = sum(peer_scores) / len(peer_scores)
+        else:
+            peer_score = None
+        
+        # Combine with weights
+        if own_score is not None and peer_score is not None:
+            return (own_score * self.own_observation_weight + 
+                    peer_score * self.peer_observation_weight)
+        elif own_score is not None:
+            return own_score
+        elif peer_score is not None:
+            # If we only have peer data, use it but trust it less
+            return peer_score * 0.8  # 20% penalty for no direct observation
+        else:
+            return 0.5  # No data, neutral score
+    
+    def _calculate_observation_score(self, obs: RouterHealthObservation) -> float:
+        """
+        Calculate health score from a single observation.
+        
+        Combines:
+        - Success rate (50% weight)
+        - Latency score (30% weight)  
+        - Load score (20% weight)
+        """
+        # Success rate component
+        success_score = obs.success_rate * 0.5
+        
+        # Latency component (lower is better, cap at 500ms)
+        latency_score = max(0, 1.0 - (obs.latency_ms / 500)) * 0.3
+        
+        # Load component (lower is better)
+        load_score = (1.0 - (obs.load_pct / 100)) * 0.2
+        
+        return success_score + latency_score + load_score
+    
+    def _sample_observations_for_gossip(self) -> List[RouterHealthObservation]:
+        """
+        Sample observations to include in gossip message.
+        
+        Prioritizes recent observations and limits to max_observations_per_gossip
+        to keep gossip lightweight.
+        """
+        now = time.time()
+        
+        # Filter to recent observations
+        recent_obs = []
+        for router_id, obs in self._own_observations.items():
+            obs_age = now - obs.last_seen if obs.last_seen > 0 else float('inf')
+            if obs_age <= self.observation_max_age:
+                recent_obs.append((obs_age, obs))
+        
+        # Sort by recency (most recent first)
+        recent_obs.sort(key=lambda x: x[0])
+        
+        # Take up to max_observations_per_gossip
+        return [obs for _, obs in recent_obs[:self.max_observations_per_gossip]]
+    
+    def _create_gossip_message(self) -> HealthGossip:
+        """Create a health gossip message with our observations."""
+        observations = self._sample_observations_for_gossip()
+        
+        return HealthGossip(
+            source_node_id=self.node_id,
+            timestamp=time.time(),
+            observations=observations,
+            ttl=self.gossip_ttl,
+        )
+    
+    async def _gossip_loop(self) -> None:
+        """
+        Periodically broadcast health gossip to connected peers.
+        
+        Gossip is sent via all connected routers to reach peer nodes.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(self.gossip_interval)
+                if not self._running:
+                    break
+                
+                # Update observations from current connections
+                for router_id, conn in self.connections.items():
+                    self._update_own_observation(router_id, conn)
+                
+                # Create and broadcast gossip
+                if self._own_observations:
+                    gossip = self._create_gossip_message()
+                    await self._broadcast_gossip(gossip)
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Gossip loop error: {e}")
+    
+    async def _broadcast_gossip(self, gossip: HealthGossip) -> None:
+        """
+        Broadcast gossip message to all connected routers.
+        
+        The router will forward to other connected nodes.
+        """
+        gossip_data = gossip.to_dict()
+        
+        for router_id, conn in list(self.connections.items()):
+            if conn.websocket.closed:
+                continue
+            
+            try:
+                await conn.websocket.send_json({
+                    "type": "gossip",
+                    "payload": gossip_data,
+                })
+                self._stats["gossip_sent"] += 1
+                logger.debug(
+                    f"Sent gossip with {len(gossip.observations)} observations "
+                    f"via router {router_id[:16]}..."
+                )
+            except Exception as e:
+                logger.debug(f"Failed to send gossip via {router_id[:16]}...: {e}")
+    
+    def _handle_gossip(self, gossip: HealthGossip) -> None:
+        """
+        Handle incoming health gossip from a peer.
+        
+        Updates peer observation cache, pruning old entries if needed.
+        """
+        source = gossip.source_node_id
+        
+        # Don't process our own gossip
+        if source == self.node_id:
+            return
+        
+        # Check TTL for propagation
+        if gossip.ttl <= 0:
+            return
+        
+        self._stats["gossip_received"] += 1
+        
+        # Initialize peer observation dict if needed
+        if source not in self._peer_observations:
+            self._peer_observations[source] = {}
+        
+        # Update observations from this peer
+        for obs in gossip.observations:
+            self._peer_observations[source][obs.router_id] = obs
+        
+        # Prune if too many peer observations
+        self._prune_peer_observations()
+        
+        logger.debug(
+            f"Received gossip from {source[:16]}... with "
+            f"{len(gossip.observations)} observations"
+        )
+    
+    def _prune_peer_observations(self) -> None:
+        """
+        Prune old or excess peer observations to limit memory usage.
+        """
+        now = time.time()
+        total_obs = 0
+        
+        # First pass: remove old observations
+        for peer_id in list(self._peer_observations.keys()):
+            peer_data = self._peer_observations[peer_id]
+            for router_id in list(peer_data.keys()):
+                obs = peer_data[router_id]
+                obs_age = now - obs.last_seen if obs.last_seen > 0 else float('inf')
+                if obs_age > self.observation_max_age:
+                    del peer_data[router_id]
+            
+            # Remove peer if no observations left
+            if not peer_data:
+                del self._peer_observations[peer_id]
+            else:
+                total_obs += len(peer_data)
+        
+        # Second pass: if still over limit, remove oldest
+        if total_obs > self.max_peer_observations:
+            # Collect all observations with age
+            all_obs = []
+            for peer_id, peer_data in self._peer_observations.items():
+                for router_id, obs in peer_data.items():
+                    all_obs.append((peer_id, router_id, obs.last_seen))
+            
+            # Sort by age (oldest first)
+            all_obs.sort(key=lambda x: x[2])
+            
+            # Remove oldest until under limit
+            to_remove = len(all_obs) - self.max_peer_observations
+            for i in range(to_remove):
+                peer_id, router_id, _ = all_obs[i]
+                if peer_id in self._peer_observations:
+                    self._peer_observations[peer_id].pop(router_id, None)
+    
+    def get_health_observations(self) -> Dict[str, Any]:
+        """
+        Get current health observation state for debugging/monitoring.
+        
+        Returns:
+            Dict with own observations, peer observation count, and aggregated scores
+        """
+        aggregated_scores = {}
+        for router_id in self._own_observations.keys():
+            aggregated_scores[router_id] = round(self._get_aggregated_health(router_id), 3)
+        
+        return {
+            "own_observations": {
+                router_id: obs.to_dict()
+                for router_id, obs in self._own_observations.items()
+            },
+            "peer_observation_count": sum(
+                len(peer_data) for peer_data in self._peer_observations.values()
+            ),
+            "peers_with_observations": len(self._peer_observations),
+            "aggregated_health_scores": aggregated_scores,
+        }
+
+
 # =============================================================================
 # CONVENIENCE FUNCTIONS
 # =============================================================================
@@ -1582,6 +2571,7 @@ def create_node_client(
     private_key: Ed25519PrivateKey,
     encryption_private_key: X25519PrivateKey,
     discovery_client: Optional[DiscoveryClient] = None,
+    seed_urls: Optional[List[str]] = None,
     **kwargs,
 ) -> NodeClient:
     """
@@ -1591,13 +2581,32 @@ def create_node_client(
         private_key: Ed25519 private key for signing
         encryption_private_key: X25519 private key for decryption
         discovery_client: Optional pre-configured discovery client
+        seed_urls: Optional list of seed URLs for router discovery.
+                   Primary seed should be first, with fallbacks following.
+                   These are added to the discovery client as custom seeds.
         **kwargs: Additional NodeClient parameters
         
     Returns:
         Configured NodeClient
+        
+    Example:
+        # With seed redundancy (Issue #108)
+        node = create_node_client(
+            private_key=my_private_key,
+            encryption_private_key=my_enc_key,
+            seed_urls=[
+                "https://primary.seed.com:8470",
+                "https://backup1.seed.com:8470",
+                "https://backup2.seed.com:8470",
+            ],
+        )
     """
     # Derive node ID from public key
     node_id = private_key.public_key().public_bytes_raw().hex()
+    
+    # Include seed_urls in kwargs if provided
+    if seed_urls:
+        kwargs["seed_urls"] = seed_urls
     
     client = NodeClient(
         node_id=node_id,

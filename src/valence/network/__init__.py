@@ -13,7 +13,7 @@ from valence.network.crypto import (
     decrypt_message,
 )
 from valence.network.messages import RelayMessage, DeliverPayload
-from valence.network.router import RouterNode, Connection, QueuedMessage
+from valence.network.router import RouterNode, Connection, QueuedMessage, NodeConnectionHistory
 from valence.network.seed import (
     SeedNode,
     RouterRecord,
@@ -21,6 +21,10 @@ from valence.network.seed import (
     HealthStatus,
     HealthState,
     HealthMonitor,
+    # Regional routing utilities
+    COUNTRY_TO_CONTINENT,
+    get_continent,
+    compute_region_score,
 )
 from valence.network.discovery import (
     DiscoveryClient,
@@ -35,7 +39,11 @@ from valence.network.node import (
     NodeClient,
     RouterConnection,
     PendingMessage,
+    PendingAck,
     FailoverState,
+    ConnectionState,
+    StateConflictError,
+    StaleStateError,
     NodeError,
     NoRoutersAvailableError,
     create_node_client,
@@ -55,6 +63,7 @@ __all__ = [
     "RouterNode",
     "Connection",
     "QueuedMessage",
+    "NodeConnectionHistory",
     # Seed
     "SeedNode",
     "RouterRecord",
@@ -63,6 +72,10 @@ __all__ = [
     "HealthStatus",
     "HealthState",
     "HealthMonitor",
+    # Regional Routing
+    "COUNTRY_TO_CONTINENT",
+    "get_continent",
+    "compute_region_score",
     # Discovery
     "DiscoveryClient",
     "RouterInfo",
@@ -75,7 +88,11 @@ __all__ = [
     "NodeClient",
     "RouterConnection",
     "PendingMessage",
+    "PendingAck",
     "FailoverState",
+    "ConnectionState",
+    "StateConflictError",
+    "StaleStateError",
     "NodeError",
     "NoRoutersAvailableError",
     "create_node_client",

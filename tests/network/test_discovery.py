@@ -6,6 +6,7 @@ Tests cover:
 - DiscoveryClient configuration
 - Cache behavior (TTL, invalidation, selection)
 - Multi-seed fallback
+- Seed health tracking (Issue #108)
 - Signature verification
 - Preferences handling
 - Error handling
@@ -23,6 +24,7 @@ import pytest
 from valence.network.discovery import (
     DiscoveryClient,
     RouterInfo,
+    SeedHealth,
     DiscoveryError,
     NoSeedsAvailableError,
     SignatureVerificationError,
@@ -777,3 +779,304 @@ class TestErrorHandling:
         with patch.object(discovery_client, '_query_seed', side_effect=connection_error):
             with pytest.raises(NoSeedsAvailableError):
                 await discovery_client.discover_routers(count=1)
+
+
+# =============================================================================
+# SEED HEALTH TESTS (Issue #108)
+# =============================================================================
+
+
+class TestSeedHealth:
+    """Tests for SeedHealth data model."""
+    
+    def test_seed_health_creation(self):
+        """Test SeedHealth creation with defaults."""
+        health = SeedHealth(url="https://seed.example.com:8470")
+        
+        assert health.url == "https://seed.example.com:8470"
+        assert health.success_count == 0
+        assert health.failure_count == 0
+        assert health.total_requests == 0
+        assert health.success_rate == 1.0  # Default when no requests
+    
+    def test_record_success(self):
+        """Test recording successful requests."""
+        health = SeedHealth(url="https://seed.example.com:8470")
+        
+        health.record_success(100.0)  # 100ms latency
+        
+        assert health.success_count == 1
+        assert health.failure_count == 0
+        assert health.total_requests == 1
+        assert health.success_rate == 1.0
+        assert health.last_latency_ms == 100.0
+        assert health.avg_latency_ms == 100.0
+        assert health.last_success > 0
+    
+    def test_record_failure(self):
+        """Test recording failed requests."""
+        health = SeedHealth(url="https://seed.example.com:8470")
+        
+        health.record_failure()
+        
+        assert health.success_count == 0
+        assert health.failure_count == 1
+        assert health.total_requests == 1
+        assert health.success_rate == 0.0
+        assert health.last_failure > 0
+    
+    def test_mixed_requests(self):
+        """Test recording mix of successes and failures."""
+        health = SeedHealth(url="https://seed.example.com:8470")
+        
+        health.record_success(100.0)
+        health.record_success(200.0)
+        health.record_failure()
+        health.record_success(150.0)
+        
+        assert health.success_count == 3
+        assert health.failure_count == 1
+        assert health.total_requests == 4
+        assert health.success_rate == 0.75
+        assert health.avg_latency_ms == 150.0  # (100+200+150)/3
+    
+    def test_health_score_calculation(self):
+        """Test health score calculation."""
+        # Healthy seed
+        healthy = SeedHealth(url="https://healthy.seed.com:8470")
+        healthy.record_success(50.0)
+        healthy.record_success(60.0)
+        healthy.record_success(55.0)
+        
+        # Unhealthy seed
+        unhealthy = SeedHealth(url="https://unhealthy.seed.com:8470")
+        unhealthy.record_failure()
+        unhealthy.record_failure()
+        unhealthy.record_success(3000.0)  # High latency
+        
+        assert healthy.health_score > unhealthy.health_score
+        assert healthy.health_score > 0.7  # Should be good
+        assert unhealthy.health_score < 0.5  # Should be poor
+    
+    def test_to_dict_from_dict(self):
+        """Test serialization and deserialization."""
+        original = SeedHealth(url="https://seed.example.com:8470")
+        original.record_success(100.0)
+        original.record_failure()
+        
+        data = original.to_dict()
+        restored = SeedHealth.from_dict(data)
+        
+        assert restored.url == original.url
+        assert restored.success_count == original.success_count
+        assert restored.failure_count == original.failure_count
+        assert restored.last_latency_ms == original.last_latency_ms
+
+
+class TestSeedHealthTracking:
+    """Tests for seed health tracking in DiscoveryClient."""
+    
+    def test_get_seed_health_creates_if_missing(self, discovery_client):
+        """_get_seed_health should create health object if missing."""
+        health = discovery_client._get_seed_health("https://new-seed.com:8470")
+        
+        assert health is not None
+        assert health.url == "https://new-seed.com:8470"
+        assert health.total_requests == 0
+    
+    def test_get_seed_health_normalizes_url(self, discovery_client):
+        """_get_seed_health should normalize trailing slashes."""
+        health1 = discovery_client._get_seed_health("https://seed.com:8470/")
+        health2 = discovery_client._get_seed_health("https://seed.com:8470")
+        
+        assert health1 is health2
+    
+    @pytest.mark.asyncio
+    async def test_query_tracks_success(self, discovery_client, router_info):
+        """Successful seed queries should be tracked."""
+        discovery_client.default_seeds = []
+        discovery_client.add_seed("https://good-seed.local:8470")
+        
+        # Mock successful response
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={
+            "routers": [router_info.to_dict()],
+            "other_seeds": [],
+        })
+        
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+        mock_session.post = MagicMock(return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_resp),
+            __aexit__=AsyncMock(),
+        ))
+        
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            await discovery_client._query_seed(
+                "https://good-seed.local:8470",
+                count=1,
+                preferences=None,
+            )
+        
+        health = discovery_client._get_seed_health("https://good-seed.local:8470")
+        assert health.success_count == 1
+        assert health.failure_count == 0
+        assert health.last_latency_ms > 0
+    
+    @pytest.mark.asyncio
+    async def test_query_tracks_failure(self, discovery_client):
+        """Failed seed queries should be tracked."""
+        discovery_client.default_seeds = []
+        discovery_client.add_seed("https://bad-seed.local:8470")
+        
+        # Mock failed response
+        mock_resp = AsyncMock()
+        mock_resp.status = 500
+        mock_resp.text = AsyncMock(return_value="Internal Server Error")
+        
+        # Configure __aexit__ to NOT suppress exceptions (return False/None)
+        mock_post_cm = AsyncMock()
+        mock_post_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_post_cm.__aexit__ = AsyncMock(return_value=False)
+        
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session.post = MagicMock(return_value=mock_post_cm)
+        
+        with patch('aiohttp.ClientSession', return_value=mock_session):
+            with pytest.raises(DiscoveryError):
+                await discovery_client._query_seed(
+                    "https://bad-seed.local:8470",
+                    count=1,
+                    preferences=None,
+                )
+        
+        health = discovery_client._get_seed_health("https://bad-seed.local:8470")
+        assert health.success_count == 0
+        assert health.failure_count == 1
+    
+    @pytest.mark.asyncio
+    async def test_tracks_last_successful_seed(self, discovery_client, router_info):
+        """discover_routers should track last successful seed."""
+        discovery_client.default_seeds = []
+        discovery_client.add_seed("https://seed1.local:8470")
+        discovery_client.add_seed("https://seed2.local:8470")
+        
+        async def mock_query(seed_url, count, prefs):
+            if "seed1" in seed_url:
+                raise DiscoveryError("Seed1 down")
+            return [router_info]
+        
+        with patch.object(discovery_client, '_query_seed', side_effect=mock_query):
+            routers = await discovery_client.discover_routers(count=1)
+        
+        assert discovery_client.last_successful_seed == "https://seed2.local:8470"
+    
+    def test_seed_ordering_by_health(self, discovery_client):
+        """Seeds should be ordered by health score when enabled."""
+        discovery_client.order_seeds_by_health = True
+        discovery_client.default_seeds = []
+        discovery_client.add_seed("https://bad-seed.local:8470")
+        discovery_client.add_seed("https://good-seed.local:8470")
+        
+        # Record health data
+        bad_health = discovery_client._get_seed_health("https://bad-seed.local:8470")
+        bad_health.record_failure()
+        bad_health.record_failure()
+        
+        good_health = discovery_client._get_seed_health("https://good-seed.local:8470")
+        good_health.record_success(50.0)
+        good_health.record_success(60.0)
+        
+        seeds = discovery_client._get_seed_list()
+        
+        # Good seed should come before bad seed
+        good_idx = seeds.index("https://good-seed.local:8470")
+        bad_idx = seeds.index("https://bad-seed.local:8470")
+        assert good_idx < bad_idx
+    
+    def test_last_successful_seed_prioritized(self, discovery_client):
+        """Last successful seed should be tried first."""
+        discovery_client.add_seed("https://seed1.local:8470")
+        discovery_client.add_seed("https://seed2.local:8470")
+        
+        # Mark seed2 as last successful with good health
+        discovery_client.last_successful_seed = "https://seed2.local:8470"
+        health = discovery_client._get_seed_health("https://seed2.local:8470")
+        health.record_success(100.0)
+        
+        seeds = discovery_client._get_seed_list()
+        
+        # Last successful should be first
+        assert seeds[0] == "https://seed2.local:8470"
+    
+    def test_get_seed_health_report(self, discovery_client):
+        """get_seed_health_report should return health data for all seeds."""
+        discovery_client.add_seed("https://seed1.local:8470")
+        discovery_client.add_seed("https://seed2.local:8470")
+        
+        # Record some health data
+        health1 = discovery_client._get_seed_health("https://seed1.local:8470")
+        health1.record_success(100.0)
+        
+        health2 = discovery_client._get_seed_health("https://seed2.local:8470")
+        health2.record_failure()
+        
+        report = discovery_client.get_seed_health_report()
+        
+        assert len(report) >= 2
+        assert any(r["url"] == "https://seed1.local:8470" for r in report)
+        assert any(r["url"] == "https://seed2.local:8470" for r in report)
+        
+        # Should be sorted by health score
+        assert report[0]["health_score"] >= report[-1]["health_score"]
+    
+    def test_reset_seed_health_single(self, discovery_client):
+        """reset_seed_health should reset a single seed."""
+        health = discovery_client._get_seed_health("https://seed.local:8470")
+        health.record_success(100.0)
+        health.record_failure()
+        
+        discovery_client.reset_seed_health("https://seed.local:8470")
+        
+        health = discovery_client._get_seed_health("https://seed.local:8470")
+        assert health.success_count == 0
+        assert health.failure_count == 0
+    
+    def test_reset_seed_health_all(self, discovery_client):
+        """reset_seed_health without args should reset all."""
+        health1 = discovery_client._get_seed_health("https://seed1.local:8470")
+        health1.record_success(100.0)
+        
+        health2 = discovery_client._get_seed_health("https://seed2.local:8470")
+        health2.record_failure()
+        
+        discovery_client.last_successful_seed = "https://seed1.local:8470"
+        
+        discovery_client.reset_seed_health()
+        
+        assert len(discovery_client.seed_health) == 0
+        assert discovery_client.last_successful_seed is None
+    
+    def test_seed_health_disabled_ordering(self, discovery_client):
+        """When order_seeds_by_health is False, original order is preserved."""
+        discovery_client.order_seeds_by_health = False
+        discovery_client.default_seeds = []
+        discovery_client.add_seed("https://bad-seed.local:8470")
+        discovery_client.add_seed("https://good-seed.local:8470")
+        
+        # Record health data
+        bad_health = discovery_client._get_seed_health("https://bad-seed.local:8470")
+        bad_health.record_failure()
+        bad_health.record_failure()
+        
+        good_health = discovery_client._get_seed_health("https://good-seed.local:8470")
+        good_health.record_success(50.0)
+        
+        seeds = discovery_client._get_seed_list()
+        
+        # Bad seed should still come first (insertion order)
+        assert seeds[0] == "https://bad-seed.local:8470"

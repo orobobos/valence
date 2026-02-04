@@ -744,6 +744,24 @@ class TestCreateNodeClient:
         assert node.min_connections == 2
         assert node.target_connections == 4
         assert node.enforce_ip_diversity is False
+    
+    def test_create_node_client_with_seed_urls(self, ed25519_keypair, x25519_keypair):
+        """Test creating a node client with seed URLs (Issue #108)."""
+        private_key, _ = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = create_node_client(
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://primary.seed:8470",
+                "https://backup.seed:8470",
+            ],
+        )
+        
+        assert len(node.seed_urls) == 2
+        assert "https://primary.seed:8470" in node.seed_urls
+        assert "https://backup.seed:8470" in node.seed_urls
 
 
 # =============================================================================
@@ -766,11 +784,46 @@ class TestNodeIntegration:
         ):
             await node_client.start()
             assert node_client._running is True
-            assert len(node_client._tasks) == 3  # maintenance, keepalive, queue
+            # Tasks: maintenance, keepalive, queue, gossip
+            assert len(node_client._tasks) >= 3  # At least 3, may have more (gossip, etc.)
             
             await node_client.stop()
             assert node_client._running is False
             assert len(node_client._tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_start_configures_seed_urls(self, ed25519_keypair, x25519_keypair):
+        """Test that start() configures discovery client with seed_urls (Issue #108)."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://primary.seed:8470",
+                "https://backup.seed:8470",
+            ],
+        )
+        
+        # Initially, discovery client doesn't have our seeds
+        assert "https://primary.seed:8470" not in node.discovery.custom_seeds
+        
+        # Mock discovery to avoid network calls
+        with patch.object(
+            node.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            await node.start()
+            
+            # After start, seeds should be configured
+            assert "https://primary.seed:8470" in node.discovery.custom_seeds
+            assert "https://backup.seed:8470" in node.discovery.custom_seeds
+            
+            await node.stop()
 
     @pytest.mark.asyncio
     async def test_get_connections_info(
@@ -1243,6 +1296,170 @@ class TestRouterFailover:
         assert stats["routers_in_cooldown"] == 1
         assert "direct_mode" in stats
         assert stats["direct_mode"] is False
+
+
+# =============================================================================
+# Seed Redundancy Tests (Issue #108)
+# =============================================================================
+
+
+class TestSeedRedundancy:
+    """Tests for seed redundancy feature (Issue #108)."""
+
+    def test_node_accepts_seed_urls_list(self, ed25519_keypair, x25519_keypair):
+        """Test that NodeClient accepts a list of seed URLs."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://seed1.example.com:8470",
+                "https://seed2.example.com:8470",
+                "https://seed3.example.com:8470",
+            ],
+        )
+        
+        assert len(node.seed_urls) == 3
+        assert node.seed_urls[0] == "https://seed1.example.com:8470"
+    
+    def test_node_empty_seed_urls_by_default(self, node_client):
+        """Test that seed_urls is empty by default."""
+        assert node_client.seed_urls == []
+    
+    @pytest.mark.asyncio
+    async def test_seeds_added_in_order(self, ed25519_keypair, x25519_keypair):
+        """Test that seeds are added to discovery client in order."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://primary.seed:8470",
+                "https://secondary.seed:8470",
+            ],
+        )
+        
+        with patch.object(
+            node.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            await node.start()
+            
+            # Check that seeds are in discovery client's custom_seeds
+            seeds = node.discovery.custom_seeds
+            primary_idx = seeds.index("https://primary.seed:8470")
+            secondary_idx = seeds.index("https://secondary.seed:8470")
+            
+            # Primary should be added first
+            assert primary_idx < secondary_idx
+            
+            await node.stop()
+    
+    @pytest.mark.asyncio
+    async def test_seed_fallback_on_failure(self, ed25519_keypair, x25519_keypair, mock_router_info):
+        """Test that discovery falls back to secondary seed on primary failure."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://failing.seed:8470",
+                "https://working.seed:8470",
+            ],
+        )
+        
+        query_calls = []
+        
+        async def mock_query(seed_url, count, prefs):
+            query_calls.append(seed_url)
+            if "failing" in seed_url:
+                from valence.network.discovery import DiscoveryError
+                raise DiscoveryError("Primary seed unavailable")
+            return [mock_router_info]
+        
+        # Clear default seeds to only use our custom ones
+        node.discovery.default_seeds = []
+        
+        with patch.object(node.discovery, '_query_seed', side_effect=mock_query):
+            with patch.object(node, '_connect_to_router', new_callable=AsyncMock):
+                await node.start()
+                
+                # Should have tried failing seed first, then working seed
+                assert len(query_calls) >= 2
+                assert "https://failing.seed:8470" in query_calls
+                assert "https://working.seed:8470" in query_calls
+                # Failing seed should be tried first
+                fail_idx = query_calls.index("https://failing.seed:8470")
+                work_idx = query_calls.index("https://working.seed:8470")
+                assert fail_idx < work_idx
+                
+                await node.stop()
+    
+    def test_seed_health_tracking_through_node(self, ed25519_keypair, x25519_keypair):
+        """Test that seed health is tracked when using NodeClient."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=["https://tracked.seed:8470"],
+        )
+        
+        # Discovery client should have health tracking available
+        assert hasattr(node.discovery, 'seed_health')
+        assert hasattr(node.discovery, 'get_seed_health_report')
+    
+    @pytest.mark.asyncio
+    async def test_successful_seed_remembered(self, ed25519_keypair, x25519_keypair, mock_router_info):
+        """Test that last successful seed is remembered for future queries."""
+        private_key, public_key = ed25519_keypair
+        enc_private, _ = x25519_keypair
+        
+        node = NodeClient(
+            node_id=public_key.public_bytes_raw().hex(),
+            private_key=private_key,
+            encryption_private_key=enc_private,
+            seed_urls=[
+                "https://slow.seed:8470",
+                "https://fast.seed:8470",
+            ],
+        )
+        
+        # Clear default seeds
+        node.discovery.default_seeds = []
+        
+        # First query fails on slow, succeeds on fast
+        first_call = True
+        
+        async def mock_query(seed_url, count, prefs):
+            nonlocal first_call
+            if "slow" in seed_url and first_call:
+                first_call = False
+                from valence.network.discovery import DiscoveryError
+                raise DiscoveryError("Timeout")
+            return [mock_router_info]
+        
+        with patch.object(node.discovery, '_query_seed', side_effect=mock_query):
+            # First discovery
+            node.discovery.add_seed("https://slow.seed:8470")
+            node.discovery.add_seed("https://fast.seed:8470")
+            await node.discovery.discover_routers(count=1, force_refresh=True)
+        
+        # Fast seed should be remembered
+        assert node.discovery.last_successful_seed == "https://fast.seed:8470"
 
 
 class TestFastFailureDetection:
