@@ -1,0 +1,254 @@
+"""Sharing API endpoints.
+
+Implements:
+- POST /api/v1/share - Share a belief with a recipient
+- GET /api/v1/shares - List shares
+- GET /api/v1/shares/{id} - Get share details
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Optional
+
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+from ..privacy.sharing import (
+    ShareRequest,
+    ShareResult,
+    Share,
+    ConsentChainEntry,
+    SharingService,
+)
+from ..privacy.types import SharePolicy, ShareLevel
+
+logger = logging.getLogger(__name__)
+
+
+# Global sharing service instance (initialized in app startup)
+_sharing_service: Optional[SharingService] = None
+
+
+def get_sharing_service() -> Optional[SharingService]:
+    """Get the sharing service instance."""
+    return _sharing_service
+
+
+def set_sharing_service(service: SharingService) -> None:
+    """Set the sharing service instance."""
+    global _sharing_service
+    _sharing_service = service
+
+
+async def share_belief_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/share - Share a belief with a specific recipient.
+    
+    Request Body (JSON):
+        {
+            "belief_id": "uuid-string",
+            "recipient_did": "did:key:...",
+            "policy": {  // optional, defaults to DIRECT
+                "level": "direct",
+                "enforcement": "cryptographic",
+                "recipients": ["did:key:..."]
+            }
+        }
+        
+    Returns:
+        200: Share result with share_id, consent_chain_id, etc.
+        400: Invalid request (validation error)
+        500: Server error
+    """
+    service = get_sharing_service()
+    if service is None:
+        return JSONResponse(
+            {"error": "Sharing service not initialized"},
+            status_code=503,
+        )
+    
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(
+            {"error": "Invalid JSON body"},
+            status_code=400,
+        )
+    
+    # Validate required fields
+    belief_id = body.get("belief_id")
+    if not belief_id:
+        return JSONResponse(
+            {"error": "belief_id is required"},
+            status_code=400,
+        )
+    
+    recipient_did = body.get("recipient_did")
+    if not recipient_did:
+        return JSONResponse(
+            {"error": "recipient_did is required"},
+            status_code=400,
+        )
+    
+    # Parse optional policy
+    policy = None
+    if "policy" in body and body["policy"] is not None:
+        try:
+            policy = SharePolicy.from_dict(body["policy"])
+        except (KeyError, ValueError) as e:
+            return JSONResponse(
+                {"error": f"Invalid policy: {e}"},
+                status_code=400,
+            )
+    
+    # Create share request
+    share_request = ShareRequest(
+        belief_id=belief_id,
+        recipient_did=recipient_did,
+        policy=policy,
+    )
+    
+    # Get sharer DID from authenticated context
+    # For now, use identity service's local DID
+    sharer_did = service.identity.get_did()
+    
+    try:
+        result = await service.share(share_request, sharer_did)
+        
+        return JSONResponse(
+            {
+                "success": True,
+                "share_id": result.share_id,
+                "consent_chain_id": result.consent_chain_id,
+                "encrypted_for": result.encrypted_for,
+                "created_at": result.created_at,
+            },
+            status_code=200,
+        )
+        
+    except ValueError as e:
+        return JSONResponse(
+            {"error": str(e), "success": False},
+            status_code=400,
+        )
+    except Exception as e:
+        logger.exception(f"Error sharing belief: {e}")
+        return JSONResponse(
+            {"error": "Internal server error", "success": False},
+            status_code=500,
+        )
+
+
+async def list_shares_endpoint(request: Request) -> JSONResponse:
+    """GET /api/v1/shares - List shares.
+    
+    Query Parameters:
+        sharer_did: Filter by sharer DID (optional)
+        recipient_did: Filter by recipient DID (optional)
+        limit: Maximum results (optional, default 100)
+        
+    Returns:
+        200: List of shares
+        500: Server error
+    """
+    service = get_sharing_service()
+    if service is None:
+        return JSONResponse(
+            {"error": "Sharing service not initialized"},
+            status_code=503,
+        )
+    
+    sharer_did = request.query_params.get("sharer_did")
+    recipient_did = request.query_params.get("recipient_did")
+    
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+        limit = min(limit, 1000)  # Cap at 1000
+    except ValueError:
+        limit = 100
+    
+    try:
+        shares = await service.list_shares(
+            sharer_did=sharer_did,
+            recipient_did=recipient_did,
+            limit=limit,
+        )
+        
+        return JSONResponse(
+            {
+                "success": True,
+                "shares": [_share_to_dict(s) for s in shares],
+                "count": len(shares),
+            },
+            status_code=200,
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error listing shares: {e}")
+        return JSONResponse(
+            {"error": "Internal server error", "success": False},
+            status_code=500,
+        )
+
+
+async def get_share_endpoint(request: Request) -> JSONResponse:
+    """GET /api/v1/shares/{id} - Get share details.
+    
+    Path Parameters:
+        id: Share UUID
+        
+    Returns:
+        200: Share details
+        404: Share not found
+        500: Server error
+    """
+    service = get_sharing_service()
+    if service is None:
+        return JSONResponse(
+            {"error": "Sharing service not initialized"},
+            status_code=503,
+        )
+    
+    share_id = request.path_params.get("id")
+    if not share_id:
+        return JSONResponse(
+            {"error": "Share ID is required"},
+            status_code=400,
+        )
+    
+    try:
+        share = await service.get_share(share_id)
+        
+        if share is None:
+            return JSONResponse(
+                {"error": "Share not found"},
+                status_code=404,
+            )
+        
+        return JSONResponse(
+            {
+                "success": True,
+                "share": _share_to_dict(share),
+            },
+            status_code=200,
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error getting share: {e}")
+        return JSONResponse(
+            {"error": "Internal server error", "success": False},
+            status_code=500,
+        )
+
+
+def _share_to_dict(share: Share) -> dict[str, Any]:
+    """Convert a Share to a JSON-serializable dict."""
+    return {
+        "id": share.id,
+        "consent_chain_id": share.consent_chain_id,
+        "recipient_did": share.recipient_did,
+        "created_at": share.created_at,
+        "accessed_at": share.accessed_at,
+        # Note: encrypted_envelope is not exposed in the listing
+    }
