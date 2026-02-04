@@ -24,19 +24,21 @@ Your agent knows you. Together, agents know *everything*.
 
 ---
 
-## ⚠️ Privacy Disclosure
+## 🔒 Privacy by Default
 
-**Important:** By default, Valence uses OpenAI's embedding API to generate semantic search vectors. This means:
+**Good news:** Valence now uses local embeddings by default. Your data stays on your machine.
 
-- **Belief content is sent to OpenAI** for embedding generation
-- OpenAI's [data usage policies](https://openai.com/policies/api-data-usage-policies) apply
-- Content is processed via `text-embedding-3-small` model
+- **Default: Local embeddings** using `bge-small-en-v1.5` (384 dimensions)
+- No API keys required for basic operation
+- Semantic search works entirely offline
 
-**To avoid external data processing:**
+**Optional: OpenAI embeddings** (if you prefer higher-dimensional vectors):
 
-1. Set `VALENCE_EMBEDDING_PROVIDER=local` (uses local embedding model - coming soon)
-2. Use `--opt-out-federation` flag when creating beliefs to exclude them from federation sharing
-3. Run Valence with embeddings disabled (keyword search only)
+1. Set `VALENCE_EMBEDDING_PROVIDER=openai`
+2. Provide `OPENAI_API_KEY`
+3. Uses `text-embedding-3-small` (1536 dimensions)
+
+Note: When using OpenAI provider, belief content is sent to OpenAI's API. See their [data usage policies](https://openai.com/policies/api-data-usage-policies).
 
 We believe in transparency. Your data sovereignty matters.
 
@@ -80,8 +82,10 @@ docker run -d --name valence-db -p 5432:5432 \
 | `VKB_DB_NAME` | Database name | `valence` |
 | `VKB_DB_USER` | Database user | `valence` |
 | `VKB_DB_PASSWORD` | Database password | (required) |
-| `OPENAI_API_KEY` | OpenAI API key for embeddings | (required unless using local) |
-| `VALENCE_EMBEDDING_PROVIDER` | Embedding provider: `openai` or `local` | `openai` |
+| `VALENCE_EMBEDDING_PROVIDER` | Embedding provider: `local` or `openai` | `local` |
+| `VALENCE_EMBEDDING_MODEL_PATH` | Local model name/path | `BAAI/bge-small-en-v1.5` |
+| `VALENCE_EMBEDDING_DEVICE` | Device for local model: `cpu` or `cuda` | `cpu` |
+| `OPENAI_API_KEY` | OpenAI API key (only for `openai` provider) | — |
 | `VALENCE_HOST` | Server bind host | `127.0.0.1` |
 | `VALENCE_PORT` | Server bind port | `8420` |
 | `VALENCE_OAUTH_ENABLED` | Enable OAuth 2.1 | `true` |

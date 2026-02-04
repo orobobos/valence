@@ -1,9 +1,9 @@
-"""Tests for embedding provider configuration (Issue #26).
+"""Tests for embedding provider configuration (Issue #26, #122).
 
 Verifies:
 - VALENCE_EMBEDDING_PROVIDER environment variable support
-- OpenAI provider (default)
-- Local provider stub
+- Local provider (default, uses bge-small-en-v1.5)
+- OpenAI provider (optional, requires API key)
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ class TestEmbeddingProvider:
 class TestGetEmbeddingProvider:
     """Test provider detection from environment."""
 
-    def test_default_is_openai(self):
-        """Default provider should be OpenAI."""
+    def test_default_is_local(self):
+        """Default provider should be LOCAL (privacy-first)."""
         with patch.dict(os.environ, {}, clear=True):
             # Remove VALENCE_EMBEDDING_PROVIDER if set
             os.environ.pop("VALENCE_EMBEDDING_PROVIDER", None)
             provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.OPENAI
+            assert provider == EmbeddingProvider.LOCAL
 
     def test_openai_from_env(self):
         """Should detect OpenAI from env."""
@@ -63,30 +63,44 @@ class TestGetEmbeddingProvider:
                 provider = get_embedding_provider()
                 assert provider == EmbeddingProvider.LOCAL
 
-    def test_unknown_defaults_to_openai(self):
-        """Unknown provider should default to OpenAI with warning."""
+    def test_unknown_defaults_to_local(self):
+        """Unknown provider should default to LOCAL with warning."""
         with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": "unknown-provider"}):
             provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.OPENAI
+            assert provider == EmbeddingProvider.LOCAL
 
 
 class TestLocalEmbedding:
-    """Test local embedding stub."""
+    """Test local embedding provider (bge-small-en-v1.5)."""
 
-    def test_local_embedding_not_implemented(self):
-        """Local embeddings should raise NotImplementedError (stub)."""
-        with pytest.raises(NotImplementedError) as exc_info:
-            generate_local_embedding("test text")
+    @pytest.fixture
+    def mock_local_model(self):
+        """Mock the local model to avoid loading it in tests."""
+        import numpy as np
+        from valence.embeddings.providers import local
         
-        assert "Local embeddings not yet implemented" in str(exc_info.value)
+        mock_model = MagicMock()
+        # Return normalized 384-dim vector
+        normalized_vec = np.random.randn(384).astype(np.float32)
+        normalized_vec = normalized_vec / np.linalg.norm(normalized_vec)
+        mock_model.encode.return_value = normalized_vec
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        
+        local._model = mock_model
+        yield mock_model
+        local.reset_model()
 
-    def test_local_embedding_helpful_message(self):
-        """Error message should guide users."""
-        with pytest.raises(NotImplementedError) as exc_info:
-            generate_local_embedding("test")
+    def test_local_embedding_returns_384_dimensions(self, mock_local_model):
+        """Local embeddings should return 384 dimensions."""
+        result = generate_local_embedding("test text")
         
-        error_msg = str(exc_info.value)
-        assert "VALENCE_EMBEDDING_PROVIDER=openai" in error_msg
+        assert len(result) == 384
+
+    def test_local_embedding_calls_encode(self, mock_local_model):
+        """Local embeddings should call model.encode."""
+        generate_local_embedding("test text")
+        
+        mock_local_model.encode.assert_called_once()
 
 
 class TestGenerateEmbedding:
@@ -106,13 +120,30 @@ class TestGenerateEmbedding:
             
             yield client
 
-    def test_uses_openai_by_default(self, mock_openai):
-        """Should use OpenAI when no provider specified."""
-        with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": "openai", "OPENAI_API_KEY": "test"}):
+    @pytest.fixture
+    def mock_local_model(self):
+        """Mock local model."""
+        import numpy as np
+        from valence.embeddings.providers import local
+        
+        mock_model = MagicMock()
+        normalized_vec = np.random.randn(384).astype(np.float32)
+        normalized_vec = normalized_vec / np.linalg.norm(normalized_vec)
+        mock_model.encode.return_value = normalized_vec
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        
+        local._model = mock_model
+        yield mock_model
+        local.reset_model()
+
+    def test_uses_local_by_default(self, mock_local_model):
+        """Should use LOCAL when no provider specified."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("VALENCE_EMBEDDING_PROVIDER", None)
             result = generate_embedding("test text")
             
-            assert len(result) == 1536
-            mock_openai.embeddings.create.assert_called_once()
+            assert len(result) == 384
+            mock_local_model.encode.assert_called_once()
 
     def test_explicit_openai_provider(self, mock_openai):
         """Should use OpenAI when explicitly specified."""
@@ -124,10 +155,12 @@ class TestGenerateEmbedding:
             
             assert len(result) == 1536
 
-    def test_explicit_local_provider_raises(self):
-        """Should raise for local provider (not implemented)."""
-        with pytest.raises(NotImplementedError):
-            generate_embedding("test", provider=EmbeddingProvider.LOCAL)
+    def test_explicit_local_provider(self, mock_local_model):
+        """Should use local when explicitly specified."""
+        result = generate_embedding("test", provider=EmbeddingProvider.LOCAL)
+        
+        assert len(result) == 384
+        mock_local_model.encode.assert_called_once()
 
     def test_truncates_long_text(self, mock_openai):
         """Should truncate text over 8000 chars."""

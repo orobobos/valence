@@ -38,13 +38,17 @@ class EmbeddingProvider(StrEnum):
 
 
 def get_embedding_provider() -> EmbeddingProvider:
-    """Get configured embedding provider from environment."""
-    provider = os.environ.get("VALENCE_EMBEDDING_PROVIDER", "openai").lower()
+    """Get configured embedding provider from environment.
+    
+    Defaults to 'local' for privacy and to avoid API costs.
+    Set VALENCE_EMBEDDING_PROVIDER=openai to use OpenAI embeddings.
+    """
+    provider = os.environ.get("VALENCE_EMBEDDING_PROVIDER", "local").lower()
     try:
         return EmbeddingProvider(provider)
     except ValueError:
-        logger.warning(f"Unknown embedding provider '{provider}', defaulting to 'openai'")
-        return EmbeddingProvider.OPENAI
+        logger.warning(f"Unknown embedding provider '{provider}', defaulting to 'local'")
+        return EmbeddingProvider.LOCAL
 
 
 # OpenAI client (lazy init)
@@ -65,30 +69,24 @@ def get_openai_client() -> OpenAI:
     return _openai_client
 
 
-def generate_local_embedding(text: str, dimensions: int = 1536) -> list[float]:
-    """Generate embedding using local model.
+def generate_local_embedding(text: str) -> list[float]:
+    """Generate embedding using local sentence-transformers model.
     
-    STUB: This is a placeholder for local embedding implementation.
-    When implemented, this should use a model like:
-    - sentence-transformers/all-MiniLM-L6-v2
-    - BAAI/bge-small-en-v1.5
+    Uses BAAI/bge-small-en-v1.5 by default, which produces 384-dimensional
+    L2-normalized embeddings with excellent semantic similarity.
     
-    For now, returns zeros to indicate local embeddings aren't available.
+    Configure via environment variables:
+    - VALENCE_EMBEDDING_MODEL_PATH: Model name or local path
+    - VALENCE_EMBEDDING_DEVICE: Device to use (cpu|cuda)
     
     Args:
         text: Text to embed
-        dimensions: Output dimensions (should match OpenAI for compatibility)
         
     Returns:
-        Embedding vector (currently zeros as stub)
-        
-    Raises:
-        NotImplementedError: Always, until local model is integrated
+        384-dimensional embedding vector (L2 normalized)
     """
-    raise NotImplementedError(
-        "Local embeddings not yet implemented. "
-        "Set VALENCE_EMBEDDING_PROVIDER=openai or contribute local model support!"
-    )
+    from .providers.local import generate_embedding as local_embed
+    return local_embed(text)
 
 
 def generate_embedding(

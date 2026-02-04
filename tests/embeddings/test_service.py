@@ -60,13 +60,14 @@ class TestGetOpenaiClient:
 class TestGenerateEmbedding:
     """Tests for generate_embedding function."""
 
-    def test_success(self, env_with_openai_key, mock_openai):
-        """Should generate embedding."""
+    def test_success_with_openai(self, env_with_openai_key, mock_openai):
+        """Should generate embedding with OpenAI provider."""
         from valence.embeddings import service
+        from valence.embeddings.service import EmbeddingProvider
 
         service._openai_client = mock_openai
 
-        result = service.generate_embedding("test text")
+        result = service.generate_embedding("test text", provider=EmbeddingProvider.OPENAI)
 
         assert len(result) == 1536
         mock_openai.embeddings.create.assert_called_once()
@@ -74,11 +75,12 @@ class TestGenerateEmbedding:
     def test_truncates_long_text(self, env_with_openai_key, mock_openai):
         """Should truncate text longer than 8000 chars."""
         from valence.embeddings import service
+        from valence.embeddings.service import EmbeddingProvider
 
         service._openai_client = mock_openai
 
         long_text = "x" * 10000
-        service.generate_embedding(long_text)
+        service.generate_embedding(long_text, provider=EmbeddingProvider.OPENAI)
 
         call_args = mock_openai.embeddings.create.call_args
         assert len(call_args.kwargs["input"]) == 8000
@@ -86,10 +88,11 @@ class TestGenerateEmbedding:
     def test_uses_specified_model(self, env_with_openai_key, mock_openai):
         """Should use specified model."""
         from valence.embeddings import service
+        from valence.embeddings.service import EmbeddingProvider
 
         service._openai_client = mock_openai
 
-        service.generate_embedding("test", model="text-embedding-3-large")
+        service.generate_embedding("test", model="text-embedding-3-large", provider=EmbeddingProvider.OPENAI)
 
         call_args = mock_openai.embeddings.create.call_args
         assert call_args.kwargs["model"] == "text-embedding-3-large"
@@ -153,10 +156,12 @@ class TestEmbedContent:
         with patch("valence.embeddings.service.get_cursor", fake_get_cursor):
             yield mock_cursor
 
-    def test_embed_belief(self, env_with_openai_key, mock_openai, mock_get_cursor):
+    def test_embed_belief(self, env_with_openai_key, mock_openai, mock_get_cursor, monkeypatch):
         """Should embed belief content."""
         from valence.embeddings import service
 
+        # Set provider to OpenAI for this test
+        monkeypatch.setenv("VALENCE_EMBEDDING_PROVIDER", "openai")
         service._openai_client = mock_openai
 
         # Mock embedding type lookup
