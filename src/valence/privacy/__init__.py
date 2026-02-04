@@ -15,7 +15,13 @@ from .migration import (
     migrate_all_beliefs_sync,
     get_share_policy_json,
 )
-from .trust import TrustEdge
+from .trust import (
+    TrustEdge,
+    TrustEdge4D,
+    TrustGraphStore,
+    get_trust_graph_store,
+    DecayModel,
+)
 from .domains import (
     Domain,
     DomainMembership,
@@ -50,6 +56,10 @@ __all__ = [
     "get_share_policy_json",
     # Trust
     "TrustEdge",
+    "TrustEdge4D",
+    "TrustGraphStore",
+    "get_trust_graph_store",
+    "DecayModel",
     # Domains
     "Domain",
     "DomainMembership",
