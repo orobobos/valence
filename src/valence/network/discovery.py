@@ -171,13 +171,14 @@ class RouterInfo:
     
     router_id: str  # Ed25519 public key (hex)
     endpoints: List[str]  # ["ip:port", ...]
-    capacity: Dict[str, Any]  # {max_connections, current_load_pct, bandwidth_mbps}
+    capacity: Dict[str, Any]  # {max_connections, current_load_pct, bandwidth_mbps, asn}
     health: Dict[str, Any]  # {last_seen, uptime_pct, avg_latency_ms}
     regions: List[str]  # Geographic regions served
     features: List[str]  # Supported features/protocols
     router_signature: str = ""  # Signature of registration data
     region: Optional[str] = None  # ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
     coordinates: Optional[List[float]] = None  # [latitude, longitude]
+    asn: Optional[str] = None  # Autonomous System Number for eclipse protection
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -194,6 +195,8 @@ class RouterInfo:
             result["region"] = self.region
         if self.coordinates:
             result["coordinates"] = self.coordinates
+        if self.asn:
+            result["asn"] = self.asn
         return result
     
     @classmethod
@@ -204,6 +207,9 @@ class RouterInfo:
             coordinates = [float(coords[0]), float(coords[1])]
         else:
             coordinates = None
+        
+        # Get ASN from data or capacity dict (eclipse mitigation - Issue #118)
+        asn = data.get("asn") or data.get("capacity", {}).get("asn")
             
         return cls(
             router_id=data.get("router_id", ""),
@@ -215,6 +221,7 @@ class RouterInfo:
             router_signature=data.get("router_signature", ""),
             region=data.get("region"),
             coordinates=coordinates,
+            asn=asn,
         )
 
 
@@ -408,6 +415,166 @@ class DiscoveryClient:
     def get_cached_routers(self) -> List[RouterInfo]:
         """Get all cached routers (for inspection)."""
         return list(self.router_cache.values())
+    
+    async def report_misbehavior(self, report: "MisbehaviorReport") -> bool:
+        """
+        Report router misbehavior to seed nodes (Issue #119).
+        
+        Seeds aggregate reports from multiple nodes to identify
+        systematically misbehaving routers.
+        
+        Args:
+            report: MisbehaviorReport object with evidence
+            
+        Returns:
+            True if report was submitted to at least one seed
+        """
+        from .messages import MisbehaviorReport  # Import here to avoid circular
+        
+        # Get ordered seed list
+        seeds = self._get_seed_list()
+        
+        if not seeds:
+            logger.warning("No seeds available to report misbehavior")
+            return False
+        
+        report_data = report.to_dict()
+        submitted = False
+        
+        # Try to submit to at least one seed
+        for seed_url in seeds:
+            try:
+                url = f"{seed_url.rstrip('/')}/report_misbehavior"
+                
+                timeout = aiohttp.ClientTimeout(total=self.request_timeout)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, json=report_data) as resp:
+                        if resp.status == 200:
+                            submitted = True
+                            logger.info(
+                                f"Submitted misbehavior report for router "
+                                f"{report.router_id[:16]}... to {seed_url}"
+                            )
+                            # Track seed success
+                            health = self._get_seed_health(seed_url)
+                            health.record_success(0)  # No latency tracking for reports
+                            self._stats["seed_successes"] += 1
+                            break  # One successful submission is enough
+                        else:
+                            logger.warning(
+                                f"Seed {seed_url} rejected misbehavior report: "
+                                f"HTTP {resp.status}"
+                            )
+            except Exception as e:
+                logger.debug(f"Failed to submit report to {seed_url}: {e}")
+                continue
+        
+        return submitted
+    
+    def select_diverse_routers(
+        self,
+        routers: List[RouterInfo],
+        count: int,
+        exclude_subnets: Optional[set] = None,
+        exclude_asns: Optional[set] = None,
+    ) -> List[RouterInfo]:
+        """
+        Select routers with network diversity for eclipse protection.
+        
+        This method implements eclipse attack mitigation by ensuring selected
+        routers are from different network operators (Issue #118).
+        
+        Args:
+            routers: List of router candidates
+            count: Number of routers to select
+            exclude_subnets: /16 subnets to avoid (already connected)
+            exclude_asns: ASNs to avoid (already connected)
+            
+        Returns:
+            List of diverse routers (may be less than count if diversity
+            cannot be achieved)
+        """
+        import ipaddress
+        
+        exclude_subnets = exclude_subnets or set()
+        exclude_asns = exclude_asns or set()
+        
+        selected = []
+        used_subnets = set(exclude_subnets)
+        used_asns = set(exclude_asns)
+        
+        # First pass: prioritize routers with different subnets AND ASNs
+        for router in routers:
+            if len(selected) >= count:
+                break
+            
+            subnet = self._get_router_subnet(router)
+            asn = router.asn or router.capacity.get("asn")
+            
+            # Skip if we already have this subnet or ASN
+            if subnet and subnet in used_subnets:
+                continue
+            if asn and str(asn) in used_asns:
+                continue
+            
+            selected.append(router)
+            if subnet:
+                used_subnets.add(subnet)
+            if asn:
+                used_asns.add(str(asn))
+        
+        # Second pass: if we need more, relax ASN requirement
+        if len(selected) < count:
+            for router in routers:
+                if len(selected) >= count:
+                    break
+                if router in selected:
+                    continue
+                
+                subnet = self._get_router_subnet(router)
+                if subnet and subnet in used_subnets:
+                    continue
+                
+                selected.append(router)
+                if subnet:
+                    used_subnets.add(subnet)
+        
+        # Third pass: fill remaining if needed (sacrificing diversity)
+        if len(selected) < count:
+            for router in routers:
+                if len(selected) >= count:
+                    break
+                if router not in selected:
+                    selected.append(router)
+        
+        return selected
+    
+    def _get_router_subnet(self, router: RouterInfo) -> Optional[str]:
+        """Extract /16 subnet from router endpoint."""
+        import ipaddress
+        
+        if not router.endpoints:
+            return None
+        
+        try:
+            endpoint = router.endpoints[0]
+            if endpoint.startswith("["):
+                # IPv6: [ipv6]:port
+                bracket_end = endpoint.find("]")
+                if bracket_end == -1:
+                    return None
+                host = endpoint[1:bracket_end]
+            else:
+                host = endpoint.split(":")[0]
+            
+            ip = ipaddress.ip_address(host)
+            if ip.version == 4:
+                network = ipaddress.ip_network(f"{ip}/16", strict=False)
+            else:
+                network = ipaddress.ip_network(f"{ip}/48", strict=False)
+            return str(network)
+        except Exception:
+            return None
     
     # -------------------------------------------------------------------------
     # SEED QUERYING

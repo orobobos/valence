@@ -522,6 +522,31 @@ class NodeClient:
     enforce_ip_diversity: bool = True
     ip_diversity_prefix: int = 16  # /16 subnet diversity
     
+    # ==========================================================================
+    # ECLIPSE ATTACK MITIGATIONS (Issue #118)
+    # ==========================================================================
+    
+    # Router diversity enforcement - require routers from different ASNs/subnets
+    # This prevents an attacker from surrounding the node with controlled routers
+    min_diverse_subnets: int = 2  # Minimum different /16 subnets required
+    min_diverse_asns: int = 2  # Minimum different ASNs (if available)
+    asn_diversity_enabled: bool = True  # Enable ASN-based diversity
+    
+    # Periodic router rotation - prevent long-term eclipse
+    rotation_interval: float = 3600.0  # 1 hour - rotate one router periodically
+    rotation_max_age: float = 7200.0  # 2 hours - max time for any single connection
+    rotation_enabled: bool = True  # Enable periodic rotation
+    
+    # Anomaly detection - detect coordinated router failures
+    anomaly_window: float = 60.0  # Window to detect correlated failures
+    anomaly_threshold: int = 3  # Number of similar failures to trigger alert
+    anomaly_detection_enabled: bool = True  # Enable anomaly detection
+    
+    # Out-of-band seed verification
+    oob_verification_enabled: bool = False  # Disabled by default
+    oob_verification_url: Optional[str] = None  # URL for OOB verification
+    oob_verification_interval: float = 3600.0  # 1 hour between checks
+    
     # State
     connections: Dict[str, RouterConnection] = field(default_factory=dict)
     discovery: DiscoveryClient = field(default_factory=DiscoveryClient)
@@ -579,6 +604,15 @@ class NodeClient:
     _last_real_message_time: float = field(default=0.0, repr=False)
     _cover_traffic_task: Optional[asyncio.Task] = field(default=None, repr=False)
     
+    # Traffic analysis mitigation internal state (Issue #120)
+    _message_batch: List[Dict[str, Any]] = field(default_factory=list, repr=False)
+    _batch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _batch_flush_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _constant_rate_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _last_batch_flush: float = field(default=0.0, repr=False)
+    _last_constant_rate_send: float = field(default=0.0, repr=False)
+    _pending_batch_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    
     # Statistics
     _stats: Dict[str, int] = field(default_factory=lambda: {
         "messages_sent": 0,
@@ -604,6 +638,13 @@ class NodeClient:
         "anomalies_detected": 0,
         "oob_verifications": 0,
         "oob_verification_failures": 0,
+        # Traffic analysis mitigation stats (Issue #120)
+        "batched_messages": 0,
+        "batch_flushes": 0,
+        "jitter_delays_applied": 0,
+        "total_jitter_ms": 0,
+        "constant_rate_padding_sent": 0,
+        "messages_with_jitter": 0,
     })
     
     # -------------------------------------------------------------------------
@@ -762,6 +803,22 @@ class NodeClient:
         if self.state_file:
             self._tasks.append(asyncio.create_task(self._state_persistence_loop()))
         
+        # Start traffic analysis mitigation tasks (Issue #120)
+        if self.traffic_analysis_mitigation.batching.enabled:
+            self._batch_flush_task = asyncio.create_task(self._batch_flush_loop())
+            self._tasks.append(self._batch_flush_task)
+            logger.info(
+                f"Message batching enabled: interval={self.traffic_analysis_mitigation.batching.batch_interval_ms}ms, "
+                f"max_size={self.traffic_analysis_mitigation.batching.max_batch_size}"
+            )
+        
+        if self.traffic_analysis_mitigation.constant_rate.enabled:
+            self._constant_rate_task = asyncio.create_task(self._constant_rate_loop())
+            self._tasks.append(self._constant_rate_task)
+            logger.info(
+                f"Constant-rate sending enabled: {self.traffic_analysis_mitigation.constant_rate.messages_per_minute} msg/min"
+            )
+        
         logger.info(
             f"Node started with {len(self.connections)} router connections"
         )
@@ -810,6 +867,7 @@ class NodeClient:
         content: bytes,
         require_ack: bool = True,
         ack_timeout_ms: Optional[int] = None,
+        bypass_mitigations: bool = False,
     ) -> str:
         """
         Send an encrypted message to a recipient via router.
@@ -818,12 +876,19 @@ class NodeClient:
         public key. The router only sees the encrypted payload and
         routing metadata.
         
+        Traffic Analysis Mitigations (Issue #120):
+        - If batching is enabled, message is queued and sent with batch
+        - If jitter is enabled, a random delay is added before sending
+        - If constant-rate is enabled, message waits for next send slot
+        - Messages may be padded to fixed sizes for traffic analysis resistance
+        
         Args:
             recipient_id: Recipient's node ID (Ed25519 public key hex)
             recipient_public_key: Recipient's X25519 public key for encryption
             content: Raw message bytes to encrypt and send
             require_ack: Whether to require end-to-end acknowledgment
             ack_timeout_ms: ACK timeout in milliseconds (default: 30000)
+            bypass_mitigations: Skip batching/jitter (for internal use)
             
         Returns:
             Message ID (UUID string)
@@ -834,6 +899,77 @@ class NodeClient:
         message_id = str(uuid.uuid4())
         timeout_ms = ack_timeout_ms or self.default_ack_timeout_ms
         
+        # Update real message time for cover traffic tracking
+        self._last_real_message_time = time.time()
+        
+        # Apply traffic analysis mitigations if enabled and not bypassed
+        tam = self.traffic_analysis_mitigation
+        
+        # Pad message content if enabled (for traffic analysis resistance)
+        if tam.batching.enabled or tam.constant_rate.enabled:
+            if tam.constant_rate.enabled and tam.constant_rate.pad_to_size > 0:
+                original_size = len(content)
+                content = pad_message(content, tam.constant_rate.pad_to_size)
+                if len(content) > original_size:
+                    self._stats["bytes_padded"] += len(content) - original_size
+        
+        # Route through batching if enabled
+        if tam.batching.enabled and not bypass_mitigations:
+            return await self._add_to_batch(
+                message_id=message_id,
+                recipient_id=recipient_id,
+                recipient_public_key=recipient_public_key,
+                content=content,
+                require_ack=require_ack,
+                timeout_ms=timeout_ms,
+            )
+        
+        # Route through constant-rate if enabled (without batching)
+        if tam.constant_rate.enabled and not bypass_mitigations:
+            return await self._schedule_constant_rate_send(
+                message_id=message_id,
+                recipient_id=recipient_id,
+                recipient_public_key=recipient_public_key,
+                content=content,
+                require_ack=require_ack,
+                timeout_ms=timeout_ms,
+            )
+        
+        # Apply timing jitter if enabled
+        if tam.jitter.enabled and not bypass_mitigations:
+            jitter_delay = tam.jitter.get_jitter_delay()
+            if jitter_delay > 0:
+                self._stats["jitter_delays_applied"] += 1
+                self._stats["total_jitter_ms"] += int(jitter_delay * 1000)
+                self._stats["messages_with_jitter"] += 1
+                logger.debug(f"Applying {jitter_delay*1000:.1f}ms jitter to message {message_id}")
+                await asyncio.sleep(jitter_delay)
+        
+        # Direct send path (no batching/constant-rate)
+        return await self._send_message_direct(
+            message_id=message_id,
+            recipient_id=recipient_id,
+            recipient_public_key=recipient_public_key,
+            content=content,
+            require_ack=require_ack,
+            timeout_ms=timeout_ms,
+        )
+    
+    async def _send_message_direct(
+        self,
+        message_id: str,
+        recipient_id: str,
+        recipient_public_key: X25519PublicKey,
+        content: bytes,
+        require_ack: bool,
+        timeout_ms: int,
+    ) -> str:
+        """
+        Send a message directly without traffic analysis mitigations.
+        
+        This is the core send path used by both direct sends and
+        batched/scheduled sends after mitigation processing.
+        """
         # Select best router
         router = self._select_router()
         if not router:
@@ -887,6 +1023,7 @@ class NodeClient:
             "active_connections": len(self.connections),
             "queued_messages": len(self.message_queue),
             "connected_subnets": len(self._connected_subnets),
+            "connected_asns": len(self._connected_asns),  # Eclipse mitigation (Issue #118)
             "pending_acks": len(self.pending_acks),
             "seen_messages_cached": len(self.seen_messages),
             "routers_in_cooldown": sum(
@@ -900,6 +1037,10 @@ class NodeClient:
             "direct_mode": self.direct_mode,
             "own_health_observations": len(self._own_observations),
             "peer_observation_sources": len(self._peer_observations),
+            # Eclipse mitigation stats (Issue #118)
+            "diversity_met": self._check_diversity_requirements(),
+            "recent_anomalies": len(self._anomaly_alerts),
+            "oob_verified_routers": len(self._oob_verified_routers),
         }
     
     def get_connections(self) -> List[Dict[str, Any]]:
@@ -1301,6 +1442,7 @@ class NodeClient:
             subnet_key = str(network)
             
             if subnet_key in self._connected_subnets:
+                self._stats["diversity_rejections"] += 1
                 return False
             
             return True
@@ -1309,8 +1451,66 @@ class NodeClient:
             logger.debug(f"IP diversity check error: {e}")
             return True  # Allow on error
     
+    def _check_asn_diversity(self, router: RouterInfo) -> bool:
+        """
+        Check if connecting to this router maintains ASN diversity.
+        
+        ASN (Autonomous System Number) diversity helps prevent eclipse attacks
+        where an attacker controls multiple IPs in the same network.
+        
+        Args:
+            router: Router to check
+            
+        Returns:
+            True if router passes ASN diversity check
+        """
+        if not self.asn_diversity_enabled:
+            return True
+        
+        # Get ASN from router info (if provided by seed)
+        asn = router.asn or router.capacity.get("asn") or router.health.get("asn")
+        if not asn:
+            # No ASN info available - allow but log
+            logger.debug(f"No ASN info for router {router.router_id[:16]}...")
+            return True
+        
+        asn_str = str(asn)
+        
+        # Check if we already have a router from this ASN
+        if asn_str in self._connected_asns:
+            # Only reject if we have enough diversity already
+            if len(self._connected_asns) >= self.min_diverse_asns:
+                self._stats["diversity_rejections"] += 1
+                logger.debug(
+                    f"Rejecting router {router.router_id[:16]}... - "
+                    f"already connected to ASN {asn_str}"
+                )
+                return False
+        
+        return True
+    
+    def _check_diversity_requirements(self) -> bool:
+        """
+        Check if current connections meet diversity requirements.
+        
+        Used to detect potential eclipse attack scenarios.
+        
+        Returns:
+            True if diversity requirements are met
+        """
+        # Check subnet diversity
+        if len(self._connected_subnets) < min(self.min_diverse_subnets, len(self.connections)):
+            return False
+        
+        # Check ASN diversity (if enabled and data available)
+        if self.asn_diversity_enabled and self._connected_asns:
+            if len(self._connected_asns) < min(self.min_diverse_asns, len(self.connections)):
+                return False
+        
+        return True
+    
     def _add_subnet(self, router: RouterInfo) -> None:
-        """Track the subnet of a connected router."""
+        """Track the subnet and ASN of a connected router."""
         if not router.endpoints:
             return
         
@@ -1342,9 +1542,14 @@ class NodeClient:
             
         except Exception:
             pass
+        
+        # Track ASN (Issue #118 - Eclipse mitigation)
+        asn = router.asn or router.capacity.get("asn") or router.health.get("asn")
+        if asn:
+            self._connected_asns.add(str(asn))
     
     def _remove_subnet(self, router: RouterInfo) -> None:
-        """Remove subnet tracking when disconnecting from router."""
+        """Remove subnet and ASN tracking when disconnecting from router."""
         if not router.endpoints:
             return
         
@@ -1376,6 +1581,11 @@ class NodeClient:
             
         except Exception:
             pass
+        
+        # Remove ASN tracking (Issue #118 - Eclipse mitigation)
+        asn = router.asn or router.capacity.get("asn") or router.health.get("asn")
+        if asn:
+            self._connected_asns.discard(str(asn))
     
     async def _connect_to_router(self, router: RouterInfo) -> None:
         """
@@ -2776,6 +2986,162 @@ class NodeClient:
         }
     
     # -------------------------------------------------------------------------
+    # CIRCUIT BUILDING (Issue #115 - Enhanced Privacy)
+    # -------------------------------------------------------------------------
+    
+    async def build_circuit(
+        self,
+        hop_count: Optional[int] = None,
+        exclude_routers: Optional[List[str]] = None,
+    ) -> Optional[Circuit]:
+        """
+        Build a new circuit through multiple routers for enhanced privacy.
+        
+        Args:
+            hop_count: Number of hops (default: circuit_min_hops to circuit_max_hops)
+            exclude_routers: Router IDs to exclude from circuit
+            
+        Returns:
+            Circuit object if successful, None if circuit building failed
+        """
+        async with self._circuit_lock:
+            if hop_count is None:
+                hop_count = random.randint(self.circuit_min_hops, self.circuit_max_hops)
+            hop_count = max(self.circuit_min_hops, min(hop_count, self.circuit_max_hops))
+            
+            exclude = set(exclude_routers or [])
+            
+            # Discover routers for circuit
+            try:
+                routers = await self.discovery.discover_routers(
+                    count=hop_count * 2,
+                    preferences={"exclude": list(exclude)},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to discover routers for circuit: {e}")
+                return None
+            
+            if len(routers) < hop_count:
+                logger.warning(f"Not enough routers for circuit")
+                return None
+            
+            # Select diverse routers
+            selected = self._select_diverse_routers(routers, hop_count)
+            if len(selected) < hop_count:
+                return None
+            
+            # Create circuit
+            circuit = Circuit(
+                hops=[CircuitHop(router_id=r.router_id) for r in selected],
+                expires_at=time.time() + self.circuit_lifetime,
+                max_messages=self.circuit_max_messages,
+            )
+            
+            # For now, simulate circuit creation with placeholder keys
+            # In a full implementation, this would do the DH key exchange
+            hop_keys = [os.urandom(32) for _ in selected]
+            
+            self._circuits[circuit.circuit_id] = circuit
+            self._circuit_keys[circuit.circuit_id] = hop_keys
+            self._stats["circuits_built"] = self._stats.get("circuits_built", 0) + 1
+            
+            logger.info(f"Circuit {circuit.circuit_id[:8]}... built with {hop_count} hops")
+            return circuit
+    
+    def _select_diverse_routers(
+        self,
+        routers: List[RouterInfo],
+        count: int,
+    ) -> List[RouterInfo]:
+        """Select routers ensuring network diversity."""
+        selected = []
+        used_subnets = set()
+        
+        for router in routers:
+            if len(selected) >= count:
+                break
+            
+            subnet = self._get_router_subnet(router)
+            if subnet and subnet in used_subnets:
+                continue
+            
+            selected.append(router)
+            if subnet:
+                used_subnets.add(subnet)
+        
+        # Fill remaining if needed
+        if len(selected) < count:
+            for router in routers:
+                if len(selected) >= count:
+                    break
+                if router not in selected:
+                    selected.append(router)
+        
+        return selected
+    
+    def _get_router_subnet(self, router: RouterInfo) -> Optional[str]:
+        """Extract /16 subnet from router endpoint."""
+        if not router.endpoints:
+            return None
+        
+        try:
+            endpoint = router.endpoints[0]
+            if endpoint.startswith("["):
+                bracket_end = endpoint.find("]")
+                if bracket_end == -1:
+                    return None
+                host = endpoint[1:bracket_end]
+            else:
+                host = endpoint.split(":")[0]
+            
+            ip = ipaddress.ip_address(host)
+            if ip.version == 4:
+                network = ipaddress.ip_network(f"{ip}/16", strict=False)
+            else:
+                network = ipaddress.ip_network(f"{ip}/48", strict=False)
+            return str(network)
+        except Exception:
+            return None
+    
+    async def _destroy_circuit(
+        self,
+        circuit_id: str,
+        reason: str = "",
+    ) -> None:
+        """Tear down a circuit and clean up resources."""
+        circuit = self._circuits.pop(circuit_id, None)
+        self._circuit_keys.pop(circuit_id, None)
+        self._circuit_ephemeral_keys.pop(circuit_id, None)
+        
+        if self._active_circuit_id == circuit_id:
+            self._active_circuit_id = None
+        
+        self._stats["circuits_destroyed"] = self._stats.get("circuits_destroyed", 0) + 1
+        if circuit:
+            logger.info(f"Circuit {circuit_id[:8]}... destroyed: {reason}")
+    
+    def get_circuit_stats(self) -> Dict[str, Any]:
+        """Get circuit-related statistics."""
+        circuits_info = []
+        for circuit_id, circuit in self._circuits.items():
+            circuits_info.append({
+                "circuit_id": circuit_id[:8] + "...",
+                "hop_count": circuit.hop_count,
+                "message_count": circuit.message_count,
+                "is_expired": circuit.is_expired,
+                "needs_rotation": circuit.needs_rotation,
+            })
+        
+        return {
+            "circuits_active": len(self._circuits),
+            "circuits_built": self._stats.get("circuits_built", 0),
+            "circuits_destroyed": self._stats.get("circuits_destroyed", 0),
+            "messages_via_circuit": self._stats.get("messages_via_circuit", 0),
+            "active_circuit_id": self._active_circuit_id[:8] + "..." if self._active_circuit_id else None,
+            "circuits": circuits_info,
+        }
+    
+    # -------------------------------------------------------------------------
     # COVER TRAFFIC (Issue #116)
     # -------------------------------------------------------------------------
     
@@ -2958,6 +3324,425 @@ class NodeClient:
             self._cover_traffic_task.cancel()
         
         logger.info("Cover traffic disabled")
+
+    # =========================================================================
+    # TRAFFIC ANALYSIS MITIGATIONS (Issue #120)
+    # =========================================================================
+    
+    async def _add_to_batch(
+        self,
+        message_id: str,
+        recipient_id: str,
+        recipient_public_key: X25519PublicKey,
+        content: bytes,
+        require_ack: bool,
+        timeout_ms: int,
+    ) -> str:
+        """
+        Add a message to the current batch for delayed sending.
+        
+        Messages are collected in a batch and sent together at regular
+        intervals to obscure individual message timing.
+        
+        Args:
+            message_id: Unique message identifier
+            recipient_id: Recipient's node ID
+            recipient_public_key: Recipient's encryption key
+            content: Message content (possibly padded)
+            require_ack: Whether ACK is required
+            timeout_ms: ACK timeout
+            
+        Returns:
+            Message ID
+        """
+        async with self._batch_lock:
+            batch_entry = {
+                "message_id": message_id,
+                "recipient_id": recipient_id,
+                "recipient_public_key": recipient_public_key,
+                "content": content,
+                "require_ack": require_ack,
+                "timeout_ms": timeout_ms,
+                "queued_at": time.time(),
+            }
+            self._message_batch.append(batch_entry)
+            self._stats["batched_messages"] += 1
+            
+            logger.debug(
+                f"Message {message_id} added to batch "
+                f"(batch size: {len(self._message_batch)})"
+            )
+            
+            # Check if batch is full - trigger immediate flush
+            if len(self._message_batch) >= self.traffic_analysis_mitigation.batching.max_batch_size:
+                logger.debug(f"Batch full, triggering flush")
+                self._pending_batch_event.set()
+        
+        return message_id
+    
+    async def _batch_flush_loop(self) -> None:
+        """
+        Background task to flush message batches at regular intervals.
+        
+        Sends accumulated messages when:
+        - Batch interval has elapsed
+        - Batch is full (max_batch_size reached)
+        - At least min_batch_size messages are queued (or timeout)
+        """
+        logger.debug("Batch flush loop started")
+        
+        while self._running:
+            try:
+                batch_interval = self.traffic_analysis_mitigation.batching.get_effective_interval()
+                
+                # Wait for interval or until batch is full
+                try:
+                    await asyncio.wait_for(
+                        self._pending_batch_event.wait(),
+                        timeout=batch_interval,
+                    )
+                    # Event was set (batch full) - reset it
+                    self._pending_batch_event.clear()
+                except asyncio.TimeoutError:
+                    # Interval elapsed - normal flush
+                    pass
+                
+                if not self._running:
+                    break
+                
+                await self._flush_batch()
+                
+            except asyncio.CancelledError:
+                # Final flush before shutdown
+                await self._flush_batch()
+                break
+            except Exception as e:
+                logger.warning(f"Batch flush loop error: {e}")
+        
+        logger.debug("Batch flush loop stopped")
+    
+    async def _flush_batch(self) -> None:
+        """
+        Flush all messages in the current batch.
+        
+        If randomize_order is enabled, messages are shuffled before sending
+        to further obscure timing patterns.
+        """
+        async with self._batch_lock:
+            if not self._message_batch:
+                return
+            
+            batch = self._message_batch.copy()
+            self._message_batch.clear()
+        
+        # Randomize order if configured
+        if self.traffic_analysis_mitigation.batching.randomize_order:
+            random.shuffle(batch)
+        
+        self._stats["batch_flushes"] += 1
+        self._last_batch_flush = time.time()
+        
+        logger.debug(f"Flushing batch of {len(batch)} messages")
+        
+        # Apply jitter between messages in batch
+        jitter_config = self.traffic_analysis_mitigation.jitter
+        
+        for entry in batch:
+            try:
+                # Apply inter-message jitter if enabled
+                if jitter_config.enabled:
+                    jitter_delay = jitter_config.get_jitter_delay()
+                    if jitter_delay > 0:
+                        self._stats["jitter_delays_applied"] += 1
+                        self._stats["total_jitter_ms"] += int(jitter_delay * 1000)
+                        await asyncio.sleep(jitter_delay)
+                
+                # Send the message
+                await self._send_message_direct(
+                    message_id=entry["message_id"],
+                    recipient_id=entry["recipient_id"],
+                    recipient_public_key=entry["recipient_public_key"],
+                    content=entry["content"],
+                    require_ack=entry["require_ack"],
+                    timeout_ms=entry["timeout_ms"],
+                )
+                
+            except Exception as e:
+                logger.warning(
+                    f"Failed to send batched message {entry['message_id']}: {e}"
+                )
+                # Re-queue failed messages
+                self.message_queue.append(PendingMessage(
+                    message_id=entry["message_id"],
+                    recipient_id=entry["recipient_id"],
+                    content=entry["content"],
+                    recipient_public_key=entry["recipient_public_key"],
+                    queued_at=entry["queued_at"],
+                ))
+    
+    async def _schedule_constant_rate_send(
+        self,
+        message_id: str,
+        recipient_id: str,
+        recipient_public_key: X25519PublicKey,
+        content: bytes,
+        require_ack: bool,
+        timeout_ms: int,
+    ) -> str:
+        """
+        Schedule a message for constant-rate sending.
+        
+        In constant-rate mode, messages are sent at fixed intervals.
+        If there's no real message to send, a padding message is sent instead.
+        Real messages are queued and sent in the next available slot.
+        
+        Args:
+            message_id: Unique message identifier
+            recipient_id: Recipient's node ID
+            recipient_public_key: Recipient's encryption key
+            content: Message content
+            require_ack: Whether ACK is required
+            timeout_ms: ACK timeout
+            
+        Returns:
+            Message ID
+        """
+        cr_config = self.traffic_analysis_mitigation.constant_rate
+        
+        # If bursting is allowed and we have capacity, send immediately
+        if cr_config.allow_burst:
+            async with self._batch_lock:
+                pending_count = len(self._message_batch)
+                if pending_count < cr_config.max_burst_size:
+                    # Can burst - apply jitter and send
+                    if self.traffic_analysis_mitigation.jitter.enabled:
+                        jitter_delay = self.traffic_analysis_mitigation.jitter.get_jitter_delay()
+                        if jitter_delay > 0:
+                            self._stats["jitter_delays_applied"] += 1
+                            self._stats["total_jitter_ms"] += int(jitter_delay * 1000)
+                            await asyncio.sleep(jitter_delay)
+                    
+                    return await self._send_message_direct(
+                        message_id=message_id,
+                        recipient_id=recipient_id,
+                        recipient_public_key=recipient_public_key,
+                        content=content,
+                        require_ack=require_ack,
+                        timeout_ms=timeout_ms,
+                    )
+        
+        # Queue for next constant-rate slot
+        async with self._batch_lock:
+            batch_entry = {
+                "message_id": message_id,
+                "recipient_id": recipient_id,
+                "recipient_public_key": recipient_public_key,
+                "content": content,
+                "require_ack": require_ack,
+                "timeout_ms": timeout_ms,
+                "queued_at": time.time(),
+            }
+            self._message_batch.append(batch_entry)
+        
+        logger.debug(f"Message {message_id} queued for constant-rate send")
+        return message_id
+    
+    async def _constant_rate_loop(self) -> None:
+        """
+        Background task to send messages at a constant rate.
+        
+        Sends one message per interval. If no real messages are queued,
+        sends a padding message to maintain constant traffic rate.
+        """
+        logger.debug("Constant-rate sending loop started")
+        
+        cr_config = self.traffic_analysis_mitigation.constant_rate
+        
+        while self._running:
+            try:
+                send_interval = cr_config.get_send_interval()
+                
+                # Wait for next send slot
+                await asyncio.sleep(send_interval)
+                
+                if not self._running:
+                    break
+                
+                self._last_constant_rate_send = time.time()
+                
+                # Try to get a real message from the batch
+                message_to_send = None
+                async with self._batch_lock:
+                    if self._message_batch:
+                        message_to_send = self._message_batch.pop(0)
+                
+                if message_to_send:
+                    # Send real message
+                    try:
+                        await self._send_message_direct(
+                            message_id=message_to_send["message_id"],
+                            recipient_id=message_to_send["recipient_id"],
+                            recipient_public_key=message_to_send["recipient_public_key"],
+                            content=message_to_send["content"],
+                            require_ack=message_to_send["require_ack"],
+                            timeout_ms=message_to_send["timeout_ms"],
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Constant-rate send failed for {message_to_send['message_id']}: {e}"
+                        )
+                else:
+                    # Send padding message to maintain constant rate
+                    await self._send_padding_message()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Constant-rate loop error: {e}")
+        
+        logger.debug("Constant-rate sending loop stopped")
+    
+    async def _send_padding_message(self) -> None:
+        """
+        Send a padding message to maintain constant traffic rate.
+        
+        Padding messages are encrypted and indistinguishable from real
+        traffic to network observers. They're sent to random targets
+        or discarded by routers (if no valid target).
+        """
+        if not self.connections:
+            return
+        
+        cr_config = self.traffic_analysis_mitigation.constant_rate
+        
+        # Create padding content
+        padding_content = os.urandom(cr_config.pad_to_size)
+        
+        # Generate a fake recipient (message will be discarded)
+        fake_recipient_id = os.urandom(32).hex()
+        fake_recipient_key = X25519PrivateKey.generate().public_key()
+        
+        # Select a router
+        router = self._select_router()
+        if not router:
+            return
+        
+        try:
+            # Send padding message (no ACK needed, will be discarded)
+            padding_msg_id = str(uuid.uuid4())
+            await self._send_via_router(
+                router=router,
+                message_id=padding_msg_id,
+                recipient_id=fake_recipient_id,
+                recipient_public_key=fake_recipient_key,
+                content=padding_content,
+                require_ack=False,
+                is_cover_traffic=True,
+            )
+            self._stats["constant_rate_padding_sent"] += 1
+            logger.debug(f"Sent constant-rate padding message {padding_msg_id[:8]}...")
+            
+        except Exception as e:
+            logger.debug(f"Failed to send padding message: {e}")
+    
+    def set_privacy_level(self, level: PrivacyLevel) -> None:
+        """
+        Set the traffic analysis mitigation privacy level.
+        
+        Updates all mitigation settings to match the preset level.
+        Changes take effect immediately for new messages.
+        
+        Args:
+            level: The desired privacy level
+        """
+        old_level = self.traffic_analysis_mitigation.privacy_level
+        self.traffic_analysis_mitigation = TrafficAnalysisMitigationConfig.from_privacy_level(level)
+        
+        logger.info(f"Privacy level changed: {old_level.value} -> {level.value}")
+        
+        # Start/stop tasks based on new settings
+        if self._running:
+            asyncio.create_task(self._update_mitigation_tasks())
+    
+    async def _update_mitigation_tasks(self) -> None:
+        """Update mitigation background tasks based on current config."""
+        tam = self.traffic_analysis_mitigation
+        
+        # Handle batch flush task
+        if tam.batching.enabled:
+            if self._batch_flush_task is None or self._batch_flush_task.done():
+                self._batch_flush_task = asyncio.create_task(self._batch_flush_loop())
+                self._tasks.append(self._batch_flush_task)
+                logger.debug("Started batch flush task")
+        else:
+            if self._batch_flush_task and not self._batch_flush_task.done():
+                self._batch_flush_task.cancel()
+                # Flush any pending messages
+                await self._flush_batch()
+                logger.debug("Stopped batch flush task")
+        
+        # Handle constant-rate task
+        if tam.constant_rate.enabled:
+            if self._constant_rate_task is None or self._constant_rate_task.done():
+                self._constant_rate_task = asyncio.create_task(self._constant_rate_loop())
+                self._tasks.append(self._constant_rate_task)
+                logger.debug("Started constant-rate task")
+        else:
+            if self._constant_rate_task and not self._constant_rate_task.done():
+                self._constant_rate_task.cancel()
+                logger.debug("Stopped constant-rate task")
+    
+    def get_traffic_analysis_mitigation_stats(self) -> Dict[str, Any]:
+        """
+        Get traffic analysis mitigation statistics and status.
+        
+        Returns:
+            Dict with mitigation config and statistics
+        """
+        tam = self.traffic_analysis_mitigation
+        
+        return {
+            "privacy_level": tam.privacy_level.value,
+            "batching": {
+                "enabled": tam.batching.enabled,
+                "batch_interval_ms": tam.batching.batch_interval_ms,
+                "min_batch_size": tam.batching.min_batch_size,
+                "max_batch_size": tam.batching.max_batch_size,
+                "randomize_order": tam.batching.randomize_order,
+                "current_batch_size": len(self._message_batch),
+                "last_flush": self._last_batch_flush,
+            },
+            "jitter": {
+                "enabled": tam.jitter.enabled,
+                "min_delay_ms": tam.jitter.min_delay_ms,
+                "max_delay_ms": tam.jitter.max_delay_ms,
+                "distribution": tam.jitter.distribution,
+            },
+            "constant_rate": {
+                "enabled": tam.constant_rate.enabled,
+                "messages_per_minute": tam.constant_rate.messages_per_minute,
+                "pad_to_size": tam.constant_rate.pad_to_size,
+                "allow_burst": tam.constant_rate.allow_burst,
+                "last_send": self._last_constant_rate_send,
+            },
+            "mix_network": {
+                "enabled": tam.mix_network.enabled,
+                "provider_url": tam.mix_network.provider_url,
+            },
+            "stats": {
+                "batched_messages": self._stats.get("batched_messages", 0),
+                "batch_flushes": self._stats.get("batch_flushes", 0),
+                "jitter_delays_applied": self._stats.get("jitter_delays_applied", 0),
+                "total_jitter_ms": self._stats.get("total_jitter_ms", 0),
+                "avg_jitter_ms": (
+                    self._stats.get("total_jitter_ms", 0) / 
+                    max(1, self._stats.get("jitter_delays_applied", 1))
+                ),
+                "constant_rate_padding_sent": self._stats.get("constant_rate_padding_sent", 0),
+                "messages_with_jitter": self._stats.get("messages_with_jitter", 0),
+            },
+            "latency_estimate": tam.estimate_latency_overhead(),
+        }
 
     # =========================================================================
     # ECLIPSE ATTACK MITIGATIONS (Issue #118)
