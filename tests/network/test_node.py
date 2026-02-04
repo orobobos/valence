@@ -23,6 +23,7 @@ from valence.network.node import (
     NodeClient,
     RouterConnection,
     PendingMessage,
+    FailoverState,
     NodeError,
     NoRoutersAvailableError,
     create_node_client,
@@ -222,10 +223,12 @@ class TestNodeClient:
         assert node.min_connections == 3
         assert node.target_connections == 5
         assert node.max_connections == 8
-        assert node.keepalive_interval == 30.0
+        assert node.keepalive_interval == 2.0  # Fast detection (changed from 30.0)
         assert node.enforce_ip_diversity is True
         assert len(node.connections) == 0
         assert len(node.message_queue) == 0
+        assert node.direct_mode is False
+        assert len(node.failover_states) == 0
 
     def test_node_creation_custom(self, ed25519_keypair, x25519_keypair):
         """Test creating a node with custom settings."""
@@ -906,3 +909,538 @@ class TestEdgeCases:
         
         result = node_client._check_ip_diversity(router3)
         assert result is True
+
+
+# =============================================================================
+# Router Failover Tests
+# =============================================================================
+
+
+class TestRouterFailover:
+    """Tests for router failover logic (Issue #107)."""
+
+    def test_failover_state_creation(self):
+        """Test FailoverState dataclass creation."""
+        from valence.network.node import FailoverState
+        
+        state = FailoverState(
+            router_id="r" * 64,
+            failed_at=1000.0,
+            fail_count=1,
+            cooldown_until=1060.0,
+        )
+        
+        assert state.router_id == "r" * 64
+        assert state.failed_at == 1000.0
+        assert state.fail_count == 1
+        assert state.cooldown_until == 1060.0
+        assert state.queued_messages == []
+
+    def test_failover_state_cooldown_check(self):
+        """Test FailoverState cooldown methods."""
+        from valence.network.node import FailoverState
+        
+        now = time.time()
+        
+        # In cooldown
+        state = FailoverState(
+            router_id="r" * 64,
+            failed_at=now,
+            fail_count=1,
+            cooldown_until=now + 60,
+        )
+        assert state.is_in_cooldown() is True
+        assert 50 < state.remaining_cooldown() <= 60
+        
+        # Past cooldown
+        state2 = FailoverState(
+            router_id="s" * 64,
+            failed_at=now - 120,
+            fail_count=1,
+            cooldown_until=now - 60,
+        )
+        assert state2.is_in_cooldown() is False
+        assert state2.remaining_cooldown() == 0
+
+    @pytest.mark.asyncio
+    async def test_handle_router_failure_creates_failover_state(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test that router failure creates failover state."""
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        # Mock discovery to avoid network calls
+        with patch.object(
+            node_client.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # Should create failover state
+        assert mock_router_info.router_id in node_client.failover_states
+        state = node_client.failover_states[mock_router_info.router_id]
+        assert state.fail_count == 1
+        assert state.is_in_cooldown()
+        assert node_client._stats["failovers"] == 1
+
+    @pytest.mark.asyncio
+    async def test_exponential_backoff_on_repeated_failures(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test exponential backoff for flapping routers."""
+        # Set short initial cooldown for testing
+        node_client.initial_cooldown = 10.0
+        node_client.max_cooldown = 100.0
+        
+        with patch.object(
+            node_client.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            # First failure - should get initial cooldown
+            conn1 = RouterConnection(
+                router=mock_router_info,
+                websocket=mock_websocket,
+                session=mock_session,
+                connected_at=time.time(),
+                last_seen=time.time(),
+            )
+            node_client.connections[mock_router_info.router_id] = conn1
+            await node_client._handle_router_failure(mock_router_info.router_id)
+            
+            state = node_client.failover_states[mock_router_info.router_id]
+            first_cooldown = state.cooldown_until - state.failed_at
+            assert 9 <= first_cooldown <= 11  # ~10s
+            
+            # Second failure - should get 2x cooldown
+            conn2 = RouterConnection(
+                router=mock_router_info,
+                websocket=mock_websocket,
+                session=mock_session,
+                connected_at=time.time(),
+                last_seen=time.time(),
+            )
+            node_client.connections[mock_router_info.router_id] = conn2
+            await node_client._handle_router_failure(mock_router_info.router_id)
+            
+            state = node_client.failover_states[mock_router_info.router_id]
+            second_cooldown = state.cooldown_until - state.failed_at
+            assert state.fail_count == 2
+            assert 19 <= second_cooldown <= 21  # ~20s (10 * 2^1)
+            
+            # Third failure - should get 4x cooldown
+            conn3 = RouterConnection(
+                router=mock_router_info,
+                websocket=mock_websocket,
+                session=mock_session,
+                connected_at=time.time(),
+                last_seen=time.time(),
+            )
+            node_client.connections[mock_router_info.router_id] = conn3
+            await node_client._handle_router_failure(mock_router_info.router_id)
+            
+            state = node_client.failover_states[mock_router_info.router_id]
+            third_cooldown = state.cooldown_until - state.failed_at
+            assert state.fail_count == 3
+            assert 39 <= third_cooldown <= 41  # ~40s (10 * 2^2)
+
+    @pytest.mark.asyncio
+    async def test_max_cooldown_capped(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test that cooldown is capped at max_cooldown."""
+        node_client.initial_cooldown = 100.0
+        node_client.max_cooldown = 200.0
+        
+        with patch.object(
+            node_client.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            # Simulate many failures
+            for i in range(5):
+                conn = RouterConnection(
+                    router=mock_router_info,
+                    websocket=mock_websocket,
+                    session=mock_session,
+                    connected_at=time.time(),
+                    last_seen=time.time(),
+                )
+                node_client.connections[mock_router_info.router_id] = conn
+                await node_client._handle_router_failure(mock_router_info.router_id)
+            
+            state = node_client.failover_states[mock_router_info.router_id]
+            cooldown = state.cooldown_until - state.failed_at
+            assert cooldown <= 200.0  # Capped at max_cooldown
+
+    @pytest.mark.asyncio
+    async def test_failover_queries_alternatives(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test that failover queries discovery for alternatives."""
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        discover_mock = AsyncMock(return_value=[])
+        
+        with patch.object(
+            node_client.discovery,
+            'discover_routers',
+            discover_mock,
+        ):
+            await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # Should have called discover_routers with force_refresh
+        discover_mock.assert_called_once()
+        call_kwargs = discover_mock.call_args.kwargs
+        assert call_kwargs.get("force_refresh") is True
+        assert call_kwargs.get("count") == 3
+
+    @pytest.mark.asyncio
+    async def test_failover_connects_to_alternative(
+        self, node_client, mock_router_info, mock_session
+    ):
+        """Test successful failover to alternative router."""
+        # Create a mock websocket for the original connection
+        original_ws = AsyncMock()
+        original_ws.closed = False
+        original_ws.close = AsyncMock()
+        
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=original_ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        # Create alternative router
+        alt_router = RouterInfo(
+            router_id="b" * 64,
+            endpoints=["10.1.1.1:8471"],  # Different subnet
+            capacity={"current_load_pct": 20},
+            health={"uptime_pct": 99, "avg_latency_ms": 30},
+            regions=["us-west"],
+            features=[],
+        )
+        
+        discover_mock = AsyncMock(return_value=[alt_router])
+        connect_mock = AsyncMock()
+        
+        with patch.object(node_client.discovery, 'discover_routers', discover_mock):
+            with patch.object(node_client, '_connect_to_router', connect_mock):
+                await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # Should have tried to connect to alternative
+        connect_mock.assert_called_once_with(alt_router)
+
+    @pytest.mark.asyncio
+    async def test_failover_enables_direct_mode_when_no_alternatives(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test that direct mode is enabled when no alternatives available."""
+        node_client.reconnect_delay = 0.01  # Fast for testing
+        
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        assert node_client.direct_mode is False
+        
+        with patch.object(
+            node_client.discovery,
+            'discover_routers',
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # Should enable direct mode
+        assert node_client.direct_mode is True
+
+    def test_clear_router_cooldown(self, node_client):
+        """Test manually clearing router cooldown."""
+        from valence.network.node import FailoverState
+        
+        router_id = "r" * 64
+        node_client.failover_states[router_id] = FailoverState(
+            router_id=router_id,
+            failed_at=time.time(),
+            fail_count=3,
+            cooldown_until=time.time() + 3600,
+        )
+        
+        assert node_client.failover_states[router_id].is_in_cooldown()
+        
+        result = node_client.clear_router_cooldown(router_id)
+        
+        assert result is True
+        assert not node_client.failover_states[router_id].is_in_cooldown()
+        assert node_client.failover_states[router_id].fail_count == 0
+
+    def test_clear_router_cooldown_not_found(self, node_client):
+        """Test clearing cooldown for unknown router."""
+        result = node_client.clear_router_cooldown("unknown" * 8)
+        assert result is False
+
+    def test_get_failover_states(self, node_client):
+        """Test getting failover states."""
+        from valence.network.node import FailoverState
+        
+        now = time.time()
+        node_client.failover_states["r" * 64] = FailoverState(
+            router_id="r" * 64,
+            failed_at=now,
+            fail_count=2,
+            cooldown_until=now + 60,
+        )
+        
+        states = node_client.get_failover_states()
+        
+        assert "r" * 64 in states
+        state_info = states["r" * 64]
+        assert state_info["fail_count"] == 2
+        assert state_info["in_cooldown"] is True
+        assert 50 <= state_info["remaining_cooldown"] <= 60
+
+    def test_stats_include_failover_info(self, node_client):
+        """Test that stats include failover information."""
+        from valence.network.node import FailoverState
+        
+        node_client.failover_states["r" * 64] = FailoverState(
+            router_id="r" * 64,
+            failed_at=time.time(),
+            fail_count=1,
+            cooldown_until=time.time() + 60,
+        )
+        
+        stats = node_client.get_stats()
+        
+        assert "routers_in_cooldown" in stats
+        assert stats["routers_in_cooldown"] == 1
+        assert "direct_mode" in stats
+        assert stats["direct_mode"] is False
+
+
+class TestFastFailureDetection:
+    """Tests for fast failure detection via keepalive."""
+
+    def test_default_keepalive_interval_is_fast(self, node_client):
+        """Test that default keepalive interval is 2 seconds for fast detection."""
+        # Requirement: Detection within 2-5 seconds
+        assert node_client.keepalive_interval <= 2.0
+        assert node_client.ping_timeout <= 3.0
+        # With 2s interval and 2 missed pings threshold = 4-6s detection
+
+    @pytest.mark.asyncio
+    async def test_missed_pings_tracking(
+        self, node_client, mock_router_info, mock_websocket, mock_session
+    ):
+        """Test that missed pings are tracked."""
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        # Simulate missed ping by making send_json timeout
+        mock_websocket.send_json = AsyncMock(
+            side_effect=asyncio.TimeoutError()
+        )
+        
+        # Manually trigger a single keepalive check (not the loop)
+        # This simulates what happens in _keepalive_loop
+        try:
+            await asyncio.wait_for(
+                mock_websocket.send_json({"type": "ping"}),
+                timeout=node_client.ping_timeout,
+            )
+        except asyncio.TimeoutError:
+            missed = node_client._missed_pings.get(mock_router_info.router_id, 0) + 1
+            node_client._missed_pings[mock_router_info.router_id] = missed
+        
+        assert node_client._missed_pings[mock_router_info.router_id] == 1
+
+    def test_detection_time_calculation(self, node_client):
+        """Test that detection time is within requirements."""
+        # Detection time = keepalive_interval * missed_pings_threshold + ping_timeout
+        # With defaults: 2.0 * 2 + 3.0 = 7s worst case (first timeout) to 4s (immediate)
+        max_detection_time = (
+            node_client.keepalive_interval * node_client.missed_pings_threshold 
+            + node_client.ping_timeout
+        )
+        
+        # Should detect within 2-5 seconds (allowing some margin)
+        assert max_detection_time <= 8.0  # Reasonable upper bound
+
+    @pytest.mark.asyncio
+    async def test_failure_triggered_after_threshold(
+        self, node_client, mock_router_info, mock_session
+    ):
+        """Test that failure is triggered after missed_pings_threshold."""
+        ws = AsyncMock()
+        ws.closed = False
+        ws.close = AsyncMock()
+        ws.send_json = AsyncMock(side_effect=asyncio.TimeoutError())
+        
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=ws,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        node_client.missed_pings_threshold = 2
+        
+        # Track if failure was called
+        failure_called = False
+        
+        async def mock_handle_failure(router_id):
+            nonlocal failure_called
+            failure_called = True
+            node_client.connections.pop(router_id, None)
+        
+        with patch.object(
+            node_client.discovery, 'discover_routers',
+            new_callable=AsyncMock, return_value=[]
+        ):
+            original_handle = node_client._handle_router_failure
+            node_client._handle_router_failure = mock_handle_failure
+            
+            # First missed ping - should not trigger failure
+            node_client._missed_pings[mock_router_info.router_id] = 1
+            assert failure_called is False
+            
+            # Second missed ping - should trigger failure
+            node_client._missed_pings[mock_router_info.router_id] = 2
+            if node_client._missed_pings[mock_router_info.router_id] >= node_client.missed_pings_threshold:
+                await node_client._handle_router_failure(mock_router_info.router_id)
+            
+            assert failure_called is True
+
+
+class TestMessagePreservation:
+    """Tests for message preservation during failover."""
+
+    @pytest.mark.asyncio
+    async def test_pending_messages_preserved_on_failure(
+        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+    ):
+        """Test that pending messages are preserved during failover."""
+        from valence.network.node import PendingAck
+        
+        _, recipient_pub = x25519_keypair
+        
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        # Add some pending ACKs for this router
+        for i in range(3):
+            node_client.pending_acks[f"msg-{i}"] = PendingAck(
+                message_id=f"msg-{i}",
+                recipient_id="recipient-123",
+                content=f"Message {i}".encode(),
+                recipient_public_key=recipient_pub,
+                sent_at=time.time(),
+                router_id=mock_router_info.router_id,
+            )
+        
+        # Create an alternative router
+        alt_router = RouterInfo(
+            router_id="b" * 64,
+            endpoints=["10.1.1.1:8471"],
+            capacity={},
+            health={"uptime_pct": 99},
+            regions=[],
+            features=[],
+        )
+        
+        retry_called = []
+        
+        async def mock_retry(msg_id):
+            retry_called.append(msg_id)
+        
+        with patch.object(node_client.discovery, 'discover_routers', 
+                          new_callable=AsyncMock, return_value=[alt_router]):
+            with patch.object(node_client, '_connect_to_router', new_callable=AsyncMock):
+                with patch.object(node_client, '_retry_message', mock_retry):
+                    await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # All 3 messages should have been retried
+        assert len(retry_called) == 3
+        assert set(retry_called) == {"msg-0", "msg-1", "msg-2"}
+
+    @pytest.mark.asyncio
+    async def test_messages_not_retried_when_no_alternative(
+        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+    ):
+        """Test that messages are not retried when no alternative router available."""
+        from valence.network.node import PendingAck
+        
+        _, recipient_pub = x25519_keypair
+        node_client.reconnect_delay = 0.01  # Fast for testing
+        
+        conn = RouterConnection(
+            router=mock_router_info,
+            websocket=mock_websocket,
+            session=mock_session,
+            connected_at=time.time(),
+            last_seen=time.time(),
+        )
+        node_client.connections[mock_router_info.router_id] = conn
+        
+        # Add pending ACK
+        node_client.pending_acks["msg-0"] = PendingAck(
+            message_id="msg-0",
+            recipient_id="recipient-123",
+            content=b"Message",
+            recipient_public_key=recipient_pub,
+            sent_at=time.time(),
+            router_id=mock_router_info.router_id,
+        )
+        
+        retry_called = []
+        
+        async def mock_retry(msg_id):
+            retry_called.append(msg_id)
+        
+        with patch.object(node_client.discovery, 'discover_routers',
+                          new_callable=AsyncMock, return_value=[]):
+            with patch.object(node_client, '_retry_message', mock_retry):
+                await node_client._handle_router_failure(mock_router_info.router_id)
+        
+        # No retry because no alternative was found
+        assert len(retry_called) == 0

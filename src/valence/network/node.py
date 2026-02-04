@@ -139,6 +139,30 @@ class PendingMessage:
     max_retries: int = 3
 
 
+@dataclass
+class FailoverState:
+    """
+    Tracks failover state for a router.
+    
+    Used to implement exponential backoff for flapping routers
+    and track queued messages during failover.
+    """
+    
+    router_id: str
+    failed_at: float
+    fail_count: int
+    cooldown_until: float
+    queued_messages: List[PendingMessage] = field(default_factory=list)
+    
+    def is_in_cooldown(self) -> bool:
+        """Check if router is still in cooldown period."""
+        return time.time() < self.cooldown_until
+    
+    def remaining_cooldown(self) -> float:
+        """Get remaining cooldown time in seconds."""
+        return max(0, self.cooldown_until - time.time())
+
+
 # =============================================================================
 # NODE CLIENT
 # =============================================================================
@@ -182,10 +206,16 @@ class NodeClient:
     max_connections: int = 8
     
     # Timing config
-    keepalive_interval: float = 30.0  # seconds between pings
-    ping_timeout: float = 5.0  # seconds to wait for pong
+    keepalive_interval: float = 2.0  # seconds between pings (fast detection)
+    ping_timeout: float = 3.0  # seconds to wait for pong
     maintenance_interval: float = 60.0  # seconds between maintenance runs
-    reconnect_delay: float = 5.0  # seconds before reconnecting after failure
+    reconnect_delay: float = 1.0  # seconds before reconnecting after failure
+    failover_connect_timeout: float = 3.0  # seconds to wait when connecting during failover
+    
+    # Failover config
+    initial_cooldown: float = 60.0  # 1 minute initial cooldown for failed router
+    max_cooldown: float = 3600.0  # 1 hour maximum cooldown
+    missed_pings_threshold: int = 2  # consecutive missed pings before failure
     
     # IP diversity: require different /16 subnets
     enforce_ip_diversity: bool = True
@@ -199,6 +229,11 @@ class NodeClient:
     # ACK tracking
     pending_acks: Dict[str, PendingAck] = field(default_factory=dict)
     seen_messages: Set[str] = field(default_factory=set)  # For idempotent delivery
+    
+    # Failover state tracking
+    failover_states: Dict[str, FailoverState] = field(default_factory=dict)
+    direct_mode: bool = False  # Graceful degradation when no routers available
+    _missed_pings: Dict[str, int] = field(default_factory=dict, repr=False)  # Track consecutive missed pings
     
     # ACK configuration
     default_ack_timeout_ms: int = 30000  # 30 seconds
@@ -373,6 +408,11 @@ class NodeClient:
             "connected_subnets": len(self._connected_subnets),
             "pending_acks": len(self.pending_acks),
             "seen_messages_cached": len(self.seen_messages),
+            "routers_in_cooldown": sum(
+                1 for state in self.failover_states.values()
+                if state.is_in_cooldown()
+            ),
+            "direct_mode": self.direct_mode,
         }
     
     def get_connections(self) -> List[Dict[str, Any]]:
@@ -404,8 +444,17 @@ class NodeClient:
         while len(self.connections) < self.target_connections and attempts < max_attempts:
             needed = self.target_connections - len(self.connections)
             
-            # Get excluded router IDs (already connected)
+            # Get excluded router IDs (already connected + in cooldown)
             excluded_ids = set(self.connections.keys())
+            
+            # Also exclude routers in cooldown (flapping protection)
+            for router_id, state in self.failover_states.items():
+                if state.is_in_cooldown():
+                    excluded_ids.add(router_id)
+                    logger.debug(
+                        f"Excluding router {router_id[:16]}... from discovery "
+                        f"(in cooldown for {state.remaining_cooldown():.1f}s)"
+                    )
             
             # Discover routers
             try:
@@ -437,6 +486,9 @@ class NodeClient:
                 
                 try:
                     await self._connect_to_router(router)
+                    # Disable direct mode if we have a connection
+                    if self.direct_mode and self.connections:
+                        self._disable_direct_mode()
                 except Exception as e:
                     logger.warning(
                         f"Failed to connect to router {router.router_id[:16]}...: {e}"
@@ -451,6 +503,9 @@ class NodeClient:
                 f"Only {len(self.connections)} connections established "
                 f"(minimum: {self.min_connections})"
             )
+            # Enable direct mode if below minimum
+            if not self.connections:
+                self._enable_direct_mode()
     
     def _check_ip_diversity(self, router: RouterInfo) -> bool:
         """
@@ -1162,7 +1217,12 @@ class NodeClient:
     # -------------------------------------------------------------------------
     
     async def _keepalive_loop(self) -> None:
-        """Send periodic pings to detect connection failures."""
+        """
+        Send periodic pings to detect connection failures.
+        
+        Uses fast detection with configurable keepalive interval (default 2s)
+        and consecutive missed ping tracking for reliability.
+        """
         while self._running:
             try:
                 await asyncio.sleep(self.keepalive_interval)
@@ -1171,6 +1231,7 @@ class NodeClient:
                 
                 for router_id, conn in list(self.connections.items()):
                     if conn.websocket.closed:
+                        logger.debug(f"WebSocket closed for router {router_id[:16]}...")
                         await self._handle_router_failure(router_id)
                         continue
                     
@@ -1183,9 +1244,31 @@ class NodeClient:
                             }),
                             timeout=self.ping_timeout,
                         )
-                    except (asyncio.TimeoutError, Exception) as e:
+                        # Reset missed pings on successful ping
+                        self._missed_pings[router_id] = 0
+                        
+                    except asyncio.TimeoutError:
+                        # Track consecutive missed pings
+                        missed = self._missed_pings.get(router_id, 0) + 1
+                        self._missed_pings[router_id] = missed
+                        
                         logger.warning(
-                            f"Ping failed for router {router_id[:16]}...: {e}"
+                            f"Ping timeout for router {router_id[:16]}... "
+                            f"({missed}/{self.missed_pings_threshold} missed)"
+                        )
+                        
+                        # Trigger failure after threshold consecutive misses
+                        if missed >= self.missed_pings_threshold:
+                            logger.warning(
+                                f"Router {router_id[:16]}... unresponsive "
+                                f"({missed} consecutive missed pings)"
+                            )
+                            await self._handle_router_failure(router_id)
+                            
+                    except Exception as e:
+                        # Other errors (connection reset, etc.) - immediate failure
+                        logger.warning(
+                            f"Ping error for router {router_id[:16]}...: {e}"
                         )
                         await self._handle_router_failure(router_id)
             
@@ -1290,21 +1373,204 @@ class NodeClient:
                 logger.warning(f"Queue processor error: {e}")
     
     async def _handle_router_failure(self, router_id: str) -> None:
-        """Handle a failed router connection."""
+        """
+        Handle router failure with intelligent failover.
+        
+        This implements robust failover logic:
+        1. Fast detection (already detected via keepalive)
+        2. Update failover state with exponential backoff
+        3. Preserve pending messages for retry
+        4. Query seed for alternative routers
+        5. Connect to alternatives with timeout
+        6. Flush queued messages on new connection
+        7. Enable direct mode as graceful degradation
+        """
         conn = self.connections.pop(router_id, None)
         if not conn:
             return
         
+        fail_time = time.time()
         self._stats["failovers"] += 1
-        logger.warning(f"Router {router_id[:16]}... disconnected")
+        logger.warning(f"Router {router_id[:16]}... failed, initiating failover")
         
+        # 1. Update failover state with exponential backoff
+        if router_id not in self.failover_states:
+            self.failover_states[router_id] = FailoverState(
+                router_id=router_id,
+                failed_at=fail_time,
+                fail_count=1,
+                cooldown_until=fail_time + self.initial_cooldown,
+                queued_messages=[],
+            )
+            logger.debug(f"Router {router_id[:16]}... entered cooldown for {self.initial_cooldown}s")
+        else:
+            state = self.failover_states[router_id]
+            state.fail_count += 1
+            state.failed_at = fail_time
+            # Exponential backoff for flapping routers
+            cooldown = min(
+                self.initial_cooldown * (2 ** (state.fail_count - 1)),
+                self.max_cooldown
+            )
+            state.cooldown_until = fail_time + cooldown
+            logger.debug(
+                f"Router {router_id[:16]}... fail_count={state.fail_count}, "
+                f"cooldown={cooldown}s (flapping protection)"
+            )
+        
+        # 2. Get messages that were pending on this router
+        pending_for_router = [
+            pending for msg_id, pending in self.pending_acks.items()
+            if pending.router_id == router_id
+        ]
+        
+        if pending_for_router:
+            logger.info(
+                f"Preserving {len(pending_for_router)} pending messages "
+                f"from failed router {router_id[:16]}..."
+            )
+        
+        # Close the failed connection
         await self._close_connection(router_id, conn)
         
-        # Schedule reconnection if below minimum
-        if self._running and len(self.connections) < self.min_connections:
-            await asyncio.sleep(self.reconnect_delay)
+        # Clear missed pings tracking for this router
+        self._missed_pings.pop(router_id, None)
+        
+        # 3. Query seed for alternative routers (exclude failed and in-cooldown routers)
+        exclude_ids = [router_id] + [
+            r_id for r_id, state in self.failover_states.items()
+            if state.is_in_cooldown() and r_id != router_id
+        ]
+        
+        # Also exclude currently connected routers
+        exclude_ids.extend(self.connections.keys())
+        
+        try:
+            alternatives = await self.discovery.discover_routers(
+                count=3,
+                preferences={"exclude": exclude_ids},
+                force_refresh=True,  # Get fresh data during failover
+            )
+        except Exception as e:
+            logger.warning(f"Failed to discover alternative routers: {e}")
+            alternatives = []
+        
+        # 4. Sort alternatives by health metrics
+        if alternatives:
+            alternatives.sort(
+                key=lambda r: (
+                    -r.health.get("uptime_pct", 0),
+                    r.health.get("avg_latency_ms", 999),
+                ),
+            )
+        
+        # 5. Try to connect to alternative routers with timeout
+        connected = False
+        for router in alternatives:
+            # Check IP diversity if enforced
+            if self.enforce_ip_diversity and not self._check_ip_diversity(router):
+                logger.debug(
+                    f"Skipping router {router.router_id[:16]}... "
+                    f"(IP diversity check failed)"
+                )
+                continue
+            
+            try:
+                await asyncio.wait_for(
+                    self._connect_to_router(router),
+                    timeout=self.failover_connect_timeout,
+                )
+                connected = True
+                logger.info(
+                    f"Failover successful: connected to {router.router_id[:16]}... "
+                    f"at {router.endpoints[0] if router.endpoints else 'unknown'}"
+                )
+                break
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Failover connection to {router.router_id[:16]}... "
+                    f"timed out after {self.failover_connect_timeout}s"
+                )
+                continue
+            except Exception as e:
+                logger.warning(
+                    f"Failover connection to {router.router_id[:16]}... "
+                    f"failed: {e}"
+                )
+                continue
+        
+        # 6. If connected, retry pending messages
+        if connected and pending_for_router:
+            logger.info(f"Retrying {len(pending_for_router)} messages on new router")
+            for pending in pending_for_router:
+                try:
+                    await self._retry_message(pending.message_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to retry message {pending.message_id}: {e}"
+                    )
+        
+        # 7. If still below minimum connections, try to get more
+        if not connected or len(self.connections) < self.min_connections:
+            if not connected:
+                # Enable direct mode as graceful degradation
+                self._enable_direct_mode()
+            
+            # Schedule background reconnection attempt
             if self._running:
-                await self._ensure_connections()
+                await asyncio.sleep(self.reconnect_delay)
+                if self._running:
+                    await self._ensure_connections()
+    
+    def _enable_direct_mode(self) -> None:
+        """
+        Enable direct mode as graceful degradation.
+        
+        When no routers are available, the node can attempt direct P2P
+        connections to known peers (if their endpoints are cached).
+        """
+        if not self.direct_mode:
+            self.direct_mode = True
+            logger.warning(
+                "No routers available - enabling direct mode "
+                "(will attempt P2P for known peers)"
+            )
+    
+    def _disable_direct_mode(self) -> None:
+        """Disable direct mode when routers become available."""
+        if self.direct_mode:
+            self.direct_mode = False
+            logger.info("Router connection restored - disabling direct mode")
+    
+    def clear_router_cooldown(self, router_id: str) -> bool:
+        """
+        Manually clear cooldown for a router.
+        
+        Useful for testing or when you know a router has been fixed.
+        
+        Returns:
+            True if cooldown was cleared, False if router wasn't in cooldown
+        """
+        if router_id in self.failover_states:
+            state = self.failover_states[router_id]
+            state.cooldown_until = 0
+            state.fail_count = 0
+            logger.info(f"Cleared cooldown for router {router_id[:16]}...")
+            return True
+        return False
+    
+    def get_failover_states(self) -> Dict[str, Dict[str, Any]]:
+        """Get current failover states for all routers."""
+        return {
+            router_id: {
+                "failed_at": state.failed_at,
+                "fail_count": state.fail_count,
+                "cooldown_until": state.cooldown_until,
+                "in_cooldown": state.is_in_cooldown(),
+                "remaining_cooldown": state.remaining_cooldown(),
+            }
+            for router_id, state in self.failover_states.items()
+        }
 
 
 # =============================================================================
