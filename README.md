@@ -38,17 +38,77 @@ Three forces converging:
 
 ```bash
 # Install
-pip install valence-core
+pip install valence
 
-# Store a belief with confidence
+# Initialize database (creates schema)
+valence init
+
+# Store a belief with derivation info
 valence add "PostgreSQL scales better for this workload" \
-  --confidence '{"source": 0.9, "method": 0.7, "fresh": 1.0}'
+  --domain tech --domain databases \
+  --derivation-type observation \
+  --confidence '{"overall": 0.85}'
 
-# Query what you know
+# Query with derivation chains visible
 valence query "database scaling"
+# Shows: derivation type, method, source beliefs
+
+# Detect contradicting beliefs
+valence conflicts
+
+# List recent beliefs
+valence list -n 20 --domain tech
 ```
 
 That's it. Personal knowledge substrate, running locally, yours forever.
+
+---
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `valence init` | Initialize database, create schema |
+| `valence add <content>` | Add belief with confidence & derivation |
+| `valence query <text>` | Search beliefs, shows derivation chains |
+| `valence list` | List recent beliefs |
+| `valence conflicts` | Detect contradicting beliefs |
+| `valence stats` | Database statistics |
+
+### Derivation Tracking
+
+Every belief tracks where it came from:
+
+```bash
+# Add inferred belief with source
+valence add "Derived conclusion" \
+  --derivation-type inference \
+  --derived-from <source-belief-uuid> \
+  --method "Logical deduction from X and Y"
+```
+
+Query results show the full chain:
+```
+[1] Derived conclusion
+    ID: abc12345  Confidence: 70%  Similarity: 95%
+    ┌─ Derivation: inference
+    │  Method: Logical deduction from X and Y
+    │  ← Derived from (primary): Original observation...
+    └─
+```
+
+### Conflict Detection
+
+Find beliefs that contradict each other:
+
+```bash
+valence conflicts --threshold 0.85 --auto-record
+```
+
+Detects:
+- High similarity with negation asymmetry ("X is good" vs "X is not good")
+- Opposite conclusions about same topic
+- Records detected conflicts as tensions for resolution
 
 ---
 
