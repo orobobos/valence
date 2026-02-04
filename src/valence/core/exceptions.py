@@ -6,6 +6,8 @@ enabling better error handling and clearer error messages.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class ValenceException(Exception):
     """Base exception for all Valence errors.
@@ -50,7 +52,7 @@ class ValidationException(ValenceException):
     - Field values are out of range
     """
 
-    def __init__(self, message: str, field: str | None = None, value: any = None):
+    def __init__(self, message: str, field: str | None = None, value: Any = None):
         details = {}
         if field:
             details["field"] = field

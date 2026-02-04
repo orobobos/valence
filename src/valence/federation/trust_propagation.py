@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeAlias
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -500,7 +501,7 @@ class TrustPropagation:
 
 
 # Type for trust getter functions
-TrustGetter = type(lambda node_id, domain: [])  # Callable[[UUID, str | None], list[tuple[UUID, float]]]
+TrustGetter: TypeAlias = Callable[[UUID, str | None], list[tuple[UUID, float]]]
 
 
 # =============================================================================

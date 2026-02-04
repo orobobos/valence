@@ -119,7 +119,7 @@ class FederationNode:
         
         # Server
         self.app = self._create_app()
-        self._server = None
+        self._server: Any = None  # uvicorn.Server when running
     
     def _create_app(self) -> Starlette:
         """Create the Starlette app with federation routes."""

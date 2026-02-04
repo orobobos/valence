@@ -450,7 +450,7 @@ async def check_all_nodes_health() -> dict[str, bool]:
         healths = await asyncio.gather(*tasks, return_exceptions=True)
 
         for node, health in zip(nodes, healths):
-            if isinstance(health, Exception):
+            if isinstance(health, BaseException):
                 results[node.did] = False
             else:
                 results[node.did] = health
