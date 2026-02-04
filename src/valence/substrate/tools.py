@@ -33,7 +33,8 @@ SUBSTRATE_TOOLS = [
             "- Technical approaches previously explored\n"
             "- Any topic that may have been discussed before\n\n"
             "Query first, then respond with grounded information. This ensures your "
-            "responses are consistent with what has been learned and decided previously."
+            "responses are consistent with what has been learned and decided previously.\n\n"
+            "Note: Beliefs with revoked consent chains are filtered out by default for privacy."
         ),
         inputSchema={
             "type": "object",
@@ -55,6 +56,11 @@ SUBSTRATE_TOOLS = [
                     "type": "boolean",
                     "default": False,
                     "description": "Include superseded beliefs",
+                },
+                "include_revoked": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include beliefs with revoked consent chains (requires audit logging)",
                 },
                 "limit": {
                     "type": "integer",
@@ -335,9 +341,34 @@ def belief_query(
     domain_filter: list[str] | None = None,
     entity_id: str | None = None,
     include_superseded: bool = False,
+    include_revoked: bool = False,
     limit: int = 20,
+    user_did: str | None = None,
 ) -> dict[str, Any]:
-    """Search beliefs."""
+    """Search beliefs with revocation filtering.
+    
+    By default, excludes beliefs that have revoked consent chains.
+    This ensures users cannot query content that has been explicitly revoked.
+    
+    Args:
+        query: Natural language search query
+        domain_filter: Filter by domain path
+        entity_id: Filter by related entity UUID
+        include_superseded: Include superseded beliefs
+        include_revoked: Include beliefs with revoked consent chains (audit logged)
+        limit: Maximum results
+        user_did: DID of user making query (for audit logging)
+        
+    Returns:
+        Query results with matching beliefs
+    """
+    # Audit log when accessing revoked content
+    if include_revoked:
+        logger.info(
+            f"Query includes revoked content: user={user_did or 'unknown'}, "
+            f"query={query[:100]}{'...' if len(query) > 100 else ''}"
+        )
+    
     with get_cursor() as cur:
         sql = """
             SELECT b.*, ts_rank(b.content_tsv, websearch_to_tsquery('english', %s)) as relevance
@@ -348,6 +379,16 @@ def belief_query(
 
         if not include_superseded:
             sql += " AND b.status = 'active' AND b.superseded_by_id IS NULL"
+
+        # Filter out beliefs with revoked consent chains by default
+        if not include_revoked:
+            sql += """
+                AND b.id NOT IN (
+                    SELECT DISTINCT cc.belief_id 
+                    FROM consent_chains cc
+                    WHERE cc.revoked = true
+                )
+            """
 
         if domain_filter:
             sql += " AND b.domain_path && %s"
@@ -374,6 +415,7 @@ def belief_query(
             "success": True,
             "beliefs": beliefs,
             "total_count": len(beliefs),
+            "include_revoked": include_revoked,
         }
 
 

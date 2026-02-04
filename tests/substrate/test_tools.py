@@ -258,6 +258,85 @@ class TestBeliefQuery:
         params = calls[0][0][1]
         assert 5 in params
 
+    def test_belief_query_filters_revoked_by_default(self, mock_get_cursor, sample_belief_row):
+        """Test that revoked beliefs are filtered out by default."""
+        mock_get_cursor.fetchall.return_value = []
+
+        result = belief_query(query="test")
+
+        assert result["success"] is True
+        assert result["include_revoked"] is False
+        # Verify SQL contains revocation filter
+        calls = mock_get_cursor.execute.call_args_list
+        sql_call = calls[0][0][0]
+        assert "consent_chains" in sql_call
+        assert "revoked = true" in sql_call
+
+    def test_belief_query_include_revoked_explicit(self, mock_get_cursor, sample_belief_row):
+        """Test that include_revoked=True bypasses revocation filter."""
+        mock_get_cursor.fetchall.return_value = [
+            sample_belief_row(content="Revoked belief content")
+        ]
+
+        result = belief_query(query="test", include_revoked=True)
+
+        assert result["success"] is True
+        assert result["include_revoked"] is True
+        # Verify SQL does NOT contain revocation filter
+        calls = mock_get_cursor.execute.call_args_list
+        sql_call = calls[0][0][0]
+        assert "consent_chains" not in sql_call
+
+    def test_belief_query_include_revoked_audit_logging(self, mock_get_cursor, sample_belief_row, caplog):
+        """Test that accessing revoked content is audit logged."""
+        import logging
+        caplog.set_level(logging.INFO)
+        mock_get_cursor.fetchall.return_value = []
+
+        belief_query(
+            query="test query for audit",
+            include_revoked=True,
+            user_did="did:key:test123"
+        )
+
+        # Check that audit log was written
+        assert any(
+            "Query includes revoked content" in record.message
+            and "did:key:test123" in record.message
+            and "test query for audit" in record.message
+            for record in caplog.records
+        )
+
+    def test_belief_query_no_audit_log_when_not_including_revoked(self, mock_get_cursor, sample_belief_row, caplog):
+        """Test that no audit log when include_revoked=False."""
+        import logging
+        caplog.set_level(logging.INFO)
+        mock_get_cursor.fetchall.return_value = []
+
+        belief_query(query="test", include_revoked=False)
+
+        # Check that no audit log was written
+        assert not any(
+            "Query includes revoked content" in record.message
+            for record in caplog.records
+        )
+
+    def test_belief_query_mixed_results_revoked_filtered(self, mock_get_cursor, sample_belief_row):
+        """Test that only non-revoked beliefs are returned by default.
+        
+        This tests the scenario where some beliefs have revoked consent chains
+        and some don't - only the non-revoked ones should be returned.
+        """
+        # The DB should return only non-revoked due to SQL filter
+        non_revoked_belief = sample_belief_row(content="Non-revoked belief")
+        mock_get_cursor.fetchall.return_value = [non_revoked_belief]
+
+        result = belief_query(query="belief")
+
+        assert result["success"] is True
+        assert len(result["beliefs"]) == 1
+        assert result["beliefs"][0]["content"] == "Non-revoked belief"
+
 
 # =============================================================================
 # BELIEF CREATE TESTS
