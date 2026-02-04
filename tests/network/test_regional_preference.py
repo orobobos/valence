@@ -298,7 +298,7 @@ def mock_sybil_resistance():
 def seed_node(seed_config, mock_sybil_resistance):
     """Create a test seed node with mocked sybil resistance."""
     node = SeedNode(config=seed_config)
-    node.sybil_resistance = mock_sybil_resistance
+    node._sybil_resistance = mock_sybil_resistance
     return node
 
 

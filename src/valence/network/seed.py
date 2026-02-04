@@ -147,6 +147,7 @@ class HealthMonitor:
                 
                 if missed != state.missed_heartbeats:
                     old_status = state.status
+                    old_missed = state.missed_heartbeats
                     state.missed_heartbeats = missed
                     state.status = self._compute_status(missed)
                     
@@ -157,6 +158,12 @@ class HealthMonitor:
                             f"(missed={missed})"
                         )
                     
+                    # Notify Sybil resistance of missed heartbeats (Issue #117)
+                    new_misses = missed - old_missed
+                    if new_misses > 0 and hasattr(self.seed, '_sybil_resistance') and self.seed._sybil_resistance:
+                        for _ in range(new_misses):
+                            self.seed.sybil_resistance.on_missed_heartbeat(router_id)
+                    
                     if state.status == HealthStatus.REMOVED:
                         removed_routers.append(router_id)
             
@@ -164,6 +171,9 @@ class HealthMonitor:
             for router_id in removed_routers:
                 self.seed.router_registry.pop(router_id, None)
                 self.health_states.pop(router_id, None)
+                # Notify Sybil resistance of router removal (Issue #117)
+                if hasattr(self.seed, '_sybil_resistance') and self.seed._sybil_resistance:
+                    self.seed.sybil_resistance.on_router_removed(router_id)
                 logger.info(f"Removed router {router_id[:20]}... due to missed heartbeats")
     
     def _compute_status(self, missed: int) -> HealthStatus:
@@ -356,6 +366,634 @@ class HealthMonitor:
 
 
 # =============================================================================
+# SYBIL RESISTANCE (Issue #117)
+# =============================================================================
+
+
+@dataclass
+class RegistrationEvent:
+    """Record of a registration attempt for rate limiting."""
+    router_id: str
+    source_ip: str
+    subnet: str  # /24 subnet
+    timestamp: float
+    success: bool
+
+
+@dataclass 
+class ReputationRecord:
+    """
+    Reputation state for a router.
+    
+    New routers start with a low trust score that increases over time
+    with consistent good behavior (heartbeats, uptime).
+    """
+    router_id: str
+    score: float  # 0.0 to 1.0
+    registered_at: float
+    last_heartbeat: float
+    heartbeat_count: int
+    missed_heartbeats: int
+    flags: List[str] = field(default_factory=list)  # Suspicious behavior flags
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "router_id": self.router_id,
+            "score": round(self.score, 3),
+            "registered_at": self.registered_at,
+            "last_heartbeat": self.last_heartbeat,
+            "heartbeat_count": self.heartbeat_count,
+            "missed_heartbeats": self.missed_heartbeats,
+            "flags": self.flags.copy(),
+        }
+
+
+class RateLimiter:
+    """
+    Rate limiter for registration requests (Issue #117).
+    
+    Implements:
+    - Per-IP rate limiting
+    - Per-subnet (/24) rate limiting  
+    - Cooldown period between registrations from same IP
+    - Sliding window tracking
+    """
+    
+    def __init__(self, config: "SeedConfig"):
+        self.config = config
+        self._registration_events: List[RegistrationEvent] = []
+        self._last_registration_by_ip: Dict[str, float] = {}
+    
+    def _get_subnet(self, ip: str) -> str:
+        """Extract /24 subnet from IP address."""
+        try:
+            parts = ip.split(".")
+            if len(parts) == 4:
+                return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+        except Exception:
+            pass
+        return ip  # Return original if not a valid IPv4
+    
+    def _cleanup_old_events(self, now: float) -> None:
+        """Remove events outside the rate limit window."""
+        cutoff = now - self.config.rate_limit_window_seconds
+        self._registration_events = [
+            e for e in self._registration_events if e.timestamp > cutoff
+        ]
+    
+    def check_rate_limit(self, source_ip: str) -> tuple[bool, Optional[str]]:
+        """
+        Check if a registration from this IP is allowed.
+        
+        Args:
+            source_ip: The IP address attempting to register
+            
+        Returns:
+            Tuple of (allowed: bool, reason: Optional[str])
+        """
+        if not self.config.rate_limit_enabled:
+            return True, None
+        
+        now = time.time()
+        self._cleanup_old_events(now)
+        subnet = self._get_subnet(source_ip)
+        
+        # Check cooldown since last registration from this IP
+        last_reg = self._last_registration_by_ip.get(source_ip, 0)
+        if now - last_reg < self.config.rate_limit_cooldown_seconds:
+            remaining = int(self.config.rate_limit_cooldown_seconds - (now - last_reg))
+            return False, f"cooldown_active:retry_after={remaining}s"
+        
+        # Count recent registrations from this IP
+        ip_count = sum(1 for e in self._registration_events if e.source_ip == source_ip)
+        if ip_count >= self.config.rate_limit_max_per_ip:
+            return False, f"ip_limit_exceeded:max={self.config.rate_limit_max_per_ip}/hour"
+        
+        # Count recent registrations from this subnet
+        subnet_count = sum(1 for e in self._registration_events if e.subnet == subnet)
+        if subnet_count >= self.config.rate_limit_max_per_subnet:
+            return False, f"subnet_limit_exceeded:max={self.config.rate_limit_max_per_subnet}/hour"
+        
+        return True, None
+    
+    def record_registration(self, router_id: str, source_ip: str, success: bool) -> None:
+        """Record a registration attempt."""
+        now = time.time()
+        subnet = self._get_subnet(source_ip)
+        
+        self._registration_events.append(RegistrationEvent(
+            router_id=router_id,
+            source_ip=source_ip,
+            subnet=subnet,
+            timestamp=now,
+            success=success,
+        ))
+        
+        if success:
+            self._last_registration_by_ip[source_ip] = now
+    
+    def get_registration_rate(self) -> float:
+        """Get registrations per hour (for adaptive PoW)."""
+        now = time.time()
+        self._cleanup_old_events(now)
+        
+        # Count successful registrations in last hour
+        hour_ago = now - 3600
+        recent = [e for e in self._registration_events if e.timestamp > hour_ago and e.success]
+        return len(recent)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get rate limiter statistics."""
+        now = time.time()
+        self._cleanup_old_events(now)
+        
+        return {
+            "total_events": len(self._registration_events),
+            "unique_ips": len(set(e.source_ip for e in self._registration_events)),
+            "unique_subnets": len(set(e.subnet for e in self._registration_events)),
+            "registrations_per_hour": self.get_registration_rate(),
+            "window_seconds": self.config.rate_limit_window_seconds,
+        }
+
+
+class ReputationManager:
+    """
+    Reputation system for routers (Issue #117).
+    
+    New routers start with a low trust score that increases over time.
+    Good behavior (consistent heartbeats) improves score.
+    Bad behavior (missed heartbeats, suspicious patterns) decreases score.
+    """
+    
+    def __init__(self, config: "SeedConfig"):
+        self.config = config
+        self._reputation: Dict[str, ReputationRecord] = {}
+    
+    def register_router(self, router_id: str) -> ReputationRecord:
+        """Create initial reputation for a new router."""
+        now = time.time()
+        record = ReputationRecord(
+            router_id=router_id,
+            score=self.config.reputation_initial_score,
+            registered_at=now,
+            last_heartbeat=now,
+            heartbeat_count=0,
+            missed_heartbeats=0,
+            flags=[],
+        )
+        self._reputation[router_id] = record
+        logger.debug(
+            f"New router reputation: {router_id[:20]}... "
+            f"initial_score={record.score}"
+        )
+        return record
+    
+    def get_reputation(self, router_id: str) -> Optional[ReputationRecord]:
+        """Get reputation record for a router."""
+        return self._reputation.get(router_id)
+    
+    def record_heartbeat(self, router_id: str) -> Optional[ReputationRecord]:
+        """
+        Record a successful heartbeat and boost reputation.
+        
+        Also applies time-based reputation decay (increasing trust over time).
+        """
+        record = self._reputation.get(router_id)
+        if not record:
+            return None
+        
+        now = time.time()
+        record.last_heartbeat = now
+        record.heartbeat_count += 1
+        
+        # Boost score for successful heartbeat
+        record.score = min(
+            self.config.reputation_max_score,
+            record.score + self.config.reputation_boost_per_heartbeat
+        )
+        
+        # Apply time-based trust increase (decay toward full trust)
+        hours_since_registration = (now - record.registered_at) / 3600
+        if hours_since_registration > 0:
+            time_factor = min(1.0, hours_since_registration / self.config.reputation_decay_period_hours)
+            # Blend toward max score based on time
+            target_score = self.config.reputation_max_score
+            record.score = record.score + (target_score - record.score) * time_factor * 0.01
+        
+        return record
+    
+    def record_missed_heartbeat(self, router_id: str) -> Optional[ReputationRecord]:
+        """Record a missed heartbeat and penalize reputation."""
+        record = self._reputation.get(router_id)
+        if not record:
+            return None
+        
+        record.missed_heartbeats += 1
+        record.score = max(
+            0.0,
+            record.score - self.config.reputation_penalty_missed_heartbeat
+        )
+        
+        logger.debug(
+            f"Missed heartbeat: {router_id[:20]}... "
+            f"score={record.score:.3f}, missed={record.missed_heartbeats}"
+        )
+        return record
+    
+    def apply_penalty(self, router_id: str, penalty: float, reason: str) -> Optional[ReputationRecord]:
+        """Apply a reputation penalty with a reason flag."""
+        record = self._reputation.get(router_id)
+        if not record:
+            return None
+        
+        record.score = max(0.0, record.score - penalty)
+        if reason not in record.flags:
+            record.flags.append(reason)
+        
+        logger.warning(
+            f"Reputation penalty: {router_id[:20]}... "
+            f"penalty={penalty}, reason={reason}, new_score={record.score:.3f}"
+        )
+        return record
+    
+    def is_trusted_for_discovery(self, router_id: str) -> bool:
+        """Check if router has enough reputation to be included in discovery."""
+        if not self.config.reputation_enabled:
+            return True
+        
+        record = self._reputation.get(router_id)
+        if not record:
+            return True  # Unknown routers default to included
+        
+        return record.score >= self.config.reputation_min_score_for_discovery
+    
+    def get_trust_factor(self, router_id: str) -> float:
+        """
+        Get a trust factor (0.0-1.0) for scoring routers in discovery.
+        
+        Higher reputation = higher factor = preferred in selection.
+        """
+        if not self.config.reputation_enabled:
+            return 1.0
+        
+        record = self._reputation.get(router_id)
+        if not record:
+            return self.config.reputation_initial_score
+        
+        return record.score
+    
+    def remove_router(self, router_id: str) -> None:
+        """Remove reputation record for a router."""
+        self._reputation.pop(router_id, None)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get reputation system statistics."""
+        if not self._reputation:
+            return {
+                "total_routers": 0,
+                "avg_score": 0.0,
+                "below_threshold": 0,
+                "flagged": 0,
+            }
+        
+        scores = [r.score for r in self._reputation.values()]
+        return {
+            "total_routers": len(self._reputation),
+            "avg_score": round(sum(scores) / len(scores), 3),
+            "min_score": round(min(scores), 3),
+            "max_score": round(max(scores), 3),
+            "below_threshold": sum(
+                1 for r in self._reputation.values()
+                if r.score < self.config.reputation_min_score_for_discovery
+            ),
+            "flagged": sum(1 for r in self._reputation.values() if r.flags),
+        }
+
+
+class CorrelationDetector:
+    """
+    Detects correlated router behavior patterns (Issue #117).
+    
+    Sybil attackers often control multiple routers that exhibit:
+    - Synchronized heartbeats (within seconds of each other)
+    - Similar endpoint patterns (same IP ranges, sequential ports)
+    - Correlated up/down patterns
+    - Matching capacity metrics
+    
+    This detector identifies suspicious correlations and flags routers.
+    """
+    
+    def __init__(self, config: "SeedConfig", reputation_manager: ReputationManager):
+        self.config = config
+        self.reputation = reputation_manager
+        
+        # Track heartbeat timestamps per router for correlation analysis
+        self._heartbeat_times: Dict[str, List[float]] = defaultdict(list)
+        self._max_heartbeat_history = 20  # Keep last N heartbeats per router
+        
+        # Track endpoint patterns
+        self._endpoint_patterns: Dict[str, List[str]] = {}
+        
+        # Correlation groups (routers suspected of being controlled together)
+        self._correlation_groups: List[set] = []
+    
+    def record_heartbeat(self, router_id: str, timestamp: float) -> None:
+        """Record heartbeat timestamp for correlation analysis."""
+        if not self.config.correlation_detection_enabled:
+            return
+        
+        times = self._heartbeat_times[router_id]
+        times.append(timestamp)
+        
+        # Keep only recent heartbeats
+        if len(times) > self._max_heartbeat_history:
+            self._heartbeat_times[router_id] = times[-self._max_heartbeat_history:]
+    
+    def record_endpoint(self, router_id: str, endpoints: List[str]) -> None:
+        """Record router endpoints for pattern analysis."""
+        if not self.config.correlation_detection_enabled:
+            return
+        
+        self._endpoint_patterns[router_id] = endpoints
+    
+    def check_heartbeat_correlation(self, router_id: str, timestamp: float) -> List[str]:
+        """
+        Check if this heartbeat correlates suspiciously with other routers.
+        
+        Returns list of router IDs that heartbeat within the suspicious window.
+        """
+        if not self.config.correlation_detection_enabled:
+            return []
+        
+        window = self.config.correlation_heartbeat_window_seconds
+        correlated = []
+        
+        for other_id, times in self._heartbeat_times.items():
+            if other_id == router_id:
+                continue
+            
+            # Check if any recent heartbeat from other router is within window
+            for t in times[-5:]:  # Check last 5 heartbeats
+                if abs(timestamp - t) < window:
+                    correlated.append(other_id)
+                    break
+        
+        return correlated
+    
+    def check_endpoint_similarity(self, router_id: str, endpoints: List[str]) -> List[tuple]:
+        """
+        Check for suspicious endpoint similarity with existing routers.
+        
+        Returns list of (router_id, similarity_score) tuples for suspicious matches.
+        """
+        if not self.config.correlation_detection_enabled:
+            return []
+        
+        suspicious = []
+        
+        for other_id, other_endpoints in self._endpoint_patterns.items():
+            if other_id == router_id:
+                continue
+            
+            similarity = self._compute_endpoint_similarity(endpoints, other_endpoints)
+            if similarity >= self.config.correlation_endpoint_similarity_threshold:
+                suspicious.append((other_id, similarity))
+        
+        return suspicious
+    
+    def _compute_endpoint_similarity(self, endpoints1: List[str], endpoints2: List[str]) -> float:
+        """
+        Compute similarity score between two endpoint lists.
+        
+        Checks for:
+        - Same IP addresses
+        - Same /24 subnet
+        - Sequential port numbers
+        """
+        if not endpoints1 or not endpoints2:
+            return 0.0
+        
+        score = 0.0
+        comparisons = 0
+        
+        for ep1 in endpoints1:
+            for ep2 in endpoints2:
+                comparisons += 1
+                
+                # Parse endpoints
+                try:
+                    host1, port1 = ep1.rsplit(":", 1) if ":" in ep1 else (ep1, "8471")
+                    host2, port2 = ep2.rsplit(":", 1) if ":" in ep2 else (ep2, "8471")
+                    port1, port2 = int(port1), int(port2)
+                except (ValueError, AttributeError):
+                    continue
+                
+                # Same IP = very suspicious
+                if host1 == host2:
+                    score += 1.0
+                else:
+                    # Same /24 subnet
+                    parts1 = host1.split(".")
+                    parts2 = host2.split(".")
+                    if len(parts1) == 4 and len(parts2) == 4:
+                        if parts1[:3] == parts2[:3]:
+                            score += 0.7
+                        elif parts1[:2] == parts2[:2]:
+                            score += 0.3
+                
+                # Sequential ports on similar IPs
+                if abs(port1 - port2) <= 10:
+                    score += 0.2
+        
+        return score / comparisons if comparisons > 0 else 0.0
+    
+    def analyze_and_flag(self, router_id: str, timestamp: float, endpoints: List[str]) -> List[str]:
+        """
+        Analyze router behavior and flag if suspicious.
+        
+        Returns list of flags applied.
+        """
+        if not self.config.correlation_detection_enabled:
+            return []
+        
+        flags = []
+        
+        # Check heartbeat correlation
+        correlated_heartbeats = self.check_heartbeat_correlation(router_id, timestamp)
+        if len(correlated_heartbeats) >= self.config.correlation_min_suspicious_events:
+            flags.append("correlated_heartbeats")
+            # Apply penalty to this router
+            self.reputation.apply_penalty(
+                router_id,
+                self.config.correlation_penalty_score,
+                "correlated_heartbeats"
+            )
+            logger.warning(
+                f"Correlated heartbeats detected: {router_id[:20]}... "
+                f"correlates with {len(correlated_heartbeats)} other routers"
+            )
+        
+        # Check endpoint similarity
+        similar_endpoints = self.check_endpoint_similarity(router_id, endpoints)
+        if similar_endpoints:
+            flags.append("similar_endpoints")
+            for other_id, similarity in similar_endpoints:
+                logger.warning(
+                    f"Similar endpoints detected: {router_id[:20]}... and "
+                    f"{other_id[:20]}... (similarity={similarity:.2f})"
+                )
+            
+            # Apply penalty if highly suspicious
+            if any(s >= 0.9 for _, s in similar_endpoints):
+                self.reputation.apply_penalty(
+                    router_id,
+                    self.config.correlation_penalty_score,
+                    "highly_similar_endpoints"
+                )
+        
+        # Record for future analysis
+        self.record_heartbeat(router_id, timestamp)
+        self.record_endpoint(router_id, endpoints)
+        
+        return flags
+    
+    def remove_router(self, router_id: str) -> None:
+        """Remove router from correlation tracking."""
+        self._heartbeat_times.pop(router_id, None)
+        self._endpoint_patterns.pop(router_id, None)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get correlation detector statistics."""
+        return {
+            "tracked_routers": len(self._heartbeat_times),
+            "endpoint_patterns": len(self._endpoint_patterns),
+            "correlation_groups": len(self._correlation_groups),
+        }
+
+
+class SybilResistance:
+    """
+    Unified Sybil resistance manager (Issue #117).
+    
+    Coordinates:
+    - Rate limiting
+    - Reputation management
+    - Correlation detection
+    - Adaptive PoW difficulty
+    """
+    
+    def __init__(self, config: "SeedConfig"):
+        self.config = config
+        self.rate_limiter = RateLimiter(config)
+        self.reputation = ReputationManager(config)
+        self.correlation = CorrelationDetector(config, self.reputation)
+    
+    def check_registration(self, router_id: str, source_ip: str, endpoints: List[str]) -> tuple[bool, Optional[str]]:
+        """
+        Check if a registration should be allowed.
+        
+        Args:
+            router_id: The router attempting to register
+            source_ip: Source IP of the registration request
+            endpoints: Advertised endpoints
+            
+        Returns:
+            Tuple of (allowed: bool, reason: Optional[str])
+        """
+        # Check rate limits
+        allowed, reason = self.rate_limiter.check_rate_limit(source_ip)
+        if not allowed:
+            return False, reason
+        
+        # Check endpoint similarity with existing routers (pre-registration check)
+        similar = self.correlation.check_endpoint_similarity(router_id, endpoints)
+        if any(s >= 0.95 for _, s in similar):
+            return False, "endpoint_collision:nearly_identical_endpoints_exist"
+        
+        return True, None
+    
+    def on_registration_success(self, router_id: str, source_ip: str, endpoints: List[str]) -> None:
+        """Called when a registration succeeds."""
+        self.rate_limiter.record_registration(router_id, source_ip, success=True)
+        self.reputation.register_router(router_id)
+        self.correlation.record_endpoint(router_id, endpoints)
+    
+    def on_registration_failure(self, router_id: str, source_ip: str) -> None:
+        """Called when a registration fails."""
+        self.rate_limiter.record_registration(router_id, source_ip, success=False)
+    
+    def on_heartbeat(self, router_id: str, timestamp: float, endpoints: List[str]) -> List[str]:
+        """
+        Process a heartbeat for Sybil resistance analysis.
+        
+        Returns list of suspicious behavior flags.
+        """
+        self.reputation.record_heartbeat(router_id)
+        flags = self.correlation.analyze_and_flag(router_id, timestamp, endpoints)
+        return flags
+    
+    def on_missed_heartbeat(self, router_id: str) -> None:
+        """Called when a router misses a heartbeat."""
+        self.reputation.record_missed_heartbeat(router_id)
+    
+    def on_router_removed(self, router_id: str) -> None:
+        """Called when a router is removed from the registry."""
+        self.reputation.remove_router(router_id)
+        self.correlation.remove_router(router_id)
+    
+    def get_adaptive_pow_difficulty(self, base_difficulty: int, source_ip: str) -> int:
+        """
+        Get PoW difficulty adjusted for current network conditions.
+        
+        Increases difficulty when registration rate is high (potential attack).
+        """
+        if not self.config.adaptive_pow_enabled:
+            return base_difficulty
+        
+        rate = self.rate_limiter.get_registration_rate()
+        
+        if rate > self.config.adaptive_pow_threshold_per_hour:
+            # Scale difficulty based on how much we exceed threshold
+            excess_factor = rate / self.config.adaptive_pow_threshold_per_hour
+            additional_bits = int(excess_factor * self.config.adaptive_pow_difficulty_step)
+            adjusted = min(
+                base_difficulty + additional_bits,
+                self.config.adaptive_pow_max_difficulty
+            )
+            
+            if adjusted > base_difficulty:
+                logger.info(
+                    f"Adaptive PoW: difficulty increased {base_difficulty} → {adjusted} "
+                    f"(rate={rate}/hour)"
+                )
+            
+            return adjusted
+        
+        return base_difficulty
+    
+    def is_trusted_for_discovery(self, router_id: str) -> bool:
+        """Check if router should be included in discovery based on reputation."""
+        return self.reputation.is_trusted_for_discovery(router_id)
+    
+    def get_trust_factor(self, router_id: str) -> float:
+        """Get trust factor for router scoring."""
+        return self.reputation.get_trust_factor(router_id)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get comprehensive Sybil resistance statistics."""
+        return {
+            "rate_limiter": self.rate_limiter.get_stats(),
+            "reputation": self.reputation.get_stats(),
+            "correlation": self.correlation.get_stats(),
+            "adaptive_pow": {
+                "enabled": self.config.adaptive_pow_enabled,
+                "threshold_per_hour": self.config.adaptive_pow_threshold_per_hour,
+                "current_rate": self.rate_limiter.get_registration_rate(),
+            },
+        }
+
+
+# =============================================================================
 # CONFIGURATION
 # =============================================================================
 
@@ -412,6 +1050,47 @@ class SeedConfig:
     gossip_batch_size: int = 20  # Max routers per gossip exchange
     gossip_timeout_seconds: float = 10.0  # Timeout for gossip requests
     gossip_max_router_age_seconds: float = 1800.0  # Don't propagate routers older than 30 min
+    
+    # Misbehavior report settings (Issue #119)
+    misbehavior_reports_enabled: bool = True
+    misbehavior_min_reports_to_flag: int = 3  # Minimum unique reporters to flag a router
+    misbehavior_report_window_seconds: float = 3600.0  # Time window for counting reports
+    misbehavior_verify_reporter_signature: bool = True  # Verify reporter signatures
+    misbehavior_max_reports_per_router: int = 100  # Limit stored reports per router
+    misbehavior_flag_severity_threshold: float = 0.5  # Min avg severity to flag
+    
+    # ==========================================================================
+    # Sybil Resistance Settings (Issue #117)
+    # ==========================================================================
+    
+    # Rate limiting per IP/subnet
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: float = 3600.0  # 1 hour window
+    rate_limit_max_per_ip: int = 5  # Max registrations per IP per window
+    rate_limit_max_per_subnet: int = 10  # Max registrations per /24 subnet per window
+    rate_limit_cooldown_seconds: float = 300.0  # 5 min cooldown between registrations from same IP
+    
+    # Reputation system for new routers
+    reputation_enabled: bool = True
+    reputation_initial_score: float = 0.5  # New routers start at 50% trust (0.0 - 1.0)
+    reputation_decay_period_hours: float = 24.0  # Hours to reach full trust
+    reputation_min_score_for_discovery: float = 0.3  # Minimum score to be included in discovery
+    reputation_boost_per_heartbeat: float = 0.01  # Score boost per successful heartbeat
+    reputation_penalty_missed_heartbeat: float = 0.05  # Score penalty per missed heartbeat
+    reputation_max_score: float = 1.0  # Maximum reputation score
+    
+    # Correlated behavior detection
+    correlation_detection_enabled: bool = True
+    correlation_heartbeat_window_seconds: float = 30.0  # Heartbeats within this window are suspicious
+    correlation_min_suspicious_events: int = 5  # Min correlated events to flag
+    correlation_endpoint_similarity_threshold: float = 0.8  # 80% endpoint similarity is suspicious
+    correlation_penalty_score: float = 0.2  # Reputation penalty for correlated behavior
+    
+    # Adaptive PoW difficulty based on network-wide registration rate
+    adaptive_pow_enabled: bool = True
+    adaptive_pow_threshold_per_hour: int = 100  # If >100 registrations/hour, increase difficulty
+    adaptive_pow_max_difficulty: int = 28  # Maximum difficulty bits
+    adaptive_pow_difficulty_step: int = 2  # Increase difficulty by this many bits when threshold hit
     
     def __post_init__(self):
         if self.seed_id is None:
@@ -1000,6 +1679,12 @@ class SeedNode:
     # Seed peering / gossip
     _peer_manager: Optional[SeedPeerManager] = field(default=None, repr=False)
     
+    # Misbehavior reports (Issue #119): {router_id: {reporter_id: report_data}}
+    _misbehavior_reports: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict, repr=False)
+    
+    # Flagged routers from misbehavior reports: {router_id: flag_timestamp}
+    _misbehavior_flagged_routers: Dict[str, float] = field(default_factory=dict, repr=False)
+    
     # Runtime state
     _app: Optional[web.Application] = field(default=None, repr=False)
     _runner: Optional[web.AppRunner] = field(default=None, repr=False)
@@ -1029,6 +1714,13 @@ class SeedNode:
         if self._peer_manager is None:
             self._peer_manager = SeedPeerManager(self)
         return self._peer_manager
+    
+    @property
+    def sybil_resistance(self) -> SybilResistance:
+        """Get the Sybil resistance manager, creating if needed (Issue #117)."""
+        if not hasattr(self, '_sybil_resistance') or self._sybil_resistance is None:
+            self._sybil_resistance = SybilResistance(self.config)
+        return self._sybil_resistance
     
     # -------------------------------------------------------------------------
     # ROUTER SELECTION
@@ -1232,14 +1924,30 @@ class SeedNode:
             if not include_unhealthy and not self.health_monitor.is_healthy_for_discovery(r.router_id):
                 continue
             
+            # Sybil resistance: Filter by reputation (Issue #117)
+            if not self.sybil_resistance.is_trusted_for_discovery(r.router_id):
+                logger.debug(
+                    f"Router {r.router_id[:20]}... excluded from discovery "
+                    f"(low reputation)"
+                )
+                continue
+            
             candidates.append(r)
         
         if not candidates:
             logger.warning("No healthy routers available")
             return []
         
-        # Score and sort
-        scored = [(self._score_router(r, preferences), r) for r in candidates]
+        # Score and sort, incorporating trust factor
+        scored = []
+        for r in candidates:
+            base_score = self._score_router(r, preferences)
+            trust_factor = self.sybil_resistance.get_trust_factor(r.router_id)
+            # Apply trust factor as a multiplier (0.5 to 1.0 range typically)
+            # This gives established routers an advantage over new ones
+            final_score = base_score * (0.5 + 0.5 * trust_factor)
+            scored.append((final_score, r))
+        
         scored.sort(key=lambda x: x[0], reverse=True)
         
         # Select with IP diversity
@@ -1277,18 +1985,25 @@ class SeedNode:
     
     def _get_pow_difficulty(self, source_ip: str) -> int:
         """
-        Get required PoW difficulty based on number of routers from this IP.
+        Get required PoW difficulty based on number of routers from this IP
+        and current network conditions (adaptive PoW).
         
-        Anti-Sybil measure: More routers from same IP = harder PoW.
+        Anti-Sybil measures (Issue #117):
+        - More routers from same IP = harder PoW
+        - Higher network-wide registration rate = harder PoW (adaptive)
         """
         count = self._ip_router_count.get(source_ip, 0)
         
+        # Base difficulty based on IP router count
         if count == 0:
-            return self.config.pow_difficulty_base
+            base_difficulty = self.config.pow_difficulty_base
         elif count == 1:
-            return self.config.pow_difficulty_second
+            base_difficulty = self.config.pow_difficulty_second
         else:
-            return self.config.pow_difficulty_third_plus
+            base_difficulty = self.config.pow_difficulty_third_plus
+        
+        # Apply adaptive PoW based on network registration rate
+        return self.sybil_resistance.get_adaptive_pow_difficulty(base_difficulty, source_ip)
     
     def _verify_signature(
         self,
@@ -1570,8 +2285,29 @@ class SeedNode:
         # Check if updating existing router (skip some verifications for updates)
         is_update = router_id in self.router_registry
         
+        # Sybil resistance: Rate limiting check (Issue #117)
+        # Only apply rate limiting to new registrations
+        if not is_update:
+            allowed, reason = self.sybil_resistance.check_registration(router_id, source_ip, endpoints)
+            if not allowed:
+                logger.warning(
+                    f"Registration blocked by Sybil resistance: {router_id[:20]}... "
+                    f"reason={reason}, source_ip={source_ip}"
+                )
+                self.sybil_resistance.on_registration_failure(router_id, source_ip)
+                return web.json_response(
+                    {
+                        "status": "rejected",
+                        "reason": "rate_limited",
+                        "detail": reason,
+                    },
+                    status=429  # Too Many Requests
+                )
+        
         # Verify Ed25519 signature
         if not self._verify_signature(router_id, data, signature):
+            if not is_update:
+                self.sybil_resistance.on_registration_failure(router_id, source_ip)
             return web.json_response(
                 {"status": "rejected", "reason": "invalid_signature"},
                 status=400
@@ -1581,6 +2317,7 @@ class SeedNode:
         if not is_update:
             required_difficulty = self._get_pow_difficulty(source_ip)
             if not self._verify_pow(router_id, proof_of_work, required_difficulty):
+                self.sybil_resistance.on_registration_failure(router_id, source_ip)
                 return web.json_response(
                     {
                         "status": "rejected",
@@ -1633,20 +2370,36 @@ class SeedNode:
         # Track IP router count for new registrations
         if not is_update:
             self._ip_router_count[source_ip] += 1
+            # Notify Sybil resistance manager of successful registration (Issue #117)
+            self.sybil_resistance.on_registration_success(router_id, source_ip, endpoints)
         
         action = "updated" if is_update else "registered"
         region_info = f", region={record.region}" if record.region else ""
+        
+        # Include reputation info in response for new registrations
+        reputation_info = {}
+        if not is_update:
+            rep = self.sybil_resistance.reputation.get_reputation(router_id)
+            if rep:
+                reputation_info = {
+                    "initial_reputation": rep.score,
+                    "reputation_decay_hours": self.config.reputation_decay_period_hours,
+                }
+        
         logger.info(
             f"Router {action}: {router_id[:20]}... "
             f"endpoints={endpoints}, regions={record.regions}{region_info}, source_ip={source_ip}"
         )
         
-        return web.json_response({
+        response = {
             "status": "accepted",
             "action": action,
             "router_id": router_id,
             "seed_id": self.seed_id,
-        })
+        }
+        response.update(reputation_info)
+        
+        return web.json_response(response)
     
     async def handle_heartbeat(self, request: web.Request) -> web.Response:
         """
@@ -1744,20 +2497,33 @@ class SeedNode:
         health_status = self._determine_health_status(record)
         record.health["status"] = health_status
         
+        # Sybil resistance: Analyze heartbeat for correlated behavior (Issue #117)
+        sybil_flags = self.sybil_resistance.on_heartbeat(router_id, now, record.endpoints)
+        
+        # Get current reputation
+        reputation = self.sybil_resistance.get_trust_factor(router_id)
+        
         logger.debug(
             f"Heartbeat from {router_id[:20]}...: "
             f"load={record.capacity.get('current_load_pct')}%, "
             f"connections={record.capacity.get('active_connections')}, "
-            f"status={health_status}"
+            f"status={health_status}, reputation={reputation:.3f}"
         )
         
-        return web.json_response({
+        response = {
             "status": "ok",
             "health_status": health_status,
             "router_id": router_id,
             "seed_id": self.seed_id,
             "next_heartbeat_in": 300,  # 5 minutes
-        })
+            "reputation": round(reputation, 3),
+        }
+        
+        # Include warnings if suspicious behavior detected
+        if sybil_flags:
+            response["warnings"] = sybil_flags
+        
+        return web.json_response(response)
     
     async def handle_status(self, request: web.Request) -> web.Response:
         """
@@ -1777,6 +2543,12 @@ class SeedNode:
         # Get peer manager stats
         peer_stats = self.peer_manager.get_peer_stats() if self._peer_manager else {}
         
+        # Get Sybil resistance stats (Issue #117)
+        sybil_stats = self.sybil_resistance.get_stats()
+        
+        # Get misbehavior stats (Issue #119)
+        misbehavior_stats = self.get_misbehavior_stats()
+        
         return web.json_response({
             "seed_id": self.seed_id,
             "status": "running" if self._running else "stopped",
@@ -1786,6 +2558,8 @@ class SeedNode:
                 "healthy": healthy_count,
             },
             "health_monitor": health_stats,
+            "sybil_resistance": sybil_stats,
+            "misbehavior": misbehavior_stats,
             "known_seeds": len(self.known_seeds),
             "peering": peer_stats,
         })
@@ -1793,6 +2567,189 @@ class SeedNode:
     async def handle_health(self, request: web.Request) -> web.Response:
         """Health check endpoint for load balancers."""
         return web.json_response({"status": "ok"})
+    
+    # -------------------------------------------------------------------------
+    # MISBEHAVIOR REPORTS (Issue #119)
+    # -------------------------------------------------------------------------
+    
+    async def handle_misbehavior_report(self, request: web.Request) -> web.Response:
+        """
+        Handle misbehavior report from nodes (Issue #119).
+        
+        POST /report_misbehavior
+        {
+            "report_id": "uuid",
+            "reporter_id": "node public key hex",
+            "router_id": "router public key hex",
+            "misbehavior_type": "message_drop|message_delay|ack_failure|...",
+            "evidence": [...],
+            "metrics": {...},
+            "severity": 0.0-1.0,
+            "timestamp": 1234567890.123,
+            "signature": "hex signature"
+        }
+        
+        Seeds aggregate reports from multiple nodes. When a router receives
+        reports from enough unique reporters, it gets flagged.
+        """
+        if not self.config.misbehavior_reports_enabled:
+            return web.json_response(
+                {"status": "rejected", "reason": "misbehavior_reports_disabled"},
+                status=400
+            )
+        
+        try:
+            data = await request.json()
+        except Exception as e:
+            return web.json_response(
+                {"status": "error", "reason": "invalid_json", "detail": str(e)},
+                status=400
+            )
+        
+        router_id = data.get("router_id")
+        reporter_id = data.get("reporter_id")
+        
+        if not router_id:
+            return web.json_response(
+                {"status": "error", "reason": "missing_router_id"},
+                status=400
+            )
+        
+        if not reporter_id:
+            return web.json_response(
+                {"status": "error", "reason": "missing_reporter_id"},
+                status=400
+            )
+        
+        # Verify reporter signature if enabled
+        if self.config.misbehavior_verify_reporter_signature:
+            signature = data.get("signature", "")
+            if signature:
+                # Create data for signature verification (exclude signature field)
+                verify_data = {k: v for k, v in data.items() if k != "signature"}
+                if not self._verify_signature(reporter_id, verify_data, signature):
+                    return web.json_response(
+                        {"status": "error", "reason": "invalid_signature"},
+                        status=400
+                    )
+        
+        # Store the report
+        now = time.time()
+        
+        # Initialize storage for this router if needed
+        if router_id not in self._misbehavior_reports:
+            self._misbehavior_reports[router_id] = {}
+        
+        # Store report from this reporter
+        self._misbehavior_reports[router_id][reporter_id] = {
+            "report_id": data.get("report_id"),
+            "misbehavior_type": data.get("misbehavior_type"),
+            "severity": data.get("severity", 0.0),
+            "timestamp": data.get("timestamp", now),
+            "received_at": now,
+        }
+        
+        # Prune old reports outside the window
+        window_cutoff = now - self.config.misbehavior_report_window_seconds
+        self._misbehavior_reports[router_id] = {
+            r_id: r_data 
+            for r_id, r_data in self._misbehavior_reports[router_id].items()
+            if r_data.get("received_at", 0) >= window_cutoff
+        }
+        
+        # Limit reports per router
+        if len(self._misbehavior_reports[router_id]) > self.config.misbehavior_max_reports_per_router:
+            # Keep most recent reports
+            sorted_reports = sorted(
+                self._misbehavior_reports[router_id].items(),
+                key=lambda x: x[1].get("received_at", 0),
+                reverse=True
+            )
+            self._misbehavior_reports[router_id] = dict(
+                sorted_reports[:self.config.misbehavior_max_reports_per_router]
+            )
+        
+        # Check if router should be flagged
+        reports = self._misbehavior_reports[router_id]
+        unique_reporters = len(reports)
+        
+        router_flagged = False
+        if unique_reporters >= self.config.misbehavior_min_reports_to_flag:
+            # Calculate average severity
+            severities = [r.get("severity", 0) for r in reports.values()]
+            avg_severity = sum(severities) / len(severities) if severities else 0
+            
+            if avg_severity >= self.config.misbehavior_flag_severity_threshold:
+                # Flag the router
+                if router_id not in self._misbehavior_flagged_routers:
+                    self._misbehavior_flagged_routers[router_id] = now
+                    router_flagged = True
+                    logger.warning(
+                        f"FLAGGED router {router_id[:20]}... for misbehavior: "
+                        f"{unique_reporters} reporters, avg_severity={avg_severity:.2f}"
+                    )
+        
+        logger.info(
+            f"Received misbehavior report for router {router_id[:20]}... "
+            f"from {reporter_id[:20]}...: type={data.get('misbehavior_type')}, "
+            f"severity={data.get('severity')}"
+        )
+        
+        return web.json_response({
+            "status": "accepted",
+            "report_id": data.get("report_id"),
+            "router_id": router_id,
+            "reports_for_router": unique_reporters,
+            "router_flagged": router_flagged,
+        })
+    
+    def is_router_misbehavior_flagged(self, router_id: str) -> bool:
+        """
+        Check if a router has been flagged for misbehavior.
+        
+        Args:
+            router_id: Router to check
+            
+        Returns:
+            True if router is flagged
+        """
+        return router_id in self._misbehavior_flagged_routers
+    
+    def get_misbehavior_stats(self) -> Dict[str, Any]:
+        """
+        Get misbehavior report statistics.
+        
+        Returns:
+            Dict with misbehavior tracking stats
+        """
+        now = time.time()
+        return {
+            "enabled": self.config.misbehavior_reports_enabled,
+            "routers_with_reports": len(self._misbehavior_reports),
+            "flagged_routers": len(self._misbehavior_flagged_routers),
+            "flagged_router_ids": list(self._misbehavior_flagged_routers.keys()),
+            "config": {
+                "min_reports_to_flag": self.config.misbehavior_min_reports_to_flag,
+                "report_window_seconds": self.config.misbehavior_report_window_seconds,
+                "flag_severity_threshold": self.config.misbehavior_flag_severity_threshold,
+            },
+        }
+    
+    def clear_router_misbehavior_flag(self, router_id: str) -> bool:
+        """
+        Clear the misbehavior flag for a router.
+        
+        Args:
+            router_id: Router to unflag
+            
+        Returns:
+            True if flag was cleared, False if router wasn't flagged
+        """
+        if router_id in self._misbehavior_flagged_routers:
+            del self._misbehavior_flagged_routers[router_id]
+            logger.info(f"Cleared misbehavior flag for router {router_id[:20]}...")
+            return True
+        return False
     
     # -------------------------------------------------------------------------
     # LIFECYCLE
@@ -1806,6 +2763,9 @@ class SeedNode:
         app.router.add_post("/discover", self.handle_discover)
         app.router.add_post("/register", self.handle_register)
         app.router.add_post("/heartbeat", self.handle_heartbeat)
+        
+        # Misbehavior report endpoint (Issue #119)
+        app.router.add_post("/report_misbehavior", self.handle_misbehavior_report)
         
         # Gossip endpoints (seed-to-seed)
         app.router.add_post("/gossip/exchange", self.peer_manager.handle_gossip_exchange)
