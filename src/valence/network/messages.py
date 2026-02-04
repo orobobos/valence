@@ -3,6 +3,8 @@ Message formats for Valence Relay Protocol.
 
 RelayMessage: What routers see (encrypted payload, routing info)
 DeliverPayload: What recipients see after decryption (actual content)
+AckRequest: Configuration for acknowledgment behavior
+AckMessage: End-to-end acknowledgment that proves recipient received message
 """
 
 from dataclasses import dataclass, field
@@ -10,6 +12,60 @@ from typing import Optional
 import json
 import time
 import uuid
+
+
+# =============================================================================
+# ACKNOWLEDGMENT MESSAGES
+# =============================================================================
+
+
+@dataclass
+class AckRequest:
+    """
+    Configuration for message acknowledgment behavior.
+    
+    Attached to outgoing messages to specify whether ACK is required
+    and timeout settings.
+    """
+    message_id: str
+    require_ack: bool = True
+    ack_timeout_ms: int = 30000  # 30 seconds default
+
+
+@dataclass
+class AckMessage:
+    """
+    End-to-end acknowledgment message.
+    
+    Sent by the recipient back to the sender to prove message delivery.
+    The signature proves the recipient actually received and processed
+    the message (not just that it was relayed).
+    """
+    type: str = field(default="ack", init=False)
+    original_message_id: str = ""
+    received_at: float = 0.0
+    recipient_id: str = ""
+    signature: str = ""  # Hex-encoded signature proving receipt
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict for transmission."""
+        return {
+            "type": self.type,
+            "original_message_id": self.original_message_id,
+            "received_at": self.received_at,
+            "recipient_id": self.recipient_id,
+            "signature": self.signature,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "AckMessage":
+        """Deserialize from dict."""
+        return cls(
+            original_message_id=data.get("original_message_id", ""),
+            received_at=data.get("received_at", 0.0),
+            recipient_id=data.get("recipient_id", ""),
+            signature=data.get("signature", ""),
+        )
 
 
 @dataclass
@@ -89,6 +145,8 @@ class DeliverPayload:
     content: dict
     reply_path: Optional[str] = None  # Encrypted return path
     timestamp: float = field(default_factory=time.time)
+    message_id: Optional[str] = None  # For ACK correlation
+    require_ack: bool = False  # Whether sender wants ACK
     
     def to_dict(self) -> dict:
         """Serialize to dict."""
@@ -97,7 +155,9 @@ class DeliverPayload:
             "message_type": self.message_type,
             "content": self.content,
             "reply_path": self.reply_path,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
+            "message_id": self.message_id,
+            "require_ack": self.require_ack,
         }
     
     @classmethod
@@ -108,7 +168,9 @@ class DeliverPayload:
             message_type=data["message_type"],
             content=data["content"],
             reply_path=data.get("reply_path"),
-            timestamp=data.get("timestamp", time.time())
+            timestamp=data.get("timestamp", time.time()),
+            message_id=data.get("message_id"),
+            require_ack=data.get("require_ack", False),
         )
     
     def to_bytes(self) -> bytes:
