@@ -40,7 +40,29 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X
 
 from .discovery import DiscoveryClient, RouterInfo
 from .crypto import encrypt_message, decrypt_message
-from .messages import AckMessage, DeliverPayload, HealthGossip, RouterHealthObservation
+from .messages import (
+    AckMessage, 
+    DeliverPayload, 
+    HealthGossip, 
+    RouterHealthObservation,
+    # Malicious router detection (Issue #119)
+    MisbehaviorType,
+    RouterBehaviorMetrics,
+    MisbehaviorEvidence,
+    MisbehaviorReport,
+    NetworkBaseline,
+    # Message padding for traffic analysis resistance
+    pad_message,
+    get_padded_size,
+)
+from .config import (
+    TrafficAnalysisMitigationConfig,
+    PrivacyLevel,
+    BatchingConfig,
+    TimingJitterConfig,
+    ConstantRateConfig,
+    MixNetworkConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +392,64 @@ class FailoverState:
 
 
 # =============================================================================
+# COVER TRAFFIC CONFIGURATION (Issue #116)
+# =============================================================================
+
+
+@dataclass
+class CoverTrafficConfig:
+    """
+    Configuration for cover traffic generation.
+    
+    Cover traffic helps resist traffic analysis by sending dummy messages
+    when the node is idle. These messages are indistinguishable from real
+    traffic to routers (encrypted, same sizes, same routing format).
+    
+    Attributes:
+        enabled: Whether cover traffic is active
+        rate_per_minute: Average cover messages per minute when idle
+        idle_threshold_seconds: Seconds without sending before considered idle
+        pad_messages: Whether to pad real messages to bucket sizes
+        target_peers: List of peer node IDs to send cover traffic to.
+                     If empty, cover traffic is sent to random routers.
+        randomize_timing: Add jitter to timing (harder to fingerprint)
+        min_interval_seconds: Minimum seconds between cover messages
+        max_interval_seconds: Maximum seconds between cover messages
+    """
+    enabled: bool = False
+    rate_per_minute: float = 2.0  # Default: ~2 msgs/min when idle
+    idle_threshold_seconds: float = 30.0  # Consider idle after 30s no activity
+    pad_messages: bool = True  # Pad real messages to bucket sizes
+    target_peers: List[str] = field(default_factory=list)
+    randomize_timing: bool = True
+    min_interval_seconds: float = 15.0
+    max_interval_seconds: float = 60.0
+    
+    def get_next_interval(self) -> float:
+        """
+        Get the next interval for sending cover traffic.
+        
+        Uses exponential distribution centered on rate_per_minute,
+        with optional jitter for randomization.
+        """
+        if not self.enabled:
+            return float('inf')
+        
+        # Base interval from rate
+        base_interval = 60.0 / self.rate_per_minute if self.rate_per_minute > 0 else 60.0
+        
+        if self.randomize_timing:
+            # Add randomization using exponential distribution
+            interval = random.expovariate(1.0 / base_interval)
+            # Clamp to min/max
+            interval = max(self.min_interval_seconds, min(self.max_interval_seconds, interval))
+        else:
+            interval = base_interval
+        
+        return interval
+
+
+# =============================================================================
 # NODE CLIENT
 # =============================================================================
 
@@ -466,6 +546,14 @@ class NodeClient:
     max_state_age: float = 86400.0  # Maximum age of state to recover (24 hours)
     recover_state_on_start: bool = True  # Whether to recover state on start
     
+    # Cover traffic configuration (Issue #116)
+    cover_traffic: CoverTrafficConfig = field(default_factory=CoverTrafficConfig)
+    
+    # Traffic analysis mitigation configuration (Issue #120)
+    traffic_analysis_mitigation: TrafficAnalysisMitigationConfig = field(
+        default_factory=TrafficAnalysisMitigationConfig
+    )
+    
     # Callbacks for message handling
     on_message: Optional[Callable[[str, bytes], None]] = None
     on_ack_timeout: Optional[Callable[[str, str], None]] = None  # (message_id, recipient_id)
@@ -475,8 +563,21 @@ class NodeClient:
     _running: bool = field(default=False, repr=False)
     _tasks: List[asyncio.Task] = field(default_factory=list, repr=False)
     _connected_subnets: Set[str] = field(default_factory=set, repr=False)
+    _connected_asns: Set[str] = field(default_factory=set, repr=False)  # ASN diversity tracking (Issue #118)
     _state_sequence: int = field(default=0, repr=False)  # Monotonic counter for conflict detection
     _last_state_save: float = field(default=0.0, repr=False)
+    
+    # Eclipse mitigation state (Issue #118)
+    _connection_timestamps: Dict[str, float] = field(default_factory=dict, repr=False)  # router_id -> connect time
+    _last_rotation: float = field(default=0.0, repr=False)  # Last router rotation time
+    _failure_events: List[Dict[str, Any]] = field(default_factory=list, repr=False)  # Recent failure events
+    _anomaly_alerts: List[Dict[str, Any]] = field(default_factory=list, repr=False)  # Detected anomalies
+    _last_oob_verification: float = field(default=0.0, repr=False)  # Last OOB verification time
+    _oob_verified_routers: Set[str] = field(default_factory=set, repr=False)  # Routers verified via OOB
+    
+    # Cover traffic internal state (Issue #116)
+    _last_real_message_time: float = field(default=0.0, repr=False)
+    _cover_traffic_task: Optional[asyncio.Task] = field(default=None, repr=False)
     
     # Statistics
     _stats: Dict[str, int] = field(default_factory=lambda: {
@@ -493,6 +594,16 @@ class NodeClient:
         "acks_sent": 0,
         "gossip_sent": 0,
         "gossip_received": 0,
+        # Cover traffic stats (Issue #116)
+        "cover_messages_sent": 0,
+        "cover_messages_received": 0,
+        "bytes_padded": 0,
+        # Eclipse mitigation stats (Issue #118)
+        "routers_rotated": 0,
+        "diversity_rejections": 0,
+        "anomalies_detected": 0,
+        "oob_verifications": 0,
+        "oob_verification_failures": 0,
     })
     
     # -------------------------------------------------------------------------
@@ -521,9 +632,77 @@ class NodeClient:
     # Connected peers (nodes we can gossip with)
     _connected_peers: Set[str] = field(default_factory=set, repr=False)
     
+    # -------------------------------------------------------------------------
+    # CIRCUIT CONFIGURATION (Issue #115 - Enhanced Privacy)
+    # -------------------------------------------------------------------------
+    
+    # Circuit building
+    circuit_min_hops: int = 2  # Minimum hops for privacy
+    circuit_max_hops: int = 3  # Maximum hops (latency vs privacy tradeoff)
+    circuit_lifetime: float = 600.0  # 10 minutes default lifetime
+    circuit_max_messages: int = 100  # Rotate circuit after this many messages
+    circuit_build_timeout: float = 10.0  # Timeout for circuit establishment
+    
+    # Circuit state
+    _circuits: Dict[str, Circuit] = field(default_factory=dict, repr=False)
+    _circuit_keys: Dict[str, List[bytes]] = field(default_factory=dict, repr=False)  # circuit_id -> hop keys
+    _active_circuit_id: Optional[str] = field(default=None, repr=False)  # Currently selected circuit
+    _circuit_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    
+    # Ephemeral keys for circuit establishment (circuit_id -> list of private keys per hop)
+    _circuit_ephemeral_keys: Dict[str, List[Any]] = field(default_factory=dict, repr=False)
+    
+    # Circuit usage enabled flag
+    use_circuits: bool = False  # Disabled by default for backward compatibility
+    
     # Queue limits
     MAX_QUEUE_SIZE: int = 1000
     MAX_QUEUE_AGE: float = 3600.0  # 1 hour
+    
+    # -------------------------------------------------------------------------
+    # MALICIOUS ROUTER DETECTION (Issue #119)
+    # -------------------------------------------------------------------------
+    
+    # Detection configuration
+    misbehavior_detection_enabled: bool = True
+    
+    # Thresholds for detecting misbehavior
+    min_messages_for_detection: int = 20  # Minimum samples before flagging
+    delivery_rate_threshold: float = 0.75  # Flag if delivery rate below this
+    latency_threshold_stddevs: float = 2.0  # Flag if latency > N stddevs above baseline
+    ack_failure_threshold: float = 0.30  # Flag if ACK failure rate exceeds this
+    
+    # Severity thresholds
+    mild_severity_threshold: float = 0.3  # Below this = mild misbehavior
+    severe_severity_threshold: float = 0.7  # Above this = severe misbehavior
+    
+    # Auto-avoidance configuration
+    auto_avoid_flagged_routers: bool = True
+    flagged_router_penalty: float = 0.1  # Multiply weight by this for flagged routers
+    
+    # Reporting configuration
+    report_to_seeds: bool = True
+    report_cooldown_seconds: float = 300.0  # Don't report same router within 5 min
+    max_evidence_per_report: int = 10  # Limit evidence items per report
+    
+    # Network baseline configuration
+    baseline_update_interval: float = 60.0  # Seconds between baseline updates
+    baseline_min_samples: int = 3  # Min routers for baseline calculation
+    
+    # Per-router behavior metrics: {router_id: RouterBehaviorMetrics}
+    _router_behavior_metrics: Dict[str, Any] = field(default_factory=dict, repr=False)
+    
+    # Network baseline for comparison
+    _network_baseline: Any = field(default=None, repr=False)
+    
+    # Flagged routers: {router_id: MisbehaviorReport}
+    _flagged_routers: Dict[str, Any] = field(default_factory=dict, repr=False)
+    
+    # Report tracking: {router_id: last_report_timestamp}
+    _last_misbehavior_reports: Dict[str, float] = field(default_factory=dict, repr=False)
+    
+    # Callback for misbehavior detection
+    on_router_flagged: Optional[Callable[[str, Any], None]] = None  # (router_id, report)
     
     # -------------------------------------------------------------------------
     # PUBLIC API
@@ -1267,6 +1446,9 @@ class NodeClient:
                 self._add_subnet(router)
                 self._stats["connections_established"] += 1
                 
+                # Track connection time for eclipse mitigation (Issue #118)
+                self._connection_timestamps[router.router_id] = now
+                
                 # Start receive loop
                 self._tasks.append(
                     asyncio.create_task(self._receive_loop(router.router_id))
@@ -1538,6 +1720,9 @@ class NodeClient:
         
         # Update health observation after ACK
         self._update_own_observation(conn.router.router_id, conn)
+        
+        # Record ACK outcome for misbehavior detection (Issue #119)
+        self._record_ack_outcome(conn.router.router_id, success)
     
     async def _handle_gossip_message(
         self,
@@ -1749,6 +1934,13 @@ class NodeClient:
         
         self._stats["ack_failures"] = self._stats.get("ack_failures", 0) + 1
         
+        # Record delivery failure for misbehavior detection (Issue #119)
+        self._record_delivery_outcome(
+            pending.router_id, 
+            message_id, 
+            delivered=False,
+        )
+        
         # Notify callback if registered
         if self.on_ack_timeout:
             try:
@@ -1783,6 +1975,15 @@ class NodeClient:
         self._stats["ack_successes"] = self._stats.get("ack_successes", 0) + 1
         
         latency_ms = (ack.received_at - pending.sent_at) * 1000
+        
+        # Record successful delivery for misbehavior detection (Issue #119)
+        self._record_delivery_outcome(
+            pending.router_id,
+            message_id,
+            delivered=True,
+            latency_ms=latency_ms,
+        )
+        
         logger.debug(
             f"E2E ACK received for {message_id} from {ack.recipient_id[:16]}... "
             f"(latency: {latency_ms:.1f}ms)"
@@ -1920,6 +2121,10 @@ class NodeClient:
             # Apply penalty for back-pressured routers (if included)
             if conn.is_under_back_pressure:
                 combined_score *= 0.1  # 90% penalty
+            
+            # Apply penalty for flagged routers (Issue #119 - Malicious Router Detection)
+            if self.auto_avoid_flagged_routers and self.is_router_flagged(conn.router.router_id):
+                combined_score *= self.flagged_router_penalty  # Heavy penalty for misbehaving routers
             
             weights.append(max(0.01, combined_score))
         
@@ -2087,7 +2292,12 @@ class NodeClient:
             except Exception as e:
                 logger.warning(f"Queue processor error: {e}")
     
-    async def _handle_router_failure(self, router_id: str) -> None:
+    async def _handle_router_failure(
+        self,
+        router_id: str,
+        failure_type: str = "connection",
+        error_code: Optional[str] = None,
+    ) -> None:
         """
         Handle router failure with intelligent failover.
         
@@ -2099,6 +2309,7 @@ class NodeClient:
         5. Connect to alternatives with timeout
         6. Flush queued messages on new connection
         7. Enable direct mode as graceful degradation
+        8. Record failure for eclipse anomaly detection (Issue #118)
         """
         conn = self.connections.pop(router_id, None)
         if not conn:
@@ -2107,6 +2318,9 @@ class NodeClient:
         fail_time = time.time()
         self._stats["failovers"] += 1
         logger.warning(f"Router {router_id[:16]}... failed, initiating failover")
+        
+        # Record failure for eclipse anomaly detection (Issue #118)
+        self._record_failure_event(router_id, failure_type, error_code)
         
         # 1. Update failover state with exponential backoff
         if router_id not in self.failover_states:
@@ -2559,6 +2773,1110 @@ class NodeClient:
             ),
             "peers_with_observations": len(self._peer_observations),
             "aggregated_health_scores": aggregated_scores,
+        }
+    
+    # -------------------------------------------------------------------------
+    # COVER TRAFFIC (Issue #116)
+    # -------------------------------------------------------------------------
+    
+    def _is_idle(self) -> bool:
+        """
+        Check if the node is considered idle for cover traffic purposes.
+        
+        A node is idle if no real messages have been sent within the
+        idle threshold configured in cover_traffic.idle_threshold_seconds.
+        
+        Returns:
+            True if node is idle and should generate cover traffic
+        """
+        if not self.cover_traffic.enabled:
+            return False
+        
+        if self._last_real_message_time == 0:
+            # No messages sent yet - consider idle
+            return True
+        
+        elapsed = time.time() - self._last_real_message_time
+        return elapsed >= self.cover_traffic.idle_threshold_seconds
+    
+    def _get_cover_target(self) -> Optional[str]:
+        """
+        Select a target for cover traffic.
+        
+        If target_peers is configured, randomly selects from that list.
+        Otherwise, returns None (cover traffic will go to a random router
+        which will discard it as unroutable).
+        
+        Returns:
+            Target node ID or None
+        """
+        if self.cover_traffic.target_peers:
+            return random.choice(self.cover_traffic.target_peers)
+        
+        # No target peers configured - generate fake recipient ID
+        # This message will be sent to a router but can't be delivered
+        # (no such node exists), which is fine for cover traffic
+        return os.urandom(32).hex()
+    
+    async def _generate_cover_message(self) -> None:
+        """
+        Generate and send a single cover traffic message.
+        
+        Cover messages are:
+        - Encrypted (routers can't read them)
+        - Padded to standard bucket sizes
+        - Routed to target peers (or discarded by routers if no target)
+        - Indistinguishable from real traffic
+        """
+        if not self.connections:
+            logger.debug("No routers connected, skipping cover traffic")
+            return
+        
+        # Select router and target
+        router = self._select_router()
+        if not router:
+            return
+        
+        target_id = self._get_cover_target()
+        
+        # Create cover message content
+        cover_msg = CoverMessage()
+        content = cover_msg.to_bytes()
+        
+        # Generate a fake recipient key for encryption
+        # (the message won't be decrypted anyway)
+        fake_key = X25519PrivateKey.generate().public_key()
+        
+        try:
+            await self._send_via_router(
+                router=router,
+                message_id=cover_msg.message_id,
+                recipient_id=target_id,
+                recipient_public_key=fake_key,
+                content=content,
+                require_ack=False,  # Cover traffic doesn't need ACKs
+                is_cover_traffic=True,
+            )
+        except Exception as e:
+            logger.debug(f"Failed to send cover traffic: {e}")
+    
+    async def _cover_traffic_loop(self) -> None:
+        """
+        Background task to generate cover traffic when idle.
+        
+        Sends dummy messages at configurable rate when the node hasn't
+        sent real messages within the idle threshold. This obscures
+        real communication patterns from traffic analysis.
+        """
+        logger.debug("Cover traffic loop started")
+        
+        while self._running:
+            try:
+                # Get next interval based on config
+                interval = self.cover_traffic.get_next_interval()
+                await asyncio.sleep(interval)
+                
+                if not self._running:
+                    break
+                
+                # Only generate cover traffic when idle
+                if self._is_idle():
+                    await self._generate_cover_message()
+                else:
+                    logger.debug(
+                        f"Node active (last message {time.time() - self._last_real_message_time:.1f}s ago), "
+                        "skipping cover traffic"
+                    )
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Cover traffic loop error: {e}")
+        
+        logger.debug("Cover traffic loop stopped")
+    
+    def get_cover_traffic_stats(self) -> Dict[str, Any]:
+        """
+        Get cover traffic statistics.
+        
+        Returns:
+            Dict with cover traffic metrics
+        """
+        return {
+            "enabled": self.cover_traffic.enabled,
+            "rate_per_minute": self.cover_traffic.rate_per_minute,
+            "pad_messages": self.cover_traffic.pad_messages,
+            "is_idle": self._is_idle(),
+            "cover_messages_sent": self._stats.get("cover_messages_sent", 0),
+            "cover_messages_received": self._stats.get("cover_messages_received", 0),
+            "bytes_padded": self._stats.get("bytes_padded", 0),
+            "last_real_message_ago": (
+                time.time() - self._last_real_message_time
+                if self._last_real_message_time > 0 else None
+            ),
+        }
+    
+    def enable_cover_traffic(
+        self,
+        rate_per_minute: float = 2.0,
+        pad_messages: bool = True,
+        target_peers: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Enable cover traffic at runtime.
+        
+        Args:
+            rate_per_minute: Messages per minute when idle
+            pad_messages: Whether to pad real messages to bucket sizes
+            target_peers: Optional list of peer node IDs for cover traffic
+        """
+        self.cover_traffic.enabled = True
+        self.cover_traffic.rate_per_minute = rate_per_minute
+        self.cover_traffic.pad_messages = pad_messages
+        if target_peers:
+            self.cover_traffic.target_peers = target_peers
+        
+        # Start the cover traffic task if not running
+        if self._running and (
+            self._cover_traffic_task is None or 
+            self._cover_traffic_task.done()
+        ):
+            self._cover_traffic_task = asyncio.create_task(self._cover_traffic_loop())
+            self._tasks.append(self._cover_traffic_task)
+        
+        logger.info(
+            f"Cover traffic enabled: {rate_per_minute:.1f} msg/min when idle, "
+            f"padding={'on' if pad_messages else 'off'}"
+        )
+    
+    def disable_cover_traffic(self) -> None:
+        """Disable cover traffic at runtime."""
+        self.cover_traffic.enabled = False
+        
+        # Cancel the task if running
+        if self._cover_traffic_task and not self._cover_traffic_task.done():
+            self._cover_traffic_task.cancel()
+        
+        logger.info("Cover traffic disabled")
+
+    # =========================================================================
+    # ECLIPSE ATTACK MITIGATIONS (Issue #118)
+    # =========================================================================
+    
+    async def _router_rotation_loop(self) -> None:
+        """
+        Periodically rotate router connections to prevent long-term eclipse.
+        
+        This loop:
+        1. Checks for connections exceeding max age and rotates them
+        2. Periodically rotates one random connection for diversity
+        3. Ensures diversity requirements are maintained after rotation
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(60)  # Check every minute
+                if not self._running:
+                    break
+                
+                now = time.time()
+                rotated = False
+                
+                # Check for connections exceeding max age
+                for router_id, conn in list(self.connections.items()):
+                    conn_time = self._connection_timestamps.get(router_id, conn.connected_at)
+                    age = now - conn_time
+                    
+                    if age >= self.rotation_max_age:
+                        logger.info(
+                            f"Rotating router {router_id[:16]}... due to max age "
+                            f"({age/3600:.1f}h > {self.rotation_max_age/3600:.1f}h)"
+                        )
+                        await self._rotate_router(router_id, "max_age")
+                        rotated = True
+                        break  # One rotation per cycle
+                
+                # Periodic rotation (if not already rotated for max age)
+                if not rotated and len(self.connections) > self.min_connections:
+                    time_since_rotation = now - self._last_rotation
+                    
+                    if time_since_rotation >= self.rotation_interval:
+                        # Select oldest connection for rotation
+                        oldest_router_id = min(
+                            self.connections.keys(),
+                            key=lambda rid: self._connection_timestamps.get(
+                                rid, self.connections[rid].connected_at
+                            )
+                        )
+                        
+                        logger.info(
+                            f"Periodic rotation of router {oldest_router_id[:16]}... "
+                            f"(connected for {(now - self._connection_timestamps.get(oldest_router_id, now))/3600:.1f}h)"
+                        )
+                        await self._rotate_router(oldest_router_id, "periodic")
+                
+                # Check diversity requirements
+                if not self._check_diversity_requirements():
+                    logger.warning(
+                        "Diversity requirements not met after rotation - "
+                        "potential eclipse risk"
+                    )
+                    # Try to add more diverse connections
+                    await self._ensure_connections()
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Router rotation loop error: {e}")
+    
+    async def _rotate_router(self, router_id: str, reason: str) -> bool:
+        """
+        Rotate a specific router connection.
+        
+        Disconnects from the router and attempts to connect to a new,
+        diverse router to replace it.
+        
+        Args:
+            router_id: Router to rotate out
+            reason: Reason for rotation (for logging)
+            
+        Returns:
+            True if rotation was successful
+        """
+        conn = self.connections.get(router_id)
+        if not conn:
+            return False
+        
+        # Record the rotation
+        self._last_rotation = time.time()
+        self._stats["routers_rotated"] += 1
+        
+        # Disconnect from old router
+        await self._close_connection(router_id, conn)
+        self.connections.pop(router_id, None)
+        self._connection_timestamps.pop(router_id, None)
+        self._remove_subnet(conn.router)
+        
+        # Try to connect to a new diverse router
+        try:
+            # Exclude current connections and recently rotated router
+            exclude_ids = set(self.connections.keys())
+            exclude_ids.add(router_id)
+            
+            # Also exclude routers in cooldown
+            for r_id, state in self.failover_states.items():
+                if state.is_in_cooldown():
+                    exclude_ids.add(r_id)
+            
+            routers = await self.discovery.discover_routers(
+                count=5,
+                preferences={"exclude": list(exclude_ids)},
+            )
+            
+            # Find a diverse router
+            for router in routers:
+                if self.enforce_ip_diversity and not self._check_ip_diversity(router):
+                    continue
+                if not self._check_asn_diversity(router):
+                    continue
+                
+                try:
+                    await self._connect_to_router(router)
+                    self._connection_timestamps[router.router_id] = time.time()
+                    logger.info(
+                        f"Rotation complete: {router_id[:16]}... -> {router.router_id[:16]}... "
+                        f"(reason: {reason})"
+                    )
+                    return True
+                except Exception as e:
+                    logger.debug(f"Failed to connect to rotation candidate: {e}")
+                    continue
+            
+            logger.warning(f"Could not find diverse replacement for {router_id[:16]}...")
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Rotation failed for {router_id[:16]}...: {e}")
+            return False
+    
+    def _record_failure_event(
+        self,
+        router_id: str,
+        failure_type: str,
+        error_code: Optional[str] = None,
+    ) -> None:
+        """
+        Record a router failure event for anomaly detection.
+        
+        Tracks failure events with timestamps to detect correlated failures
+        that might indicate an eclipse attack.
+        
+        Args:
+            router_id: The router that failed
+            failure_type: Type of failure (e.g., "connection", "timeout", "error")
+            error_code: Optional specific error code
+        """
+        if not self.anomaly_detection_enabled:
+            return
+        
+        now = time.time()
+        
+        event = {
+            "router_id": router_id,
+            "failure_type": failure_type,
+            "error_code": error_code,
+            "timestamp": now,
+        }
+        
+        self._failure_events.append(event)
+        
+        # Prune old events
+        cutoff = now - self.anomaly_window
+        self._failure_events = [
+            e for e in self._failure_events
+            if e["timestamp"] >= cutoff
+        ]
+        
+        # Check for anomalies
+        self._detect_anomalies()
+    
+    def _detect_anomalies(self) -> Optional[Dict[str, Any]]:
+        """
+        Detect anomalous patterns in router failures.
+        
+        Looks for:
+        - Multiple routers failing at the same time
+        - Same error occurring across multiple routers
+        - All routers from same subnet/ASN failing
+        
+        Returns:
+            Anomaly details if detected, None otherwise
+        """
+        now = time.time()
+        cutoff = now - self.anomaly_window
+        
+        # Recent failures only
+        recent_failures = [
+            e for e in self._failure_events
+            if e["timestamp"] >= cutoff
+        ]
+        
+        if len(recent_failures) < self.anomaly_threshold:
+            return None
+        
+        # Check for same failure type across multiple routers
+        failure_type_counts: Dict[str, List[str]] = {}
+        for event in recent_failures:
+            ft = event["failure_type"]
+            if ft not in failure_type_counts:
+                failure_type_counts[ft] = []
+            failure_type_counts[ft].append(event["router_id"])
+        
+        for failure_type, router_ids in failure_type_counts.items():
+            unique_routers = set(router_ids)
+            if len(unique_routers) >= self.anomaly_threshold:
+                anomaly = {
+                    "type": "correlated_failures",
+                    "failure_type": failure_type,
+                    "affected_routers": list(unique_routers),
+                    "count": len(unique_routers),
+                    "window_seconds": self.anomaly_window,
+                    "detected_at": now,
+                }
+                
+                self._anomaly_alerts.append(anomaly)
+                self._stats["anomalies_detected"] += 1
+                
+                # Keep only recent anomalies
+                one_hour_ago = now - 3600
+                self._anomaly_alerts = [
+                    a for a in self._anomaly_alerts
+                    if a["detected_at"] >= one_hour_ago
+                ]
+                
+                logger.warning(
+                    f"ECLIPSE ANOMALY DETECTED: {len(unique_routers)} routers "
+                    f"experienced '{failure_type}' within {self.anomaly_window}s"
+                )
+                
+                return anomaly
+        
+        # Check for same error code
+        error_code_counts: Dict[str, List[str]] = {}
+        for event in recent_failures:
+            ec = event.get("error_code")
+            if ec:
+                if ec not in error_code_counts:
+                    error_code_counts[ec] = []
+                error_code_counts[ec].append(event["router_id"])
+        
+        for error_code, router_ids in error_code_counts.items():
+            unique_routers = set(router_ids)
+            if len(unique_routers) >= self.anomaly_threshold:
+                anomaly = {
+                    "type": "same_error",
+                    "error_code": error_code,
+                    "affected_routers": list(unique_routers),
+                    "count": len(unique_routers),
+                    "window_seconds": self.anomaly_window,
+                    "detected_at": now,
+                }
+                
+                self._anomaly_alerts.append(anomaly)
+                self._stats["anomalies_detected"] += 1
+                
+                logger.warning(
+                    f"ECLIPSE ANOMALY DETECTED: {len(unique_routers)} routers "
+                    f"returned same error '{error_code}' within {self.anomaly_window}s"
+                )
+                
+                return anomaly
+        
+        return None
+    
+    async def _oob_verification_loop(self) -> None:
+        """
+        Periodically verify router information via out-of-band channel.
+        
+        OOB verification provides an independent check that our connected
+        routers are legitimate and not part of an eclipse attack.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(self.oob_verification_interval)
+                if not self._running:
+                    break
+                
+                if not self.oob_verification_url:
+                    continue
+                
+                await self._perform_oob_verification()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"OOB verification loop error: {e}")
+    
+    async def _perform_oob_verification(self) -> bool:
+        """
+        Perform out-of-band verification of connected routers.
+        
+        Contacts an independent verification service to confirm that
+        our connected routers are registered and legitimate.
+        
+        Returns:
+            True if verification passed, False otherwise
+        """
+        if not self.oob_verification_url:
+            return True
+        
+        now = time.time()
+        self._last_oob_verification = now
+        self._stats["oob_verifications"] += 1
+        
+        # Get list of connected router IDs
+        connected_router_ids = list(self.connections.keys())
+        
+        if not connected_router_ids:
+            return True  # No routers to verify
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    self.oob_verification_url,
+                    json={
+                        "node_id": self.node_id,
+                        "router_ids": connected_router_ids,
+                        "timestamp": now,
+                    },
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning(
+                            f"OOB verification failed: HTTP {resp.status}"
+                        )
+                        self._stats["oob_verification_failures"] += 1
+                        return False
+                    
+                    data = await resp.json()
+                    
+                    # Process verification results
+                    verified_ids = set(data.get("verified", []))
+                    unknown_ids = set(data.get("unknown", []))
+                    suspicious_ids = set(data.get("suspicious", []))
+                    
+                    self._oob_verified_routers = verified_ids
+                    
+                    if suspicious_ids:
+                        logger.warning(
+                            f"OOB verification flagged {len(suspicious_ids)} "
+                            f"suspicious routers: {[s[:16] + '...' for s in suspicious_ids]}"
+                        )
+                        
+                        # Consider disconnecting from suspicious routers
+                        for router_id in suspicious_ids:
+                            if router_id in self.connections:
+                                logger.warning(
+                                    f"Disconnecting from suspicious router {router_id[:16]}..."
+                                )
+                                await self._rotate_router(router_id, "oob_suspicious")
+                    
+                    if unknown_ids:
+                        logger.info(
+                            f"OOB verification: {len(unknown_ids)} routers unknown "
+                            f"(may be new registrations)"
+                        )
+                    
+                    logger.info(
+                        f"OOB verification complete: {len(verified_ids)} verified, "
+                        f"{len(unknown_ids)} unknown, {len(suspicious_ids)} suspicious"
+                    )
+                    
+                    return len(suspicious_ids) == 0
+                    
+        except aiohttp.ClientError as e:
+            logger.warning(f"OOB verification network error: {e}")
+            self._stats["oob_verification_failures"] += 1
+            return False
+        except Exception as e:
+            logger.warning(f"OOB verification error: {e}")
+            self._stats["oob_verification_failures"] += 1
+            return False
+    
+    def get_eclipse_mitigation_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive eclipse mitigation status.
+        
+        Returns:
+            Dict with diversity metrics, rotation status, anomaly alerts, etc.
+        """
+        now = time.time()
+        
+        # Connection age info
+        connection_ages = {}
+        for router_id, conn in self.connections.items():
+            conn_time = self._connection_timestamps.get(router_id, conn.connected_at)
+            connection_ages[router_id[:16] + "..."] = {
+                "age_hours": (now - conn_time) / 3600,
+                "subnet": self._get_router_subnet(conn.router),
+            }
+        
+        return {
+            # Diversity status
+            "diversity": {
+                "subnets_connected": len(self._connected_subnets),
+                "asns_connected": len(self._connected_asns),
+                "min_subnets_required": self.min_diverse_subnets,
+                "min_asns_required": self.min_diverse_asns,
+                "requirements_met": self._check_diversity_requirements(),
+            },
+            
+            # Rotation status
+            "rotation": {
+                "enabled": self.rotation_enabled,
+                "last_rotation": self._last_rotation,
+                "rotation_interval_hours": self.rotation_interval / 3600,
+                "max_connection_age_hours": self.rotation_max_age / 3600,
+                "routers_rotated_total": self._stats.get("routers_rotated", 0),
+            },
+            
+            # Anomaly detection
+            "anomaly_detection": {
+                "enabled": self.anomaly_detection_enabled,
+                "recent_failures": len(self._failure_events),
+                "anomaly_window_seconds": self.anomaly_window,
+                "anomaly_threshold": self.anomaly_threshold,
+                "recent_anomalies": len(self._anomaly_alerts),
+                "total_anomalies_detected": self._stats.get("anomalies_detected", 0),
+            },
+            
+            # OOB verification
+            "oob_verification": {
+                "enabled": self.oob_verification_enabled,
+                "url": self.oob_verification_url,
+                "last_verification": self._last_oob_verification,
+                "verified_routers": len(self._oob_verified_routers),
+                "total_verifications": self._stats.get("oob_verifications", 0),
+                "verification_failures": self._stats.get("oob_verification_failures", 0),
+            },
+            
+            # Connection details
+            "connections": connection_ages,
+            
+            # Recent anomaly alerts
+            "recent_anomaly_alerts": self._anomaly_alerts[-5:],  # Last 5 alerts
+        }
+    
+    def get_anomaly_alerts(self) -> List[Dict[str, Any]]:
+        """Get recent anomaly alerts for monitoring."""
+        return list(self._anomaly_alerts)
+    
+    def clear_anomaly_alerts(self) -> int:
+        """Clear anomaly alerts (for testing or after investigation)."""
+        count = len(self._anomaly_alerts)
+        self._anomaly_alerts.clear()
+        return count
+
+    # =========================================================================
+    # MALICIOUS ROUTER DETECTION (Issue #119)
+    # =========================================================================
+    
+    def _get_router_metrics(self, router_id: str) -> RouterBehaviorMetrics:
+        """
+        Get or create behavior metrics for a router.
+        
+        Args:
+            router_id: The router's ID
+            
+        Returns:
+            RouterBehaviorMetrics for the router
+        """
+        if router_id not in self._router_behavior_metrics:
+            self._router_behavior_metrics[router_id] = RouterBehaviorMetrics(
+                router_id=router_id,
+                first_seen=time.time(),
+            )
+        return self._router_behavior_metrics[router_id]
+    
+    def _record_message_sent(self, router_id: str, message_id: str) -> None:
+        """
+        Record that a message was sent through a router.
+        
+        Called when sending a message to track delivery outcomes.
+        
+        Args:
+            router_id: Router that received the message
+            message_id: The message ID for correlation
+        """
+        if not self.misbehavior_detection_enabled:
+            return
+        
+        metrics = self._get_router_metrics(router_id)
+        metrics.messages_sent += 1
+        metrics.last_updated = time.time()
+    
+    def _record_delivery_outcome(
+        self,
+        router_id: str,
+        message_id: str,
+        delivered: bool,
+        latency_ms: Optional[float] = None,
+    ) -> None:
+        """
+        Record the outcome of a message delivery attempt.
+        
+        Called when we receive an ACK (or timeout) to track router reliability.
+        
+        Args:
+            router_id: Router that handled the message
+            message_id: The message ID
+            delivered: Whether the message was delivered successfully
+            latency_ms: End-to-end latency if delivered
+        """
+        if not self.misbehavior_detection_enabled:
+            return
+        
+        metrics = self._get_router_metrics(router_id)
+        metrics.record_delivery(delivered)
+        
+        if delivered and latency_ms is not None:
+            metrics.record_latency(latency_ms)
+        
+        # Check for misbehavior after recording
+        self._check_router_behavior(router_id)
+    
+    def _record_ack_outcome(self, router_id: str, success: bool) -> None:
+        """
+        Record an ACK success or failure for a router.
+        
+        Args:
+            router_id: Router that handled the message
+            success: Whether ACK was received successfully
+        """
+        if not self.misbehavior_detection_enabled:
+            return
+        
+        metrics = self._get_router_metrics(router_id)
+        metrics.record_ack(success)
+        
+        # Update stats
+        if success:
+            self._stats["misbehavior_ack_success"] = self._stats.get("misbehavior_ack_success", 0) + 1
+        else:
+            self._stats["misbehavior_ack_failure"] = self._stats.get("misbehavior_ack_failure", 0) + 1
+        
+        # Check for misbehavior after recording
+        self._check_router_behavior(router_id)
+    
+    def _update_network_baseline(self) -> None:
+        """
+        Update the network baseline from all router metrics.
+        
+        The baseline represents "normal" network behavior and is used
+        to detect anomalies.
+        """
+        if not self._router_behavior_metrics:
+            return
+        
+        # Collect stats from all routers with enough samples
+        delivery_rates = []
+        latencies = []
+        ack_rates = []
+        
+        for router_id, metrics in self._router_behavior_metrics.items():
+            # Skip flagged routers - they skew the baseline
+            if metrics.flagged:
+                continue
+            
+            if metrics.messages_sent >= self.min_messages_for_detection:
+                delivery_rates.append(metrics.delivery_rate)
+                ack_rates.append(metrics.ack_success_rate)
+                
+                if metrics.latency_samples > 0:
+                    latencies.append(metrics.avg_latency_ms)
+        
+        if len(delivery_rates) < self.baseline_min_samples:
+            # Not enough data for baseline
+            if self._network_baseline is None:
+                # Use default baseline
+                self._network_baseline = NetworkBaseline()
+            return
+        
+        # Calculate statistics
+        avg_delivery = sum(delivery_rates) / len(delivery_rates)
+        avg_ack = sum(ack_rates) / len(ack_rates)
+        
+        # Standard deviation for delivery rate
+        if len(delivery_rates) > 1:
+            variance = sum((r - avg_delivery) ** 2 for r in delivery_rates) / len(delivery_rates)
+            delivery_stddev = variance ** 0.5
+        else:
+            delivery_stddev = 0.05  # Default
+        
+        # Latency statistics
+        if latencies:
+            avg_latency = sum(latencies) / len(latencies)
+            if len(latencies) > 1:
+                lat_variance = sum((l - avg_latency) ** 2 for l in latencies) / len(latencies)
+                latency_stddev = lat_variance ** 0.5
+            else:
+                latency_stddev = 50.0  # Default
+        else:
+            avg_latency = 100.0
+            latency_stddev = 50.0
+        
+        self._network_baseline = NetworkBaseline(
+            avg_delivery_rate=avg_delivery,
+            avg_latency_ms=avg_latency,
+            avg_ack_success_rate=avg_ack,
+            sample_count=len(delivery_rates),
+            last_updated=time.time(),
+            delivery_rate_stddev=max(delivery_stddev, 0.01),  # Avoid zero stddev
+            latency_stddev_ms=max(latency_stddev, 10.0),
+        )
+        
+        logger.debug(
+            f"Updated network baseline: delivery_rate={avg_delivery:.3f}±{delivery_stddev:.3f}, "
+            f"latency={avg_latency:.1f}±{latency_stddev:.1f}ms, samples={len(delivery_rates)}"
+        )
+    
+    def _check_router_behavior(self, router_id: str) -> Optional[MisbehaviorReport]:
+        """
+        Check if a router's behavior is anomalous and should be flagged.
+        
+        Compares the router's metrics against the network baseline
+        and flags if anomalous.
+        
+        Args:
+            router_id: Router to check
+            
+        Returns:
+            MisbehaviorReport if flagged, None otherwise
+        """
+        if not self.misbehavior_detection_enabled:
+            return None
+        
+        metrics = self._get_router_metrics(router_id)
+        
+        # Need minimum samples before detection
+        if metrics.messages_sent < self.min_messages_for_detection:
+            return None
+        
+        # Already flagged - don't re-check
+        if metrics.flagged:
+            return None
+        
+        # Update baseline periodically
+        baseline = self._network_baseline
+        if baseline is None:
+            self._update_network_baseline()
+            baseline = self._network_baseline
+        
+        if baseline is None:
+            # Still no baseline - use defaults
+            baseline = NetworkBaseline()
+        
+        # Check for anomalies
+        evidence_list: List[MisbehaviorEvidence] = []
+        anomaly_score = 0.0
+        misbehavior_type = ""
+        
+        # Check delivery rate
+        delivery_rate = metrics.delivery_rate
+        if delivery_rate < self.delivery_rate_threshold:
+            if baseline.is_delivery_rate_anomalous(delivery_rate, self.latency_threshold_stddevs):
+                evidence_list.append(MisbehaviorEvidence(
+                    misbehavior_type=MisbehaviorType.MESSAGE_DROP,
+                    delivery_rate_baseline=baseline.avg_delivery_rate,
+                    delivery_rate_observed=delivery_rate,
+                    description=f"Delivery rate {delivery_rate:.1%} below threshold {self.delivery_rate_threshold:.1%}"
+                ))
+                anomaly_score += 0.4
+                misbehavior_type = MisbehaviorType.MESSAGE_DROP
+        
+        # Check ACK failure rate
+        ack_failure_rate = 1.0 - metrics.ack_success_rate
+        if ack_failure_rate > self.ack_failure_threshold:
+            evidence_list.append(MisbehaviorEvidence(
+                misbehavior_type=MisbehaviorType.ACK_FAILURE,
+                description=f"ACK failure rate {ack_failure_rate:.1%} exceeds threshold {self.ack_failure_threshold:.1%}"
+            ))
+            anomaly_score += 0.3
+            if not misbehavior_type:
+                misbehavior_type = MisbehaviorType.ACK_FAILURE
+        
+        # Check latency
+        if metrics.latency_samples > 0 and metrics.avg_latency_ms > 0:
+            if baseline.is_latency_anomalous(metrics.avg_latency_ms, self.latency_threshold_stddevs):
+                evidence_list.append(MisbehaviorEvidence(
+                    misbehavior_type=MisbehaviorType.MESSAGE_DELAY,
+                    expected_latency_ms=baseline.avg_latency_ms,
+                    actual_latency_ms=metrics.avg_latency_ms,
+                    description=f"Latency {metrics.avg_latency_ms:.1f}ms exceeds baseline {baseline.avg_latency_ms:.1f}ms"
+                ))
+                anomaly_score += 0.3
+                if not misbehavior_type:
+                    misbehavior_type = MisbehaviorType.MESSAGE_DELAY
+        
+        # If no anomalies found, return None
+        if not evidence_list:
+            return None
+        
+        # Calculate severity (0.0 to 1.0)
+        severity = min(1.0, anomaly_score)
+        
+        # Compute overall anomaly score for the metrics
+        metrics.anomaly_score = severity
+        
+        # Only flag if severity exceeds threshold
+        if severity < self.mild_severity_threshold:
+            return None
+        
+        # Flag the router
+        metrics.flagged = True
+        metrics.flag_reason = misbehavior_type
+        
+        # Create misbehavior report
+        report = MisbehaviorReport(
+            reporter_id=self.node_id,
+            router_id=router_id,
+            misbehavior_type=misbehavior_type,
+            evidence=evidence_list[:self.max_evidence_per_report],
+            metrics=metrics,
+            severity=severity,
+        )
+        
+        # Store in flagged routers
+        self._flagged_routers[router_id] = report
+        self._stats["routers_flagged"] = self._stats.get("routers_flagged", 0) + 1
+        
+        logger.warning(
+            f"FLAGGED ROUTER {router_id[:16]}... for {misbehavior_type}: "
+            f"severity={severity:.2f}, delivery_rate={delivery_rate:.1%}, "
+            f"ack_success={metrics.ack_success_rate:.1%}"
+        )
+        
+        # Notify callback if registered
+        if self.on_router_flagged:
+            try:
+                self.on_router_flagged(router_id, report)
+            except Exception as e:
+                logger.warning(f"on_router_flagged callback error: {e}")
+        
+        # Report to seeds if enabled
+        if self.report_to_seeds:
+            asyncio.create_task(self._report_misbehavior_to_seeds(report))
+        
+        return report
+    
+    async def _report_misbehavior_to_seeds(self, report: MisbehaviorReport) -> bool:
+        """
+        Report router misbehavior to seed nodes.
+        
+        Seeds aggregate reports from multiple nodes to identify
+        systematically misbehaving routers.
+        
+        Args:
+            report: The misbehavior report to submit
+            
+        Returns:
+            True if report was submitted successfully
+        """
+        router_id = report.router_id
+        
+        # Check cooldown
+        last_report = self._last_misbehavior_reports.get(router_id, 0)
+        if time.time() - last_report < self.report_cooldown_seconds:
+            logger.debug(
+                f"Skipping misbehavior report for {router_id[:16]}... "
+                f"(cooldown not expired)"
+            )
+            return False
+        
+        # Sign the report
+        report_data = report.to_dict()
+        report_data.pop("signature", None)  # Remove signature before signing
+        signature_data = json.dumps(report_data, sort_keys=True).encode()
+        report.signature = self.private_key.sign(signature_data).hex()
+        
+        # Submit to seeds via discovery client
+        try:
+            submitted = await self.discovery.report_misbehavior(report)
+            
+            if submitted:
+                self._last_misbehavior_reports[router_id] = time.time()
+                self._stats["misbehavior_reports_sent"] = self._stats.get("misbehavior_reports_sent", 0) + 1
+                logger.info(
+                    f"Reported misbehavior for router {router_id[:16]}... to seeds"
+                )
+            
+            return submitted
+            
+        except Exception as e:
+            logger.warning(f"Failed to report misbehavior to seeds: {e}")
+            return False
+    
+    def is_router_flagged(self, router_id: str) -> bool:
+        """
+        Check if a router has been flagged for misbehavior.
+        
+        Args:
+            router_id: Router to check
+            
+        Returns:
+            True if router is flagged
+        """
+        metrics = self._router_behavior_metrics.get(router_id)
+        if metrics and metrics.flagged:
+            return True
+        return router_id in self._flagged_routers
+    
+    def get_flagged_routers(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get all flagged routers with their reports.
+        
+        Returns:
+            Dict of router_id -> report details
+        """
+        result = {}
+        for router_id, report in self._flagged_routers.items():
+            result[router_id] = {
+                "misbehavior_type": report.misbehavior_type,
+                "severity": report.severity,
+                "flagged_at": report.timestamp,
+                "evidence_count": len(report.evidence),
+            }
+        return result
+    
+    def clear_router_flag(self, router_id: str) -> bool:
+        """
+        Clear the misbehavior flag for a router.
+        
+        Useful for testing or after a router has been verified as fixed.
+        
+        Args:
+            router_id: Router to unflag
+            
+        Returns:
+            True if flag was cleared, False if router wasn't flagged
+        """
+        cleared = False
+        
+        if router_id in self._flagged_routers:
+            del self._flagged_routers[router_id]
+            cleared = True
+        
+        metrics = self._router_behavior_metrics.get(router_id)
+        if metrics and metrics.flagged:
+            metrics.flagged = False
+            metrics.flag_reason = ""
+            metrics.anomaly_score = 0.0
+            cleared = True
+        
+        if cleared:
+            logger.info(f"Cleared misbehavior flag for router {router_id[:16]}...")
+        
+        return cleared
+    
+    def get_router_behavior_metrics(self, router_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get behavior metrics for a specific router.
+        
+        Args:
+            router_id: Router to get metrics for
+            
+        Returns:
+            Dict of metrics or None if no data
+        """
+        metrics = self._router_behavior_metrics.get(router_id)
+        if metrics:
+            return metrics.to_dict()
+        return None
+    
+    def get_all_router_metrics(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get behavior metrics for all tracked routers.
+        
+        Returns:
+            Dict of router_id -> metrics
+        """
+        return {
+            router_id: metrics.to_dict()
+            for router_id, metrics in self._router_behavior_metrics.items()
+        }
+    
+    def get_network_baseline(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the current network baseline.
+        
+        Returns:
+            Dict of baseline metrics or None if not computed
+        """
+        if self._network_baseline:
+            return self._network_baseline.to_dict()
+        return None
+    
+    def get_misbehavior_detection_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics for misbehavior detection.
+        
+        Returns:
+            Dict with detection statistics
+        """
+        return {
+            "enabled": self.misbehavior_detection_enabled,
+            "routers_tracked": len(self._router_behavior_metrics),
+            "routers_flagged": len(self._flagged_routers),
+            "reports_sent": self._stats.get("misbehavior_reports_sent", 0),
+            "ack_success_total": self._stats.get("misbehavior_ack_success", 0),
+            "ack_failure_total": self._stats.get("misbehavior_ack_failure", 0),
+            "baseline": self.get_network_baseline(),
+            "thresholds": {
+                "delivery_rate": self.delivery_rate_threshold,
+                "ack_failure": self.ack_failure_threshold,
+                "latency_stddevs": self.latency_threshold_stddevs,
+                "min_messages": self.min_messages_for_detection,
+            },
+            "flagged_routers": list(self._flagged_routers.keys()),
         }
 
 

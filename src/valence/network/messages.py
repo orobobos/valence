@@ -7,6 +7,10 @@ AckRequest: Configuration for acknowledgment behavior
 AckMessage: End-to-end acknowledgment that proves recipient received message
 BackPressureMessage: Router signals load status to connected nodes
 
+Cover Traffic (Issue #116):
+MessagePadding: Utilities to pad messages to fixed sizes
+CoverMessage: Dummy message indistinguishable from real traffic
+
 Circuit Messages (Issue #115):
 CircuitCreateMessage: Request to establish circuit hop
 CircuitCreatedMessage: Confirmation of circuit hop establishment
@@ -15,10 +19,144 @@ CircuitDestroyMessage: Teardown circuit
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import json
+import os
 import time
 import uuid
+
+
+# =============================================================================
+# MESSAGE PADDING (Issue #116 - Cover Traffic)
+# =============================================================================
+
+# Fixed message size buckets for traffic analysis resistance
+# Messages are padded to the next bucket size to hide actual content length
+MESSAGE_SIZE_BUCKETS = [
+    1024,       # 1 KB - small messages (typical chat)
+    4096,       # 4 KB - medium messages
+    16384,      # 16 KB - larger messages
+    65536,      # 64 KB - max standard message
+]
+
+# Padding byte used for PKCS7-style padding
+PADDING_MAGIC = b'\x80'  # Start of padding marker
+PADDING_FILL = b'\x00'   # Fill byte
+
+
+def get_padded_size(content_length: int) -> int:
+    """
+    Get the bucket size for a given content length.
+    
+    Returns the smallest bucket that fits the content, or the content
+    length if it exceeds all buckets (no padding for very large messages).
+    
+    Args:
+        content_length: Size of the unpadded content in bytes
+        
+    Returns:
+        Target padded size in bytes
+    """
+    for bucket in MESSAGE_SIZE_BUCKETS:
+        if content_length < bucket - 1:  # -1 for padding marker
+            return bucket
+    # Content exceeds all buckets, return as-is
+    return content_length
+
+
+def pad_message(content: bytes, target_size: Optional[int] = None) -> bytes:
+    """
+    Pad a message to a fixed bucket size for traffic analysis resistance.
+    
+    Uses a simple padding scheme:
+    - Appends PADDING_MAGIC (0x80) as marker
+    - Fills remaining space with PADDING_FILL (0x00)
+    
+    This ensures padded messages are indistinguishable from each other
+    at the same bucket size, hiding the actual content length.
+    
+    Args:
+        content: Raw message bytes to pad
+        target_size: Optional specific target size. If None, uses next bucket.
+        
+    Returns:
+        Padded message bytes of exactly target_size
+        
+    Example:
+        >>> padded = pad_message(b"Hello")
+        >>> len(padded)
+        1024
+        >>> unpad_message(padded)
+        b'Hello'
+    """
+    if target_size is None:
+        target_size = get_padded_size(len(content))
+    
+    # Calculate padding needed
+    padding_needed = target_size - len(content) - 1  # -1 for marker
+    
+    if padding_needed < 0:
+        # Content already too large for target, return as-is with marker
+        return content + PADDING_MAGIC
+    
+    # Build padded message: content + marker + fill
+    return content + PADDING_MAGIC + (PADDING_FILL * padding_needed)
+
+
+def unpad_message(padded: bytes) -> bytes:
+    """
+    Remove padding from a padded message.
+    
+    Finds the PADDING_MAGIC marker and returns content before it.
+    If no marker found, returns the original bytes (unpadded message).
+    
+    Args:
+        padded: Padded message bytes
+        
+    Returns:
+        Original unpadded content bytes
+        
+    Raises:
+        ValueError: If padding is malformed (marker in unexpected position)
+    """
+    # Find the padding marker (search from end for efficiency)
+    try:
+        marker_pos = padded.rindex(PADDING_MAGIC)
+    except ValueError:
+        # No marker found - message wasn't padded
+        return padded
+    
+    # Verify everything after marker is padding fill
+    padding_section = padded[marker_pos + 1:]
+    if padding_section and not all(b == 0 for b in padding_section):
+        # Invalid padding - marker wasn't actually padding
+        # This could happen if content contains 0x80 naturally
+        # Search for the last valid marker
+        for i in range(len(padded) - 1, -1, -1):
+            if padded[i:i+1] == PADDING_MAGIC:
+                if all(b == 0 for b in padded[i+1:]):
+                    return padded[:i]
+        # No valid padding found, return as-is
+        return padded
+    
+    return padded[:marker_pos]
+
+
+def calculate_padding_overhead(content_length: int) -> Tuple[int, float]:
+    """
+    Calculate padding overhead for a given content length.
+    
+    Args:
+        content_length: Size of unpadded content
+        
+    Returns:
+        Tuple of (padded_size, overhead_percentage)
+    """
+    padded_size = get_padded_size(content_length)
+    if padded_size == content_length:
+        return (content_length, 0.0)
+    overhead_pct = ((padded_size - content_length) / content_length) * 100
+    return (padded_size, overhead_pct)
 
 
 # =============================================================================
@@ -335,6 +473,101 @@ class DeliverPayload:
 
 
 # =============================================================================
+# COVER TRAFFIC MESSAGES (Issue #116)
+# =============================================================================
+
+
+@dataclass
+class CoverMessage:
+    """
+    Cover traffic message - indistinguishable from real traffic.
+    
+    Cover messages are sent when a node is idle to obscure real
+    communication patterns. They look identical to real messages
+    from a router's perspective:
+    - Same encryption (routers can't read content)
+    - Same padded sizes (all messages fit bucket sizes)
+    - Same routing metadata format
+    
+    The recipient (another node in the network) recognizes cover
+    traffic by the message_type and silently discards it without
+    triggering callbacks.
+    
+    Attributes:
+        type: Always "cover" - used by recipient to identify
+        message_id: Unique ID (same format as real messages)
+        timestamp: When the cover message was generated
+        nonce: Random bytes to ensure uniqueness and proper padding
+    """
+    type: str = field(default="cover", init=False)
+    message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    timestamp: float = field(default_factory=time.time)
+    nonce: str = field(default_factory=lambda: os.urandom(32).hex())
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict for transmission."""
+        return {
+            "type": self.type,
+            "message_id": self.message_id,
+            "timestamp": self.timestamp,
+            "nonce": self.nonce,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "CoverMessage":
+        """Deserialize from dict."""
+        msg = cls(
+            message_id=data.get("message_id", str(uuid.uuid4())),
+            timestamp=data.get("timestamp", time.time()),
+            nonce=data.get("nonce", os.urandom(32).hex()),
+        )
+        return msg
+    
+    def to_bytes(self) -> bytes:
+        """Serialize to bytes for encryption."""
+        return json.dumps(self.to_dict()).encode()
+    
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "CoverMessage":
+        """Deserialize from bytes."""
+        return cls.from_dict(json.loads(data.decode()))
+    
+    @staticmethod
+    def is_cover_message(data: dict) -> bool:
+        """Check if a decrypted payload is cover traffic."""
+        return data.get("type") == "cover"
+
+
+def generate_cover_content(target_bucket: Optional[int] = None) -> bytes:
+    """
+    Generate random cover content that fills a message bucket.
+    
+    The content is designed to:
+    - Fill a specific bucket size when padded
+    - Look like encrypted content (random bytes)
+    - Be efficiently generated
+    
+    Args:
+        target_bucket: Desired bucket size. If None, randomly selects one.
+        
+    Returns:
+        Random bytes sized to fit the target bucket after JSON serialization
+    """
+    if target_bucket is None:
+        # Random bucket selection weighted toward smaller (more common)
+        import random
+        weights = [0.5, 0.3, 0.15, 0.05]  # Favor smaller buckets
+        target_bucket = random.choices(MESSAGE_SIZE_BUCKETS, weights=weights, k=1)[0]
+    
+    # Account for JSON overhead of CoverMessage (~150 bytes typical)
+    # and padding overhead (1 byte marker)
+    json_overhead = 200  # Conservative estimate
+    content_size = max(16, target_bucket - json_overhead - 1)
+    
+    return os.urandom(content_size)
+
+
+# =============================================================================
 # CIRCUIT MESSAGES (Issue #115 - Privacy-Enhanced Routing)
 # =============================================================================
 
@@ -630,3 +863,326 @@ class CircuitExtendMessage:
     def from_bytes(cls, data: bytes) -> "CircuitExtendMessage":
         """Deserialize from bytes."""
         return cls.from_dict(json.loads(data.decode()))
+
+
+# =============================================================================
+# MALICIOUS ROUTER DETECTION MESSAGES (Issue #119)
+# =============================================================================
+
+
+class MisbehaviorType:
+    """Types of router misbehavior that can be reported."""
+    MESSAGE_DROP = "message_drop"  # Router drops messages
+    MESSAGE_DELAY = "message_delay"  # Router delays messages excessively
+    MESSAGE_MODIFY = "message_modify"  # Router modifies message content
+    ACK_FAILURE = "ack_failure"  # Router fails to deliver ACKs
+    SELECTIVE_DROP = "selective_drop"  # Router drops messages for specific recipients
+    PERFORMANCE_DEGRADATION = "performance_degradation"  # General performance issues
+
+
+@dataclass
+class RouterBehaviorMetrics:
+    """
+    Metrics tracking a router's behavior over time.
+    
+    These metrics are used to detect malicious or misbehaving routers
+    by comparing against network baseline.
+    
+    Attributes:
+        router_id: The router being tracked
+        messages_sent: Total messages sent through this router
+        messages_delivered: Messages confirmed delivered (ACK received)
+        messages_dropped: Messages that never got ACK (suspected dropped)
+        avg_latency_ms: Average message latency in milliseconds
+        latency_samples: Number of latency samples collected
+        latency_sum_ms: Sum of all latency samples (for avg calculation)
+        ack_success_count: Number of successful ACKs received
+        ack_failure_count: Number of ACK failures/timeouts
+        first_seen: Timestamp when we first observed this router
+        last_updated: Timestamp of last metric update
+        anomaly_score: Computed anomaly score (0.0 = normal, 1.0 = highly anomalous)
+        flagged: Whether this router has been flagged for misbehavior
+        flag_reason: Reason for flagging (if flagged)
+    """
+    router_id: str
+    messages_sent: int = 0
+    messages_delivered: int = 0
+    messages_dropped: int = 0
+    avg_latency_ms: float = 0.0
+    latency_samples: int = 0
+    latency_sum_ms: float = 0.0
+    ack_success_count: int = 0
+    ack_failure_count: int = 0
+    first_seen: float = field(default_factory=time.time)
+    last_updated: float = field(default_factory=time.time)
+    anomaly_score: float = 0.0
+    flagged: bool = False
+    flag_reason: str = ""
+    
+    @property
+    def delivery_rate(self) -> float:
+        """Calculate message delivery rate (0.0 to 1.0)."""
+        total = self.messages_sent
+        if total == 0:
+            return 1.0  # Assume good until proven otherwise
+        return self.messages_delivered / total
+    
+    @property
+    def ack_success_rate(self) -> float:
+        """Calculate ACK success rate (0.0 to 1.0)."""
+        total = self.ack_success_count + self.ack_failure_count
+        if total == 0:
+            return 1.0  # Assume good until proven otherwise
+        return self.ack_success_count / total
+    
+    def record_latency(self, latency_ms: float) -> None:
+        """Record a latency sample and update running average."""
+        self.latency_samples += 1
+        self.latency_sum_ms += latency_ms
+        self.avg_latency_ms = self.latency_sum_ms / self.latency_samples
+        self.last_updated = time.time()
+    
+    def record_delivery(self, success: bool) -> None:
+        """Record a message delivery outcome."""
+        self.messages_sent += 1
+        if success:
+            self.messages_delivered += 1
+        else:
+            self.messages_dropped += 1
+        self.last_updated = time.time()
+    
+    def record_ack(self, success: bool) -> None:
+        """Record an ACK outcome."""
+        if success:
+            self.ack_success_count += 1
+        else:
+            self.ack_failure_count += 1
+        self.last_updated = time.time()
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict for transmission/storage."""
+        return {
+            "router_id": self.router_id,
+            "messages_sent": self.messages_sent,
+            "messages_delivered": self.messages_delivered,
+            "messages_dropped": self.messages_dropped,
+            "avg_latency_ms": self.avg_latency_ms,
+            "latency_samples": self.latency_samples,
+            "latency_sum_ms": self.latency_sum_ms,
+            "ack_success_count": self.ack_success_count,
+            "ack_failure_count": self.ack_failure_count,
+            "first_seen": self.first_seen,
+            "last_updated": self.last_updated,
+            "anomaly_score": self.anomaly_score,
+            "flagged": self.flagged,
+            "flag_reason": self.flag_reason,
+            "delivery_rate": self.delivery_rate,
+            "ack_success_rate": self.ack_success_rate,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "RouterBehaviorMetrics":
+        """Deserialize from dict."""
+        metrics = cls(
+            router_id=data.get("router_id", ""),
+            messages_sent=data.get("messages_sent", 0),
+            messages_delivered=data.get("messages_delivered", 0),
+            messages_dropped=data.get("messages_dropped", 0),
+            avg_latency_ms=data.get("avg_latency_ms", 0.0),
+            latency_samples=data.get("latency_samples", 0),
+            latency_sum_ms=data.get("latency_sum_ms", 0.0),
+            ack_success_count=data.get("ack_success_count", 0),
+            ack_failure_count=data.get("ack_failure_count", 0),
+            first_seen=data.get("first_seen", time.time()),
+            last_updated=data.get("last_updated", time.time()),
+            anomaly_score=data.get("anomaly_score", 0.0),
+            flagged=data.get("flagged", False),
+            flag_reason=data.get("flag_reason", ""),
+        )
+        return metrics
+
+
+@dataclass
+class MisbehaviorEvidence:
+    """
+    Evidence of router misbehavior for a specific incident.
+    
+    Collected when a misbehavior is detected to support the report.
+    """
+    timestamp: float = field(default_factory=time.time)
+    misbehavior_type: str = ""  # One of MisbehaviorType values
+    message_id: Optional[str] = None  # Related message ID if applicable
+    expected_latency_ms: float = 0.0  # Expected latency based on baseline
+    actual_latency_ms: float = 0.0  # Actual observed latency
+    delivery_rate_baseline: float = 0.0  # Network baseline delivery rate
+    delivery_rate_observed: float = 0.0  # Observed delivery rate for this router
+    description: str = ""  # Human-readable description
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict."""
+        return {
+            "timestamp": self.timestamp,
+            "misbehavior_type": self.misbehavior_type,
+            "message_id": self.message_id,
+            "expected_latency_ms": self.expected_latency_ms,
+            "actual_latency_ms": self.actual_latency_ms,
+            "delivery_rate_baseline": self.delivery_rate_baseline,
+            "delivery_rate_observed": self.delivery_rate_observed,
+            "description": self.description,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "MisbehaviorEvidence":
+        """Deserialize from dict."""
+        return cls(
+            timestamp=data.get("timestamp", time.time()),
+            misbehavior_type=data.get("misbehavior_type", ""),
+            message_id=data.get("message_id"),
+            expected_latency_ms=data.get("expected_latency_ms", 0.0),
+            actual_latency_ms=data.get("actual_latency_ms", 0.0),
+            delivery_rate_baseline=data.get("delivery_rate_baseline", 0.0),
+            delivery_rate_observed=data.get("delivery_rate_observed", 0.0),
+            description=data.get("description", ""),
+        )
+
+
+@dataclass
+class MisbehaviorReport:
+    """
+    Report of router misbehavior sent to seed nodes.
+    
+    Nodes generate these reports when they detect routers exhibiting
+    anomalous behavior (dropping messages, excessive delays, etc.).
+    Seeds aggregate reports from multiple nodes to identify
+    systematically misbehaving routers.
+    
+    Attributes:
+        type: Always "misbehavior_report"
+        report_id: Unique identifier for this report
+        reporter_id: Node ID of the reporter
+        router_id: ID of the misbehaving router
+        misbehavior_type: Type of misbehavior detected
+        evidence: List of evidence supporting the report
+        metrics: Behavioral metrics for the router
+        severity: Severity level (0.0 to 1.0, higher = more severe)
+        timestamp: When the report was generated
+        signature: Reporter's signature (hex) for verification
+    """
+    type: str = field(default="misbehavior_report", init=False)
+    report_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    reporter_id: str = ""
+    router_id: str = ""
+    misbehavior_type: str = ""
+    evidence: List[MisbehaviorEvidence] = field(default_factory=list)
+    metrics: Optional[RouterBehaviorMetrics] = None
+    severity: float = 0.0
+    timestamp: float = field(default_factory=time.time)
+    signature: str = ""
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict for transmission."""
+        return {
+            "type": self.type,
+            "report_id": self.report_id,
+            "reporter_id": self.reporter_id,
+            "router_id": self.router_id,
+            "misbehavior_type": self.misbehavior_type,
+            "evidence": [e.to_dict() for e in self.evidence],
+            "metrics": self.metrics.to_dict() if self.metrics else None,
+            "severity": self.severity,
+            "timestamp": self.timestamp,
+            "signature": self.signature,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "MisbehaviorReport":
+        """Deserialize from dict."""
+        evidence = [
+            MisbehaviorEvidence.from_dict(e) 
+            for e in data.get("evidence", [])
+        ]
+        metrics_data = data.get("metrics")
+        metrics = RouterBehaviorMetrics.from_dict(metrics_data) if metrics_data else None
+        
+        report = cls(
+            reporter_id=data.get("reporter_id", ""),
+            router_id=data.get("router_id", ""),
+            misbehavior_type=data.get("misbehavior_type", ""),
+            evidence=evidence,
+            metrics=metrics,
+            severity=data.get("severity", 0.0),
+            timestamp=data.get("timestamp", time.time()),
+            signature=data.get("signature", ""),
+        )
+        report.report_id = data.get("report_id", report.report_id)
+        return report
+    
+    def to_json(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict())
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> "MisbehaviorReport":
+        """Deserialize from JSON string."""
+        return cls.from_dict(json.loads(json_str))
+
+
+@dataclass
+class NetworkBaseline:
+    """
+    Network-wide baseline metrics for comparison.
+    
+    Used to determine if a router's behavior is anomalous by comparing
+    against the network average.
+    
+    Attributes:
+        avg_delivery_rate: Average delivery rate across all routers
+        avg_latency_ms: Average latency across all routers
+        avg_ack_success_rate: Average ACK success rate across all routers
+        sample_count: Number of routers used to compute baseline
+        last_updated: When the baseline was last computed
+        delivery_rate_stddev: Standard deviation of delivery rates
+        latency_stddev_ms: Standard deviation of latencies
+    """
+    avg_delivery_rate: float = 0.95
+    avg_latency_ms: float = 100.0
+    avg_ack_success_rate: float = 0.95
+    sample_count: int = 0
+    last_updated: float = field(default_factory=time.time)
+    delivery_rate_stddev: float = 0.05
+    latency_stddev_ms: float = 50.0
+    
+    def is_delivery_rate_anomalous(self, rate: float, threshold_stddevs: float = 2.0) -> bool:
+        """Check if a delivery rate is anomalously low."""
+        threshold = self.avg_delivery_rate - (threshold_stddevs * self.delivery_rate_stddev)
+        return rate < threshold
+    
+    def is_latency_anomalous(self, latency_ms: float, threshold_stddevs: float = 2.0) -> bool:
+        """Check if latency is anomalously high."""
+        threshold = self.avg_latency_ms + (threshold_stddevs * self.latency_stddev_ms)
+        return latency_ms > threshold
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict."""
+        return {
+            "avg_delivery_rate": self.avg_delivery_rate,
+            "avg_latency_ms": self.avg_latency_ms,
+            "avg_ack_success_rate": self.avg_ack_success_rate,
+            "sample_count": self.sample_count,
+            "last_updated": self.last_updated,
+            "delivery_rate_stddev": self.delivery_rate_stddev,
+            "latency_stddev_ms": self.latency_stddev_ms,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "NetworkBaseline":
+        """Deserialize from dict."""
+        return cls(
+            avg_delivery_rate=data.get("avg_delivery_rate", 0.95),
+            avg_latency_ms=data.get("avg_latency_ms", 100.0),
+            avg_ack_success_rate=data.get("avg_ack_success_rate", 0.95),
+            sample_count=data.get("sample_count", 0),
+            last_updated=data.get("last_updated", time.time()),
+            delivery_rate_stddev=data.get("delivery_rate_stddev", 0.05),
+            latency_stddev_ms=data.get("latency_stddev_ms", 50.0),
+        )

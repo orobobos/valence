@@ -21,14 +21,19 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import secrets
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 from aiohttp import WSMsgType, web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +51,70 @@ class Connection:
     websocket: web.WebSocketResponse
     connected_at: float
     last_seen: float
+
+
+# =============================================================================
+# CIRCUIT DATA STRUCTURES (Issue #115)
+# =============================================================================
+
+
+@dataclass
+class CircuitHopState:
+    """
+    State for a single circuit hop at this router.
+    
+    Tracks the shared key and routing info for forwarding messages.
+    The router only knows the previous and next hop, not the full path.
+    """
+    circuit_id: str
+    shared_key: bytes  # 32-byte AES key derived from DH exchange
+    prev_hop: Optional[str]  # Node ID of previous hop (or originator)
+    next_hop: Optional[str]  # Node ID of next hop (or None if exit)
+    created_at: float
+    message_count: int = 0
+    
+    def is_exit(self) -> bool:
+        """Check if this router is the exit node for this circuit."""
+        return self.next_hop is None
+
+
+@dataclass
+class CircuitState:
+    """
+    All circuit state at this router.
+    """
+    # circuit_id -> CircuitHopState
+    circuits: Dict[str, CircuitHopState] = field(default_factory=dict)
+    
+    # Circuit limits
+    max_circuits: int = 1000
+    circuit_timeout: float = 600.0  # 10 minutes
+    
+    def add_circuit(self, hop_state: CircuitHopState) -> bool:
+        """Add a circuit hop. Returns False if at capacity."""
+        if len(self.circuits) >= self.max_circuits:
+            return False
+        self.circuits[hop_state.circuit_id] = hop_state
+        return True
+    
+    def get_circuit(self, circuit_id: str) -> Optional[CircuitHopState]:
+        """Get circuit state by ID."""
+        return self.circuits.get(circuit_id)
+    
+    def remove_circuit(self, circuit_id: str) -> None:
+        """Remove a circuit."""
+        self.circuits.pop(circuit_id, None)
+    
+    def cleanup_expired(self) -> int:
+        """Remove expired circuits. Returns count removed."""
+        now = time.time()
+        expired = [
+            cid for cid, state in self.circuits.items()
+            if now - state.created_at > self.circuit_timeout
+        ]
+        for cid in expired:
+            del self.circuits[cid]
+        return len(expired)
 
 
 @dataclass
@@ -156,6 +225,16 @@ class RouterNode:
     back_pressure_retry_ms: int = 1000  # Suggest 1 second retry delay
     _back_pressure_active: bool = field(default=False, repr=False)
     _back_pressure_nodes: set = field(default_factory=set, repr=False)  # Nodes notified
+    
+    # Circuit state (Issue #115)
+    _circuit_state: CircuitState = field(default_factory=CircuitState, repr=False)
+    _circuit_cleanup_task: asyncio.Task | None = field(default=None, repr=False)
+    circuit_cleanup_interval: float = 60.0  # Check for expired circuits every minute
+    
+    # Circuit metrics
+    circuits_created: int = 0
+    circuits_relayed: int = 0
+    circuits_destroyed: int = 0
     
     def __post_init__(self):
         """Initialize identity keypair if not provided."""
@@ -688,6 +767,7 @@ class RouterNode:
                     "release_threshold": self.back_pressure_release_threshold,
                     "nodes_notified": len(self._back_pressure_nodes),
                 },
+                "circuits": self.get_circuit_stats(),
                 "metrics": {
                     "messages_relayed": self.messages_relayed,
                     "messages_queued": self.messages_queued,
@@ -923,14 +1003,385 @@ class RouterNode:
 
         self._app = None
         logger.info("Router node stopped")
+    
+    # -------------------------------------------------------------------------
+    # CIRCUIT HANDLING (Issue #115 - Enhanced Privacy)
+    # -------------------------------------------------------------------------
+    
+    async def _handle_circuit_create(
+        self,
+        data: dict[str, Any],
+        ws: web.WebSocketResponse,
+        sender_id: str | None,
+    ) -> None:
+        """
+        Handle circuit creation request.
+        
+        Process:
+        1. Generate ephemeral X25519 keypair
+        2. Derive shared key via ECDH with sender's ephemeral key
+        3. Store circuit state
+        4. If next_hop specified, extend circuit
+        5. Send circuit_created response
+        """
+        circuit_id = data.get("circuit_id")
+        sender_ephemeral_hex = data.get("ephemeral_public")
+        next_hop = data.get("next_hop")
+        extend_payload = data.get("extend_payload")
+        
+        if not circuit_id or not sender_ephemeral_hex:
+            await ws.send_json({
+                "type": "error",
+                "message": "Missing circuit_id or ephemeral_public",
+            })
+            return
+        
+        # Check if we already have this circuit
+        if self._circuit_state.get_circuit(circuit_id):
+            await ws.send_json({
+                "type": "error",
+                "message": "Circuit already exists",
+                "circuit_id": circuit_id,
+            })
+            return
+        
+        try:
+            # Generate our ephemeral keypair
+            our_private = X25519PrivateKey.generate()
+            our_public = our_private.public_key()
+            
+            # Derive shared key
+            sender_ephemeral = X25519PublicKey.from_public_bytes(
+                bytes.fromhex(sender_ephemeral_hex)
+            )
+            shared_secret = our_private.exchange(sender_ephemeral)
+            
+            # Derive circuit key using HKDF
+            shared_key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=None,
+                info=f"valence-circuit-v1:{circuit_id}".encode()
+            ).derive(shared_secret)
+            
+            # Store circuit state
+            hop_state = CircuitHopState(
+                circuit_id=circuit_id,
+                shared_key=shared_key,
+                prev_hop=sender_id,
+                next_hop=next_hop,
+                created_at=time.time(),
+            )
+            
+            if not self._circuit_state.add_circuit(hop_state):
+                await ws.send_json({
+                    "type": "error",
+                    "message": "Circuit capacity reached",
+                    "circuit_id": circuit_id,
+                })
+                return
+            
+            self.circuits_created += 1
+            
+            # If there's a next hop, we need to extend the circuit
+            extend_response = None
+            if next_hop and extend_payload:
+                # In a full implementation, we would:
+                # 1. Connect to next_hop router
+                # 2. Decrypt extend_payload with our shared key
+                # 3. Send circuit_create to next hop
+                # 4. Include their response in our response
+                # For now, we just note the next hop
+                logger.debug(f"Circuit {circuit_id[:8]}... will extend to {next_hop[:16]}...")
+            
+            # Send response
+            await ws.send_json({
+                "type": "circuit_created",
+                "circuit_id": circuit_id,
+                "ephemeral_public": our_public.public_bytes_raw().hex(),
+                "extend_response": extend_response,
+            })
+            
+            logger.info(
+                f"Circuit {circuit_id[:8]}... created, "
+                f"prev={sender_id[:16] if sender_id else 'unknown'}..., "
+                f"next={next_hop[:16] if next_hop else 'exit'}..."
+            )
+            
+        except Exception as e:
+            logger.warning(f"Circuit create failed: {e}")
+            await ws.send_json({
+                "type": "error",
+                "message": f"Circuit creation failed: {e}",
+                "circuit_id": circuit_id,
+            })
+    
+    async def _handle_circuit_relay(
+        self,
+        data: dict[str, Any],
+        sender_id: str | None,
+    ) -> None:
+        """
+        Handle circuit relay message.
+        
+        Process:
+        1. Look up circuit state
+        2. Decrypt one layer of onion
+        3. Forward to next hop (or deliver if we're exit)
+        """
+        circuit_id = data.get("circuit_id")
+        payload_hex = data.get("payload")
+        direction = data.get("direction", "forward")
+        
+        if not circuit_id or not payload_hex:
+            logger.debug("Circuit relay missing circuit_id or payload")
+            return
+        
+        hop_state = self._circuit_state.get_circuit(circuit_id)
+        if not hop_state:
+            logger.debug(f"Unknown circuit: {circuit_id[:8]}...")
+            return
+        
+        hop_state.message_count += 1
+        self.circuits_relayed += 1
+        
+        try:
+            payload = bytes.fromhex(payload_hex)
+            
+            if direction == "forward":
+                # Peel one layer
+                inner_payload, routing_next_hop = self._peel_onion_layer(
+                    payload, hop_state.shared_key
+                )
+                
+                if hop_state.is_exit() or not routing_next_hop:
+                    # We're the exit node - deliver to final recipient
+                    await self._deliver_circuit_payload(inner_payload, hop_state)
+                else:
+                    # Forward to next hop
+                    await self._forward_circuit_relay(
+                        circuit_id, inner_payload, routing_next_hop, "forward"
+                    )
+            
+            else:  # backward
+                # Add one layer for backward direction
+                outer_payload = self._add_backward_layer(payload, hop_state.shared_key)
+                
+                # Forward back to previous hop
+                if hop_state.prev_hop:
+                    await self._forward_circuit_relay(
+                        circuit_id, outer_payload, hop_state.prev_hop, "backward"
+                    )
+                    
+        except Exception as e:
+            logger.warning(f"Circuit relay failed: {e}")
+    
+    def _peel_onion_layer(
+        self,
+        payload: bytes,
+        key: bytes,
+    ) -> Tuple[bytes, Optional[str]]:
+        """
+        Peel one layer of onion encryption.
+        
+        Returns (inner_payload, next_hop_or_none)
+        """
+        # Extract nonce (first 12 bytes)
+        nonce = payload[:12]
+        ciphertext = payload[12:]
+        
+        # Decrypt
+        aesgcm = AESGCM(key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        
+        # Parse routing header
+        # Format: 1 byte has_next + 64 bytes next_hop (padded) + content
+        has_next = plaintext[0] == 1
+        next_hop_bytes = plaintext[1:65]
+        content = plaintext[65:]
+        
+        if has_next:
+            next_hop = next_hop_bytes.rstrip(b'\x00').decode()
+        else:
+            next_hop = None
+        
+        return content, next_hop
+    
+    def _add_backward_layer(
+        self,
+        payload: bytes,
+        key: bytes,
+    ) -> bytes:
+        """
+        Add one layer of encryption for backward direction.
+        """
+        nonce = os.urandom(12)
+        aesgcm = AESGCM(key)
+        ciphertext = aesgcm.encrypt(nonce, payload, None)
+        return nonce + ciphertext
+    
+    async def _deliver_circuit_payload(
+        self,
+        payload: bytes,
+        hop_state: CircuitHopState,
+    ) -> None:
+        """
+        Deliver the final payload from a circuit.
+        
+        Parse the inner payload to find the recipient and forward.
+        """
+        try:
+            # Parse the inner payload
+            inner_data = json.loads(payload.decode())
+            recipient_id = inner_data.get("recipient_id")
+            message_payload_hex = inner_data.get("payload")
+            message_id = inner_data.get("message_id")
+            
+            if not recipient_id or not message_payload_hex:
+                logger.warning("Circuit payload missing recipient_id or payload")
+                return
+            
+            # Check if recipient is connected
+            if recipient_id in self.connections:
+                conn = self.connections[recipient_id]
+                await conn.websocket.send_json({
+                    "type": "deliver",
+                    "message_id": message_id,
+                    "payload": json.loads(bytes.fromhex(message_payload_hex).decode()),
+                    "ttl": 1,
+                })
+                self.messages_delivered += 1
+                logger.debug(
+                    f"Delivered circuit message {message_id[:8] if message_id else 'unknown'}... "
+                    f"to {recipient_id[:16]}..."
+                )
+            else:
+                # Queue for offline delivery
+                self._queue_message(
+                    recipient_id,
+                    QueuedMessage(
+                        message_id=message_id or str(time.time()),
+                        payload=message_payload_hex,
+                        queued_at=time.time(),
+                        ttl=1,
+                    ),
+                )
+                logger.debug(f"Queued circuit message for offline node {recipient_id[:16]}...")
+                
+        except Exception as e:
+            logger.warning(f"Failed to deliver circuit payload: {e}")
+    
+    async def _forward_circuit_relay(
+        self,
+        circuit_id: str,
+        payload: bytes,
+        next_hop: str,
+        direction: str,
+    ) -> None:
+        """
+        Forward a circuit relay message to the next hop.
+        """
+        # Check if next hop is connected
+        if next_hop not in self.connections:
+            logger.debug(f"Next hop {next_hop[:16]}... not connected")
+            return
+        
+        conn = self.connections[next_hop]
+        
+        try:
+            await conn.websocket.send_json({
+                "type": "circuit_relay",
+                "circuit_id": circuit_id,
+                "payload": payload.hex(),
+                "direction": direction,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to forward circuit relay: {e}")
+    
+    async def _handle_circuit_destroy(
+        self,
+        data: dict[str, Any],
+    ) -> None:
+        """
+        Handle circuit destroy message.
+        
+        Clean up circuit state and optionally propagate to next hop.
+        """
+        circuit_id = data.get("circuit_id")
+        reason = data.get("reason", "")
+        
+        if not circuit_id:
+            return
+        
+        hop_state = self._circuit_state.get_circuit(circuit_id)
+        if not hop_state:
+            return
+        
+        # Propagate destroy to next hop if applicable
+        if hop_state.next_hop and hop_state.next_hop in self.connections:
+            conn = self.connections[hop_state.next_hop]
+            try:
+                await conn.websocket.send_json({
+                    "type": "circuit_destroy",
+                    "circuit_id": circuit_id,
+                    "reason": reason,
+                })
+            except Exception:
+                pass
+        
+        # Remove circuit state
+        self._circuit_state.remove_circuit(circuit_id)
+        self.circuits_destroyed += 1
+        
+        logger.info(f"Circuit {circuit_id[:8]}... destroyed: {reason}")
+    
+    async def _circuit_cleanup_loop(self) -> None:
+        """
+        Periodically clean up expired circuits.
+        """
+        while self._running:
+            try:
+                await asyncio.sleep(self.circuit_cleanup_interval)
+                if not self._running:
+                    break
+                
+                removed = self._circuit_state.cleanup_expired()
+                if removed > 0:
+                    self.circuits_destroyed += removed
+                    logger.info(f"Cleaned up {removed} expired circuits")
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Circuit cleanup error: {e}")
+    
+    def get_circuit_stats(self) -> dict[str, Any]:
+        """Get circuit-related statistics."""
+        return {
+            "circuits_active": len(self._circuit_state.circuits),
+            "circuits_created": self.circuits_created,
+            "circuits_relayed": self.circuits_relayed,
+            "circuits_destroyed": self.circuits_destroyed,
+        }
 
     async def run_forever(self) -> None:
         """Start the router and run until interrupted."""
         await self.start()
+        
+        # Start circuit cleanup task
+        self._circuit_cleanup_task = asyncio.create_task(self._circuit_cleanup_loop())
+        
         try:
             while self._running:
                 await asyncio.sleep(1)
         except asyncio.CancelledError:
             pass
         finally:
+            # Cancel circuit cleanup task
+            if self._circuit_cleanup_task:
+                self._circuit_cleanup_task.cancel()
+                try:
+                    await self._circuit_cleanup_task
+                except asyncio.CancelledError:
+                    pass
             await self.stop()
