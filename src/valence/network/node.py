@@ -414,9 +414,19 @@ class NodeClient:
             return False
         
         try:
-            # Parse IP from first endpoint (format: "ip:port" or "hostname:port")
+            # Parse IP from first endpoint
+            # Formats: "ip:port", "[ipv6]:port", "hostname:port"
             endpoint = router.endpoints[0]
-            host = endpoint.split(":")[0]
+            
+            # Handle IPv6 bracket notation: [ipv6]:port
+            if endpoint.startswith("["):
+                bracket_end = endpoint.find("]")
+                if bracket_end == -1:
+                    return True  # Malformed, allow
+                host = endpoint[1:bracket_end]
+            else:
+                # IPv4 or hostname: ip:port
+                host = endpoint.split(":")[0]
             
             # Try to parse as IP address
             try:
@@ -452,7 +462,15 @@ class NodeClient:
         
         try:
             endpoint = router.endpoints[0]
-            host = endpoint.split(":")[0]
+            
+            # Handle IPv6 bracket notation: [ipv6]:port
+            if endpoint.startswith("["):
+                bracket_end = endpoint.find("]")
+                if bracket_end == -1:
+                    return
+                host = endpoint[1:bracket_end]
+            else:
+                host = endpoint.split(":")[0]
             
             try:
                 ip = ipaddress.ip_address(host)
@@ -478,7 +496,15 @@ class NodeClient:
         
         try:
             endpoint = router.endpoints[0]
-            host = endpoint.split(":")[0]
+            
+            # Handle IPv6 bracket notation: [ipv6]:port
+            if endpoint.startswith("["):
+                bracket_end = endpoint.find("]")
+                if bracket_end == -1:
+                    return
+                host = endpoint[1:bracket_end]
+            else:
+                host = endpoint.split(":")[0]
             
             try:
                 ip = ipaddress.ip_address(host)
