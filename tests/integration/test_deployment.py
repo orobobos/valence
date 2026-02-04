@@ -14,6 +14,9 @@ Usage:
 
     # Skip slow tests
     pytest tests/integration/test_deployment.py -v -m "not slow"
+
+    # Skip integration tests entirely (no DB)
+    pytest -m "not integration"
 """
 
 import os
@@ -31,8 +34,31 @@ DB_NAME = os.environ.get("VKB_DB_NAME", "valence")
 DB_USER = os.environ.get("VKB_DB_USER", "valence")
 
 
+def _check_db_available():
+    """Check if the database is available."""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=VALENCE_DB_PASSWORD,
+            connect_timeout=3,
+        )
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
+# Check once at module load
+_DB_AVAILABLE = _check_db_available()
+
+
 def get_db_connection():
     """Get a database connection, either local or via SSH tunnel."""
+    if not _DB_AVAILABLE:
+        pytest.skip("Database not available (integration test)")
+
     if VALENCE_POD_IP and DB_HOST == "localhost":
         # Remote pod - would need SSH tunnel
         pytest.skip("Remote database testing requires SSH tunnel setup")
@@ -43,6 +69,10 @@ def get_db_connection():
         user=DB_USER,
         password=VALENCE_DB_PASSWORD,
     )
+
+
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
 
 
 class TestDatabaseSchema:

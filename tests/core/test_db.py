@@ -319,7 +319,7 @@ class TestCountRows:
         from valence.core.db import count_rows
 
         mock_psycopg2["cursor"].fetchone.return_value = None
-        with pytest.raises(ValueError, match="Table does not exist"):
+        with pytest.raises(ValueError, match="Table not in allowlist"):
             count_rows("nonexistent")
 
 

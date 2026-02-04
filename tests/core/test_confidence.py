@@ -191,7 +191,7 @@ class TestDimensionalConfidenceFull:
         assert abs(conf.overall - 1.0) < 0.001
 
     def test_full_with_all_zeros(self):
-        """full() with all zeros should give overall of 0."""
+        """full() with all zeros should give overall near epsilon (floor)."""
         conf = DimensionalConfidence.full(
             source_reliability=0.0,
             method_quality=0.0,
@@ -200,10 +200,11 @@ class TestDimensionalConfidenceFull:
             corroboration=0.0,
             domain_applicability=0.0,
         )
-        assert abs(conf.overall - 0.0) < 0.001
+        # Geometric mean uses EPSILON (0.001) as floor to prevent log(0)
+        assert conf.overall <= 0.001 + 1e-9
 
     def test_full_with_mixed_values(self):
-        """full() should weight dimensions correctly."""
+        """full() should weight dimensions correctly using geometric mean."""
         conf = DimensionalConfidence.full(
             source_reliability=0.8,
             method_quality=0.6,
@@ -212,10 +213,11 @@ class TestDimensionalConfidenceFull:
             corroboration=0.5,
             domain_applicability=0.4,
         )
-        # Manual calculation:
-        # 0.8*0.25 + 0.6*0.15 + 0.9*0.20 + 0.7*0.15 + 0.5*0.15 + 0.4*0.10
-        # = 0.2 + 0.09 + 0.18 + 0.105 + 0.075 + 0.04 = 0.69
-        assert abs(conf.overall - 0.69) < 0.01
+        # Geometric mean: exp(sum(w_i * ln(v_i)))
+        # With default weights (0.25, 0.15, 0.20, 0.15, 0.15, 0.10)
+        # = exp(0.25*ln(0.8) + 0.15*ln(0.6) + 0.20*ln(0.9) + 0.15*ln(0.7) + 0.15*ln(0.5) + 0.10*ln(0.4))
+        # ≈ 0.669
+        assert abs(conf.overall - 0.669) < 0.01
 
     def test_full_with_custom_weights(self):
         """full() should accept custom weights."""
@@ -230,14 +232,14 @@ class TestDimensionalConfidenceFull:
         conf = DimensionalConfidence.full(
             source_reliability=0.8,
             method_quality=0.4,
-            internal_consistency=1.0,  # Should be ignored
-            temporal_freshness=1.0,  # Should be ignored
-            corroboration=1.0,  # Should be ignored
-            domain_applicability=1.0,  # Should be ignored
+            internal_consistency=1.0,  # Should be ignored (weight=0)
+            temporal_freshness=1.0,  # Should be ignored (weight=0)
+            corroboration=1.0,  # Should be ignored (weight=0)
+            domain_applicability=1.0,  # Should be ignored (weight=0)
             weights=custom_weights,
         )
-        # 0.8*0.5 + 0.4*0.5 = 0.6
-        assert abs(conf.overall - 0.6) < 0.01
+        # Geometric mean: exp(0.5*ln(0.8) + 0.5*ln(0.4)) ≈ 0.566
+        assert abs(conf.overall - 0.566) < 0.01
 
 
 class TestDimensionalConfidenceRecalculate:
@@ -256,7 +258,8 @@ class TestDimensionalConfidenceRecalculate:
         )
         result = conf.recalculate_overall()
         assert result is conf  # Returns self
-        assert abs(conf.overall - 0.69) < 0.01
+        # Geometric mean ≈ 0.669 (same as test_full_with_mixed_values)
+        assert abs(conf.overall - 0.669) < 0.01
 
     def test_recalculate_with_partial_dimensions(self):
         """recalculate_overall should handle partial dimensions."""

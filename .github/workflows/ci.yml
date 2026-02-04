@@ -71,13 +71,20 @@ jobs:
           psql -f src/valence/substrate/schema.sql
           psql -f src/valence/substrate/procedures.sql
 
-      - name: Unit tests
+      - name: Unit tests (fast, no external dependencies)
         env:
           VKB_DB_HOST: localhost
           VKB_DB_USER: valence
           VKB_DB_PASSWORD: testpass
           VKB_DB_NAME: valence_test
-        run: pytest tests/ -m "not integration and not slow" -v --cov=src/valence --cov-report=xml --cov-fail-under=50
+        run: |
+          pytest tests/ \
+            -m "not integration and not slow" \
+            -v \
+            --cov=src/valence \
+            --cov-report=xml \
+            --cov-fail-under=50 \
+            --ignore=tests/integration/
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5

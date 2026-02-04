@@ -1,0 +1,143 @@
+# Docker Compose for Valence Integration Tests
+# Usage: docker compose -f docker-compose.test.yml up -d
+
+services:
+  # PostgreSQL with pgvector for test database
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: valence
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: valence_test
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflicts with local postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valence -d valence_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      # Initialize schema on startup
+      - ./src/valence/substrate/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/valence/substrate/procedures.sql:/docker-entrypoint-initdb.d/02-procedures.sql:ro
+    networks:
+      - valence-test
+
+  # Second postgres instance for federation testing
+  postgres-peer:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: valence
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: valence_test
+    ports:
+      - "5434:5432"  # Peer database on different port
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valence -d valence_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./src/valence/substrate/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/valence/substrate/procedures.sql:/docker-entrypoint-initdb.d/02-procedures.sql:ro
+    networks:
+      - valence-test
+
+  # Primary Valence server
+  valence-primary:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      VKB_DB_HOST: postgres
+      VKB_DB_PORT: 5432
+      VKB_DB_NAME: valence_test
+      VKB_DB_USER: valence
+      VKB_DB_PASSWORD: testpass
+      VALENCE_HOST: 0.0.0.0
+      VALENCE_PORT: 8080
+      VALENCE_NODE_ID: primary-node
+      VALENCE_BASE_URL: http://valence-primary:8080
+      VALENCE_FEDERATION_ENABLED: "true"
+      # Mock embeddings for testing
+      VALENCE_EMBEDDING_PROVIDER: mock
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - valence-test
+
+  # Peer Valence server for federation tests
+  valence-peer:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      VKB_DB_HOST: postgres-peer
+      VKB_DB_PORT: 5432
+      VKB_DB_NAME: valence_test
+      VKB_DB_USER: valence
+      VKB_DB_PASSWORD: testpass
+      VALENCE_HOST: 0.0.0.0
+      VALENCE_PORT: 8080
+      VALENCE_NODE_ID: peer-node
+      VALENCE_BASE_URL: http://valence-peer:8080
+      VALENCE_FEDERATION_ENABLED: "true"
+      # Add primary as trusted peer
+      VALENCE_TRUSTED_PEERS: http://valence-primary:8080
+      VALENCE_EMBEDDING_PROVIDER: mock
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres-peer:
+        condition: service_healthy
+      valence-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - valence-test
+
+  # Test runner service
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      VKB_DB_HOST: postgres
+      VKB_DB_PORT: 5432
+      VKB_DB_NAME: valence_test
+      VKB_DB_USER: valence
+      VKB_DB_PASSWORD: testpass
+      VALENCE_PRIMARY_URL: http://valence-primary:8080
+      VALENCE_PEER_URL: http://valence-peer:8080
+      PYTHONPATH: /app/src
+      # For embeddings in tests (optional - uses mock by default)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      valence-primary:
+        condition: service_healthy
+      valence-peer:
+        condition: service_healthy
+    volumes:
+      - ./tests:/app/tests:ro
+      - ./src:/app/src:ro
+      - ./coverage:/app/coverage
+    working_dir: /app
+    command: ["pytest", "tests/", "-m", "integration", "-v", "--timeout=120", "--cov=src/valence", "--cov-report=xml:coverage/integration.xml"]
+    networks:
+      - valence-test
+
+networks:
+  valence-test:
+    driver: bridge
