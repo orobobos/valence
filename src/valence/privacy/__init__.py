@@ -59,10 +59,25 @@ from .provenance import (
 )
 from .capabilities import (
     Capability,
+    CapabilityAction,
+    CapabilityService,
+    CapabilityStore,
+    InMemoryCapabilityStore,
     CapabilityError,
     CapabilityExpiredError,
     CapabilityInvalidSignatureError,
+    CapabilityInvalidError,  # Alias for CapabilityInvalidSignatureError
+    CapabilityRevokedError,
+    CapabilityNotFoundError,
+    CapabilityTTLExceededError,
+    CapabilityInsufficientPermissionError,
+    get_capability_service,
+    set_capability_service,
+    issue_capability,
+    verify_capability,
+    revoke_capability,
     DEFAULT_TTL_SECONDS,
+    MAX_TTL_SECONDS,
 )
 from .audit import (
     AuditEvent,
@@ -142,12 +157,26 @@ __all__ = [
     "MembershipExistsError",
     "MembershipNotFoundError",
     "PermissionDeniedError",
-    # Capabilities (Issue #77)
+    # Capabilities (Issue #77, #78)
     "Capability",
+    "CapabilityAction",
+    "CapabilityService",
+    "CapabilityStore",
+    "InMemoryCapabilityStore",
     "CapabilityError",
     "CapabilityExpiredError",
     "CapabilityInvalidSignatureError",
+    "CapabilityRevokedError",
+    "CapabilityNotFoundError",
+    "CapabilityTTLExceededError",
+    "CapabilityInsufficientPermissionError",
+    "get_capability_service",
+    "set_capability_service",
+    "issue_capability",
+    "verify_capability",
+    "revoke_capability",
     "DEFAULT_TTL_SECONDS",
+    "MAX_TTL_SECONDS",
     # Audit (Issue #81, #82)
     "AuditEvent",
     "AuditEventType",

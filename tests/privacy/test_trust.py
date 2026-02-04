@@ -1164,7 +1164,7 @@ class TestComputeTransitiveTrust:
                 target_did="did:key:bob",
                 competence=0.9,
                 judgment=0.8,
-      # Allows transitive
+                can_delegate=True,  # Allows transitive
             ),
             ("did:key:bob", "did:key:carol"): TrustEdge(
                 source_did="did:key:bob",
@@ -1189,7 +1189,7 @@ class TestComputeTransitiveTrust:
                 target_did="did:key:bob",
                 competence=0.9,
                 judgment=0.9,
-    
+                can_delegate=True,
                 delegation_depth=1,  # Only 1 hop allowed
             ),
             ("did:key:bob", "did:key:carol"): TrustEdge(
@@ -1197,7 +1197,7 @@ class TestComputeTransitiveTrust:
                 target_did="did:key:carol",
                 competence=0.8,
                 judgment=0.8,
-    
+                can_delegate=True,
             ),
             ("did:key:carol", "did:key:dave"): TrustEdge(
                 source_did="did:key:carol",

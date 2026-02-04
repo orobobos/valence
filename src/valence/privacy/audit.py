@@ -302,11 +302,26 @@ class InMemoryAuditBackend:
         """Clear all events (for testing)."""
         with self._lock:
             self._events.clear()
+            self._last_hash = None
     
     def all_events(self) -> List[AuditEvent]:
         """Get all events (for testing)."""
         with self._lock:
             return list(self._events)
+    
+    def verify_chain(self) -> Tuple[bool, Optional[ChainVerificationError]]:
+        """Verify the integrity of the entire audit chain.
+        
+        Checks:
+        1. Genesis event has null previous_hash
+        2. Each event's hash is correctly computed
+        3. Each event's previous_hash matches the prior event's hash
+        
+        Returns:
+            Tuple of (is_valid, error_or_none)
+        """
+        with self._lock:
+            return _verify_event_chain(self._events)
 
 
 class FileAuditBackend:
@@ -314,6 +329,7 @@ class FileAuditBackend:
     
     Writes events as JSON lines (one event per line) for easy parsing.
     Thread-safe with file locking.
+    Maintains hash chain integrity for tamper detection.
     """
     
     def __init__(self, log_path: Path, rotate_size_mb: float = 10.0):
@@ -326,16 +342,58 @@ class FileAuditBackend:
         self._log_path = Path(log_path)
         self._rotate_size_bytes = int(rotate_size_mb * 1024 * 1024)
         self._lock = threading.Lock()
+        self._last_hash: Optional[str] = None
         
         # Ensure parent directory exists
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Load last hash from existing log
+        self._load_last_hash()
+    
+    def _load_last_hash(self) -> None:
+        """Load the last event's hash from the log file."""
+        if not self._log_path.exists():
+            return
+        
+        with open(self._log_path, "r") as f:
+            lines = f.readlines()
+        
+        # Find last valid event
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = AuditEvent.from_json(line)
+                self._last_hash = event.event_hash
+                return
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+    
+    @property
+    def last_hash(self) -> Optional[str]:
+        """Get the hash of the last event, or None if empty."""
+        with self._lock:
+            return self._last_hash
     
     def write(self, event: AuditEvent) -> None:
-        """Write an event to the log file."""
+        """Write an event to the log file.
+        
+        Automatically sets previous_hash and computes event_hash
+        if not already set.
+        """
         with self._lock:
             self._maybe_rotate()
+            
+            # Set previous_hash to chain to prior event
+            if not event.previous_hash and self._last_hash:
+                event.previous_hash = self._last_hash
+                event.event_hash = event._compute_hash()
+            
             with open(self._log_path, "a") as f:
                 f.write(event.to_json() + "\n")
+            
+            self._last_hash = event.event_hash
     
     def _maybe_rotate(self) -> None:
         """Rotate log file if it exceeds size limit."""

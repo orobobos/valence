@@ -645,13 +645,13 @@ def compute_transitive_trust(
         if current_depth > max_hops:
             continue
         
-        # Check delegation depth limit
-        if remaining_depth is not None and remaining_depth <= 0:
-            continue
-        
-        # Found target
+        # Found target - check BEFORE depth limit since reaching the target doesn't require another hop
         if current_did == target_did:
             found_paths.append(path)
+            continue
+        
+        # Check delegation depth limit - only matters for continuing exploration
+        if remaining_depth is not None and remaining_depth <= 0:
             continue
         
         # Explore neighbors

@@ -1151,6 +1151,221 @@ class NetworkBaseline:
     last_updated: float = field(default_factory=time.time)
     delivery_rate_stddev: float = 0.05
     latency_stddev_ms: float = 50.0
+
+
+# =============================================================================
+# SEED REVOCATION MESSAGES (Issue #121)
+# =============================================================================
+
+
+class RevocationReason:
+    """Standard reasons for seed revocation."""
+    KEY_COMPROMISE = "key_compromise"  # Private key was compromised
+    MALICIOUS_BEHAVIOR = "malicious_behavior"  # Seed exhibited malicious behavior
+    RETIRED = "retired"  # Seed is being retired from service
+    ADMIN_ACTION = "admin_action"  # Administrative revocation
+    SECURITY_AUDIT = "security_audit"  # Revoked due to security audit findings
+
+
+@dataclass
+class SeedRevocation:
+    """
+    Seed revocation message for revoking compromised or malicious seeds.
+    
+    When a seed is revoked, this message is broadcast via gossip to all
+    other seeds. Nodes honor revocations by stopping trust of the revoked
+    seed for discovery purposes.
+    
+    Security:
+    - Must be signed by the seed being revoked (proving ownership) OR
+    - Signed by a trusted authority (for cases where seed is compromised)
+    - Includes timestamp to prevent replay attacks
+    - Includes reason for audit trail
+    
+    Attributes:
+        type: Always "seed_revocation"
+        revocation_id: Unique identifier for this revocation
+        seed_id: The seed being revoked
+        reason: Reason for revocation (one of RevocationReason values)
+        reason_detail: Optional detailed explanation
+        timestamp: When the revocation was issued (UTC epoch)
+        effective_at: When the revocation takes effect (UTC epoch, defaults to timestamp)
+        issuer_id: ID of who issued the revocation (seed itself or authority)
+        signature: Ed25519 signature proving authorization (hex-encoded)
+    """
+    type: str = field(default="seed_revocation", init=False)
+    revocation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    seed_id: str = ""  # The seed being revoked
+    reason: str = ""  # One of RevocationReason values
+    reason_detail: str = ""  # Optional detailed explanation
+    timestamp: float = field(default_factory=time.time)
+    effective_at: float = 0.0  # When revocation takes effect (0 = immediate)
+    issuer_id: str = ""  # Who issued this (the seed itself or trusted authority)
+    signature: str = ""  # Ed25519 signature (hex)
+    
+    def __post_init__(self):
+        if self.effective_at == 0.0:
+            self.effective_at = self.timestamp
+    
+    @property
+    def is_effective(self) -> bool:
+        """Check if the revocation is currently effective."""
+        return time.time() >= self.effective_at
+    
+    def get_signable_data(self) -> dict:
+        """
+        Get the data that should be signed.
+        
+        Excludes the signature field itself and includes all security-relevant
+        fields in a canonical order.
+        """
+        return {
+            "type": self.type,
+            "revocation_id": self.revocation_id,
+            "seed_id": self.seed_id,
+            "reason": self.reason,
+            "reason_detail": self.reason_detail,
+            "timestamp": self.timestamp,
+            "effective_at": self.effective_at,
+            "issuer_id": self.issuer_id,
+        }
+    
+    def get_signable_bytes(self) -> bytes:
+        """Get canonical bytes for signing."""
+        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(',', ':')).encode()
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict for transmission."""
+        return {
+            "type": self.type,
+            "revocation_id": self.revocation_id,
+            "seed_id": self.seed_id,
+            "reason": self.reason,
+            "reason_detail": self.reason_detail,
+            "timestamp": self.timestamp,
+            "effective_at": self.effective_at,
+            "issuer_id": self.issuer_id,
+            "signature": self.signature,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "SeedRevocation":
+        """Deserialize from dict."""
+        revocation = cls(
+            seed_id=data.get("seed_id", ""),
+            reason=data.get("reason", ""),
+            reason_detail=data.get("reason_detail", ""),
+            timestamp=data.get("timestamp", time.time()),
+            effective_at=data.get("effective_at", 0.0),
+            issuer_id=data.get("issuer_id", ""),
+            signature=data.get("signature", ""),
+        )
+        revocation.revocation_id = data.get("revocation_id", revocation.revocation_id)
+        return revocation
+    
+    def to_json(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict())
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> "SeedRevocation":
+        """Deserialize from JSON string."""
+        return cls.from_dict(json.loads(json_str))
+
+
+@dataclass
+class SeedRevocationList:
+    """
+    A signed list of seed revocations for out-of-band distribution.
+    
+    This allows nodes to receive revocations via file (e.g., fetched from
+    a trusted URL) without requiring network connectivity to seeds.
+    
+    The list is signed by a trusted authority to prevent tampering.
+    
+    Attributes:
+        version: List version (monotonically increasing)
+        generated_at: When the list was generated
+        revocations: List of SeedRevocation objects
+        authority_id: ID of the signing authority
+        signature: Ed25519 signature of the list (hex)
+    """
+    version: int = 1
+    generated_at: float = field(default_factory=time.time)
+    revocations: List[SeedRevocation] = field(default_factory=list)
+    authority_id: str = ""
+    signature: str = ""
+    
+    def get_signable_data(self) -> dict:
+        """Get the data that should be signed."""
+        return {
+            "version": self.version,
+            "generated_at": self.generated_at,
+            "revocations": [r.to_dict() for r in self.revocations],
+            "authority_id": self.authority_id,
+        }
+    
+    def get_signable_bytes(self) -> bytes:
+        """Get canonical bytes for signing."""
+        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(',', ':')).encode()
+    
+    def to_dict(self) -> dict:
+        """Serialize to dict."""
+        return {
+            "version": self.version,
+            "generated_at": self.generated_at,
+            "revocations": [r.to_dict() for r in self.revocations],
+            "authority_id": self.authority_id,
+            "signature": self.signature,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "SeedRevocationList":
+        """Deserialize from dict."""
+        revocations = [
+            SeedRevocation.from_dict(r) for r in data.get("revocations", [])
+        ]
+        return cls(
+            version=data.get("version", 1),
+            generated_at=data.get("generated_at", time.time()),
+            revocations=revocations,
+            authority_id=data.get("authority_id", ""),
+            signature=data.get("signature", ""),
+        )
+    
+    def to_json(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict(), indent=2)
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> "SeedRevocationList":
+        """Deserialize from JSON string."""
+        return cls.from_dict(json.loads(json_str))
+    
+    def get_revoked_seed_ids(self) -> set:
+        """
+        Get set of all revoked seed IDs that are currently effective.
+        
+        Returns:
+            Set of seed IDs that are revoked
+        """
+        now = time.time()
+        return {
+            r.seed_id for r in self.revocations
+            if r.effective_at <= now
+        }
+    
+    def is_seed_revoked(self, seed_id: str) -> bool:
+        """
+        Check if a specific seed is revoked.
+        
+        Args:
+            seed_id: The seed ID to check
+            
+        Returns:
+            True if the seed is revoked and the revocation is effective
+        """
+        return seed_id in self.get_revoked_seed_ids()
     
     def is_delivery_rate_anomalous(self, rate: float, threshold_stddevs: float = 2.0) -> bool:
         """Check if a delivery rate is anomalously low."""
