@@ -40,6 +40,10 @@ from .federation_endpoints import (
     vfp_trust_anchors,
     federation_status,
 )
+from .corroboration_endpoints import (
+    belief_corroboration_endpoint,
+    most_corroborated_beliefs_endpoint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -720,6 +724,9 @@ def create_app() -> Starlette:
         Route("/.well-known/vfp-trust-anchors", vfp_trust_anchors, methods=["GET"]),
         # Federation API endpoints (TODO: add auth middleware)
         Route("/federation/status", federation_status, methods=["GET"]),
+        # Corroboration endpoints
+        Route("/beliefs/{belief_id}/corroboration", belief_corroboration_endpoint, methods=["GET"]),
+        Route("/beliefs/most-corroborated", most_corroborated_beliefs_endpoint, methods=["GET"]),
     ]
 
     # Define middleware

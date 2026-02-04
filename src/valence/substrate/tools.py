@@ -296,6 +296,27 @@ SUBSTRATE_TOOLS = [
             "required": ["tension_id", "resolution", "action"],
         },
     ),
+    Tool(
+        name="belief_corroboration",
+        description=(
+            "Get corroboration details for a belief - how many independent sources confirm it.\n\n"
+            "Use when:\n"
+            "- You need to assess how well-supported a belief is\n"
+            "- You want to see which federation peers have confirmed similar knowledge\n"
+            "- You're evaluating the reliability of a belief\n\n"
+            "Higher corroboration count indicates multiple independent sources agree."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "belief_id": {
+                    "type": "string",
+                    "description": "UUID of the belief to check corroboration for",
+                },
+            },
+            "required": ["belief_id"],
+        },
+    ),
 ]
 
 
@@ -754,6 +775,48 @@ def tension_resolve(
         }
 
 
+def belief_corroboration(belief_id: str) -> dict[str, Any]:
+    """Get corroboration details for a belief.
+    
+    Shows how many independent sources confirm this belief and who they are.
+    """
+    from ..core.corroboration import get_corroboration
+    from uuid import UUID
+    
+    try:
+        belief_uuid = UUID(belief_id)
+    except ValueError:
+        return {"success": False, "error": f"Invalid belief ID: {belief_id}"}
+    
+    corroboration = get_corroboration(belief_uuid)
+    
+    if not corroboration:
+        return {"success": False, "error": f"Belief not found: {belief_id}"}
+    
+    return {
+        "success": True,
+        "belief_id": str(corroboration.belief_id),
+        "corroboration_count": corroboration.corroboration_count,
+        "confidence_corroboration": corroboration.confidence_corroboration,
+        "corroborating_sources": corroboration.sources,
+        "confidence_label": _corroboration_label(corroboration.corroboration_count),
+    }
+
+
+def _corroboration_label(count: int) -> str:
+    """Human-readable label for corroboration level."""
+    if count == 0:
+        return "uncorroborated"
+    elif count == 1:
+        return "single corroboration"
+    elif count <= 3:
+        return "moderately corroborated"
+    elif count <= 6:
+        return "well corroborated"
+    else:
+        return "highly corroborated"
+
+
 # Tool name to handler mapping
 SUBSTRATE_HANDLERS = {
     "belief_query": belief_query,
@@ -764,6 +827,7 @@ SUBSTRATE_HANDLERS = {
     "entity_search": entity_search,
     "tension_list": tension_list,
     "tension_resolve": tension_resolve,
+    "belief_corroboration": belief_corroboration,
 }
 
 

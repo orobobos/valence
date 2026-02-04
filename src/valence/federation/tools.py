@@ -982,7 +982,10 @@ def federation_corroboration_check(
     content: str | None = None,
     domain: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Check if a belief has been corroborated by federation nodes."""
+    """Check if a belief has been corroborated by federation nodes.
+    
+    Uses semantic similarity for accurate corroboration detection.
+    """
     try:
         if not belief_id and not content:
             return {
@@ -990,19 +993,29 @@ def federation_corroboration_check(
                 "error": "Either belief_id or content must be provided",
             }
 
-        with get_cursor() as cur:
-            if belief_id:
-                # Get the belief content
-                cur.execute("SELECT content, domain_path FROM beliefs WHERE id = %s", (UUID(belief_id),))
-                row = cur.fetchone()
-                if not row:
-                    return {
-                        "success": False,
-                        "error": f"Belief not found: {belief_id}",
-                    }
-                content = row["content"]
-                domain = domain or row.get("domain_path", [])
+        # If belief_id provided, use the new corroboration module directly
+        if belief_id:
+            from ..core.corroboration import get_corroboration
+            
+            corroboration_info = get_corroboration(UUID(belief_id))
+            if not corroboration_info:
+                return {
+                    "success": False,
+                    "error": f"Belief not found: {belief_id}",
+                }
+            
+            return {
+                "success": True,
+                "belief_id": str(corroboration_info.belief_id),
+                "corroborated": corroboration_info.corroboration_count > 0,
+                "corroboration_count": corroboration_info.corroboration_count,
+                "corroboration_level": corroboration_info.confidence_corroboration,
+                "participating_nodes": corroboration_info.corroboration_count,
+                "corroborating_sources": corroboration_info.sources,
+            }
 
+        # If only content provided, check for similar beliefs
+        with get_cursor() as cur:
             # Search for similar beliefs from other nodes
             cur.execute("""
                 SELECT b.id, b.content, bp.origin_node_id, fn.did as origin_did,

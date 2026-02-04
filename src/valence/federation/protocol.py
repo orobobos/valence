@@ -583,6 +583,28 @@ def _process_incoming_belief(
     if visibility == "private":
         return "Belief visibility is private"
 
+    # Check for corroboration with existing beliefs
+    # If a highly similar belief exists, add corroboration instead of creating new
+    try:
+        from ..core.corroboration import process_incoming_belief_corroboration
+        corroboration_result = process_incoming_belief_corroboration(
+            content=content,
+            source_did=origin_node_did,
+        )
+        if corroboration_result and corroboration_result.corroborated:
+            if corroboration_result.is_new_source:
+                logger.info(
+                    f"Belief from {origin_node_did} corroborates existing belief "
+                    f"{corroboration_result.existing_belief_id} "
+                    f"(similarity={corroboration_result.similarity:.3f})"
+                )
+                return True  # Accepted as corroboration, not new belief
+            else:
+                return "Source already corroborated this belief"
+    except Exception as e:
+        # Log but don't fail - corroboration is optional enhancement
+        logger.debug(f"Corroboration check skipped: {e}")
+
     # Create local belief
     confidence_data = belief_data["confidence"]
     if isinstance(confidence_data, dict):
