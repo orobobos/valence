@@ -492,6 +492,49 @@ class FileAuditBackend:
                     count += 1
             
             return count
+    
+    def all_events(self) -> List[AuditEvent]:
+        """Get all events from the log file."""
+        with self._lock:
+            if not self._log_path.exists():
+                return []
+            
+            events = []
+            with open(self._log_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        events.append(AuditEvent.from_json(line))
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        continue
+            return events
+    
+    def verify_chain(self) -> Tuple[bool, Optional[ChainVerificationError]]:
+        """Verify the integrity of the entire audit chain.
+        
+        Checks:
+        1. Genesis event has null previous_hash
+        2. Each event's hash is correctly computed
+        3. Each event's previous_hash matches the prior event's hash
+        
+        Returns:
+            Tuple of (is_valid, error_or_none)
+        """
+        with self._lock:
+            events = []
+            if self._log_path.exists():
+                with open(self._log_path, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            events.append(AuditEvent.from_json(line))
+                        except (json.JSONDecodeError, KeyError, ValueError):
+                            continue
+            return _verify_event_chain(events)
 
 
 class AuditLogger:
@@ -718,42 +761,67 @@ def set_audit_logger(logger: AuditLogger) -> None:
 AuditLog = AuditLogger
 
 
-class ChainVerificationError(Exception):
-    """Error raised when audit chain verification fails."""
-    pass
-
-
-def verify_chain(events: List[AuditEvent]) -> bool:
-    """Verify the integrity of an audit event chain.
+def _verify_event_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainVerificationError]]:
+    """Internal helper to verify hash chain integrity.
     
-    Checks that events are in chronological order and have valid references.
+    Checks:
+    1. Genesis event has null previous_hash
+    2. Each event's hash is correctly computed
+    3. Each event's previous_hash matches the prior event's hash
+    
+    Returns:
+        Tuple of (is_valid, error_or_none)
+    """
+    if not events:
+        return True, None
+    
+    for i, event in enumerate(events):
+        # Check genesis event
+        if i == 0:
+            if event.previous_hash is not None:
+                error = ChainVerificationError(
+                    "Genesis event must have null previous_hash",
+                    i,
+                    event.event_id,
+                )
+                return False, error
+        else:
+            # Check chain linkage
+            expected_prev_hash = events[i - 1].event_hash
+            if event.previous_hash != expected_prev_hash:
+                error = ChainVerificationError(
+                    f"Chain broken: previous_hash mismatch (expected {expected_prev_hash[:16]}..., got {event.previous_hash[:16] if event.previous_hash else 'None'}...)",
+                    i,
+                    event.event_id,
+                )
+                return False, error
+        
+        # Verify event's own hash
+        if not event.verify_hash():
+            error = ChainVerificationError(
+                "Event hash verification failed (data may be tampered)",
+                i,
+                event.event_id,
+            )
+            return False, error
+    
+    return True, None
+
+
+def verify_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainVerificationError]]:
+    """Verify the integrity of an audit event hash chain.
+    
+    Standalone function to verify events loaded from external sources.
+    
+    Checks:
+    1. Genesis event has null previous_hash
+    2. Each event's hash is correctly computed (SHA-256)
+    3. Each event's previous_hash matches the prior event's hash
     
     Args:
         events: List of audit events to verify
         
     Returns:
-        True if chain is valid
-        
-    Raises:
-        ChainVerificationError: If chain verification fails
+        Tuple of (is_valid, error_or_none)
     """
-    if not events:
-        return True
-    
-    # Verify chronological order
-    for i in range(1, len(events)):
-        if events[i].timestamp < events[i-1].timestamp:
-            raise ChainVerificationError(
-                f"Event {events[i].event_id} timestamp precedes previous event"
-            )
-    
-    # Verify unique event IDs
-    seen_ids = set()
-    for event in events:
-        if event.event_id in seen_ids:
-            raise ChainVerificationError(
-                f"Duplicate event ID: {event.event_id}"
-            )
-        seen_ids.add(event.event_id)
-    
-    return True
+    return _verify_event_chain(events)

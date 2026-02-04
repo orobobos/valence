@@ -12,6 +12,8 @@ from valence.privacy.audit import (
     AuditLogger,
     InMemoryAuditBackend,
     FileAuditBackend,
+    ChainVerificationError,
+    verify_chain,
     get_audit_logger,
     set_audit_logger,
 )
@@ -684,3 +686,498 @@ class TestModuleSingleton:
         
         retrieved = get_audit_logger()
         assert retrieved is custom_logger
+
+
+# =============================================================================
+# Hash-Chain Integrity Tests (Issue #82)
+# =============================================================================
+
+class TestAuditEventHashChain:
+    """Tests for AuditEvent hash-chain integrity."""
+    
+    def test_event_has_hash_fields(self):
+        """Event has previous_hash and event_hash fields."""
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        
+        assert hasattr(event, "previous_hash")
+        assert hasattr(event, "event_hash")
+        assert event.event_hash != ""
+        assert len(event.event_hash) == 64  # SHA-256 hex length
+    
+    def test_genesis_event_has_null_previous_hash(self):
+        """First event (genesis) has null previous_hash."""
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            previous_hash=None,
+        )
+        
+        assert event.previous_hash is None
+    
+    def test_event_hash_is_deterministic(self):
+        """Same event data produces same hash."""
+        timestamp = datetime(2026, 2, 4, 12, 0, 0, tzinfo=timezone.utc)
+        kwargs = {
+            "event_id": "test-001",
+            "event_type": AuditEventType.SHARE,
+            "actor_did": "did:key:alice",
+            "resource": "belief:1",
+            "action": "share",
+            "success": True,
+            "timestamp": timestamp,
+            "previous_hash": None,
+        }
+        
+        event1 = AuditEvent(**kwargs)
+        event2 = AuditEvent(**kwargs)
+        
+        assert event1.event_hash == event2.event_hash
+    
+    def test_event_hash_changes_with_data(self):
+        """Different event data produces different hash."""
+        timestamp = datetime(2026, 2, 4, 12, 0, 0, tzinfo=timezone.utc)
+        
+        event1 = AuditEvent(
+            event_id="test-001",
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            timestamp=timestamp,
+            previous_hash=None,
+        )
+        
+        event2 = AuditEvent(
+            event_id="test-001",
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:bob",  # Different actor
+            resource="belief:1",
+            action="share",
+            success=True,
+            timestamp=timestamp,
+            previous_hash=None,
+        )
+        
+        assert event1.event_hash != event2.event_hash
+    
+    def test_event_hash_includes_previous_hash(self):
+        """Previous hash affects event hash."""
+        timestamp = datetime(2026, 2, 4, 12, 0, 0, tzinfo=timezone.utc)
+        
+        event1 = AuditEvent(
+            event_id="test-001",
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            timestamp=timestamp,
+            previous_hash=None,
+        )
+        
+        event2 = AuditEvent(
+            event_id="test-001",
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            timestamp=timestamp,
+            previous_hash="abc123def456",  # With previous hash
+        )
+        
+        assert event1.event_hash != event2.event_hash
+    
+    def test_verify_hash_valid(self):
+        """verify_hash returns True for unmodified event."""
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        
+        assert event.verify_hash() is True
+    
+    def test_verify_hash_detects_tampering(self):
+        """verify_hash returns False if data was modified."""
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        
+        # Tamper with the event
+        event.actor_did = "did:key:mallory"
+        
+        assert event.verify_hash() is False
+    
+    def test_hash_preserved_in_serialization(self):
+        """Hash is preserved through to_dict/from_dict."""
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            previous_hash="prev_hash_123",
+        )
+        
+        data = event.to_dict()
+        restored = AuditEvent.from_dict(data)
+        
+        assert restored.previous_hash == event.previous_hash
+        assert restored.event_hash == event.event_hash
+        assert restored.verify_hash() is True
+
+
+class TestInMemoryBackendHashChain:
+    """Tests for hash chain in InMemoryAuditBackend."""
+    
+    def test_backend_chains_events(self):
+        """Backend automatically chains event hashes."""
+        backend = InMemoryAuditBackend()
+        
+        # First event (genesis)
+        event1 = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        backend.write(event1)
+        
+        # Second event should chain to first
+        event2 = AuditEvent(
+            event_type=AuditEventType.GRANT_TRUST,
+            actor_did="did:key:alice",
+            resource="trust:alice:bob",
+            action="grant",
+            success=True,
+        )
+        backend.write(event2)
+        
+        events = backend.all_events()
+        assert events[0].previous_hash is None  # Genesis
+        assert events[1].previous_hash == events[0].event_hash  # Chained
+    
+    def test_last_hash_property(self):
+        """last_hash returns hash of most recent event."""
+        backend = InMemoryAuditBackend()
+        
+        assert backend.last_hash is None
+        
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        backend.write(event)
+        
+        assert backend.last_hash == event.event_hash
+    
+    def test_verify_chain_valid(self):
+        """Verify chain passes for valid chain."""
+        backend = InMemoryAuditBackend()
+        
+        for i in range(5):
+            event = AuditEvent(
+                event_type=AuditEventType.SHARE,
+                actor_did="did:key:alice",
+                resource=f"belief:{i}",
+                action="share",
+                success=True,
+            )
+            backend.write(event)
+        
+        is_valid, error = backend.verify_chain()
+        assert is_valid is True
+        assert error is None
+    
+    def test_verify_chain_detects_tampering(self):
+        """Verify chain detects tampered event."""
+        backend = InMemoryAuditBackend()
+        
+        for i in range(3):
+            event = AuditEvent(
+                event_type=AuditEventType.SHARE,
+                actor_did="did:key:alice",
+                resource=f"belief:{i}",
+                action="share",
+                success=True,
+            )
+            backend.write(event)
+        
+        # Tamper with middle event
+        events = backend.all_events()
+        events[1].actor_did = "did:key:mallory"
+        
+        is_valid, error = backend.verify_chain()
+        assert is_valid is False
+        assert error is not None
+        assert error.event_index == 1
+    
+    def test_verify_chain_detects_broken_link(self):
+        """Verify chain detects broken hash link."""
+        backend = InMemoryAuditBackend()
+        
+        for i in range(3):
+            event = AuditEvent(
+                event_type=AuditEventType.SHARE,
+                actor_did="did:key:alice",
+                resource=f"belief:{i}",
+                action="share",
+                success=True,
+            )
+            backend.write(event)
+        
+        # Break the chain
+        events = backend.all_events()
+        events[2].previous_hash = "wrong_hash"
+        
+        is_valid, error = backend.verify_chain()
+        assert is_valid is False
+        assert error is not None
+        assert "mismatch" in error.message.lower()
+    
+    def test_clear_resets_last_hash(self):
+        """Clear resets last_hash to None."""
+        backend = InMemoryAuditBackend()
+        
+        event = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+        )
+        backend.write(event)
+        assert backend.last_hash is not None
+        
+        backend.clear()
+        assert backend.last_hash is None
+
+
+class TestFileBackendHashChain:
+    """Tests for hash chain in FileAuditBackend."""
+    
+    def test_backend_chains_events(self):
+        """Backend automatically chains event hashes."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "audit.jsonl"
+            backend = FileAuditBackend(log_path)
+            
+            # First event (genesis)
+            event1 = AuditEvent(
+                event_type=AuditEventType.SHARE,
+                actor_did="did:key:alice",
+                resource="belief:1",
+                action="share",
+                success=True,
+            )
+            backend.write(event1)
+            
+            # Second event should chain to first
+            event2 = AuditEvent(
+                event_type=AuditEventType.GRANT_TRUST,
+                actor_did="did:key:alice",
+                resource="trust:alice:bob",
+                action="grant",
+                success=True,
+            )
+            backend.write(event2)
+            
+            events = backend.all_events()
+            assert events[0].previous_hash is None  # Genesis
+            assert events[1].previous_hash == events[0].event_hash  # Chained
+    
+    def test_loads_last_hash_on_init(self):
+        """Backend loads last_hash from existing log on init."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "audit.jsonl"
+            
+            # Write some events
+            backend1 = FileAuditBackend(log_path)
+            for i in range(3):
+                event = AuditEvent(
+                    event_type=AuditEventType.SHARE,
+                    actor_did="did:key:alice",
+                    resource=f"belief:{i}",
+                    action="share",
+                    success=True,
+                )
+                backend1.write(event)
+            
+            last_hash = backend1.last_hash
+            
+            # Create new backend from same file
+            backend2 = FileAuditBackend(log_path)
+            assert backend2.last_hash == last_hash
+    
+    def test_verify_chain_valid(self):
+        """Verify chain passes for valid chain."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "audit.jsonl"
+            backend = FileAuditBackend(log_path)
+            
+            for i in range(5):
+                event = AuditEvent(
+                    event_type=AuditEventType.SHARE,
+                    actor_did="did:key:alice",
+                    resource=f"belief:{i}",
+                    action="share",
+                    success=True,
+                )
+                backend.write(event)
+            
+            is_valid, error = backend.verify_chain()
+            assert is_valid is True
+            assert error is None
+    
+    def test_verify_chain_detects_file_tampering(self):
+        """Verify chain detects tampered log file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = Path(tmpdir) / "audit.jsonl"
+            backend = FileAuditBackend(log_path)
+            
+            for i in range(3):
+                event = AuditEvent(
+                    event_type=AuditEventType.SHARE,
+                    actor_did="did:key:alice",
+                    resource=f"belief:{i}",
+                    action="share",
+                    success=True,
+                )
+                backend.write(event)
+            
+            # Tamper with the file
+            with open(log_path, "r") as f:
+                lines = f.readlines()
+            
+            # Modify second event's data
+            event_data = json.loads(lines[1])
+            event_data["actor_did"] = "did:key:mallory"
+            lines[1] = json.dumps(event_data) + "\n"
+            
+            with open(log_path, "w") as f:
+                f.writelines(lines)
+            
+            # Verify should fail
+            is_valid, error = backend.verify_chain()
+            assert is_valid is False
+            assert error is not None
+
+
+class TestVerifyChainFunction:
+    """Tests for standalone verify_chain function."""
+    
+    def test_verify_empty_chain(self):
+        """Empty chain is valid."""
+        is_valid, error = verify_chain([])
+        assert is_valid is True
+        assert error is None
+    
+    def test_verify_valid_chain(self):
+        """Valid chain passes verification."""
+        events = []
+        
+        # Genesis event
+        event1 = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            previous_hash=None,
+        )
+        events.append(event1)
+        
+        # Chained event
+        event2 = AuditEvent(
+            event_type=AuditEventType.GRANT_TRUST,
+            actor_did="did:key:alice",
+            resource="trust:1",
+            action="grant",
+            success=True,
+            previous_hash=event1.event_hash,
+        )
+        events.append(event2)
+        
+        is_valid, error = verify_chain(events)
+        assert is_valid is True
+        assert error is None
+    
+    def test_verify_broken_chain(self):
+        """Broken chain fails verification."""
+        events = []
+        
+        # Genesis event
+        event1 = AuditEvent(
+            event_type=AuditEventType.SHARE,
+            actor_did="did:key:alice",
+            resource="belief:1",
+            action="share",
+            success=True,
+            previous_hash=None,
+        )
+        events.append(event1)
+        
+        # Event with wrong previous_hash
+        event2 = AuditEvent(
+            event_type=AuditEventType.GRANT_TRUST,
+            actor_did="did:key:alice",
+            resource="trust:1",
+            action="grant",
+            success=True,
+            previous_hash="wrong_hash",
+        )
+        events.append(event2)
+        
+        is_valid, error = verify_chain(events)
+        assert is_valid is False
+        assert error is not None
+
+
+class TestChainVerificationError:
+    """Tests for ChainVerificationError."""
+    
+    def test_error_attributes(self):
+        """Error has correct attributes."""
+        error = ChainVerificationError(
+            message="Chain broken",
+            event_index=3,
+            event_id="xyz789",
+        )
+        
+        assert error.message == "Chain broken"
+        assert error.event_index == 3
+        assert error.event_id == "xyz789"
+    
+    def test_error_string(self):
+        """Error string includes all info."""
+        error = ChainVerificationError(
+            message="Hash mismatch",
+            event_index=5,
+            event_id="abc123",
+        )
+        
+        error_str = str(error)
+        assert "Hash mismatch" in error_str
+        assert "5" in error_str
+        assert "abc123" in error_str
