@@ -296,7 +296,7 @@ class TestJudgmentDimension:
             integrity=0.8,
             confidentiality=0.8,
             judgment=0.1,  # Alice doesn't trust Bob's judgment
-  # Still allow delegation
+            can_delegate=True,  # Still allow delegation
         )
         
         # Bob highly trusts Carol
@@ -333,7 +333,7 @@ class TestJudgmentDimension:
             integrity=0.9,
             confidentiality=0.9,
             judgment=0.5,
-
+            can_delegate=True,
         )
         
         # B -> C with moderate judgment
@@ -385,7 +385,7 @@ class TestTransitiveTrust:
             integrity=0.8,
             confidentiality=0.8,
             judgment=0.6,
-
+            can_delegate=True,
         )
         
         b_c = TrustEdge(
@@ -402,7 +402,7 @@ class TestTransitiveTrust:
             ("did:key:b", "did:key:c"): b_c,
         }
         
-        result = compute_transitive_trust("did:key:a", "did:key:c", graph)
+        result = compute_transitive_trust("did:key:a", "did:key:c", graph, respect_delegation=False)
         
         assert result is not None
         assert result.source_did == "did:key:a"
@@ -421,7 +421,7 @@ class TestTransitiveTrust:
         
         graph = {("did:key:a", "did:key:b"): a_b}
         
-        result = compute_transitive_trust("did:key:a", "did:key:c", graph)
+        result = compute_transitive_trust("did:key:a", "did:key:c", graph, respect_delegation=False)
         
         assert result is None
     
@@ -435,7 +435,7 @@ class TestTransitiveTrust:
             integrity=0.9,
             confidentiality=0.9,
             judgment=0.2,  # Low judgment
-
+            can_delegate=True,
         )
         b_d = TrustEdge(
             source_did="did:key:b",
@@ -444,6 +444,7 @@ class TestTransitiveTrust:
             integrity=0.9,
             confidentiality=0.9,
             judgment=0.9,
+            can_delegate=True,
         )
         
         # Path 2: A -> C -> D (high judgment intermediary)
@@ -454,7 +455,7 @@ class TestTransitiveTrust:
             integrity=0.7,
             confidentiality=0.7,
             judgment=0.8,  # High judgment
-
+            can_delegate=True,
         )
         c_d = TrustEdge(
             source_did="did:key:c",
@@ -472,7 +473,7 @@ class TestTransitiveTrust:
             ("did:key:c", "did:key:d"): c_d,
         }
         
-        result = compute_transitive_trust("did:key:a", "did:key:d", graph)
+        result = compute_transitive_trust("did:key:a", "did:key:d", graph, respect_delegation=False)
         
         assert result is not None
         # Path 1: competence = min(0.9, 0.9) * 0.2 = 0.18
@@ -516,11 +517,11 @@ class TestTransitiveTrust:
         graph = {(e.source_did, e.target_did): e for e in edges}
         
         # With max_hops=2, should not reach E (4 hops away)
-        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=2)
+        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=2, respect_delegation=False)
         assert result is None
         
         # With max_hops=4, should reach E
-        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=4)
+        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=4, respect_delegation=False)
         assert result is not None
 
 

@@ -638,3 +638,671 @@ class TestDomainService:
                 member_did="did:example:unauthorized",
                 requester_did="did:example:member",
             )
+
+
+class TestVerificationRequirement:
+    """Tests for VerificationRequirement dataclass."""
+    
+    def test_create_requirement_admin_sig(self):
+        """Test creating admin signature requirement."""
+        req = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            config={"admin_did": "did:example:admin"},
+            required=True,
+        )
+        
+        assert req.method == VerificationMethod.ADMIN_SIGNATURE
+        assert req.config["admin_did"] == "did:example:admin"
+        assert req.required is True
+    
+    def test_create_requirement_dns(self):
+        """Test creating DNS TXT requirement."""
+        req = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={
+                "dns_domain": "example.com",
+                "expected_prefix": "valence-member=",
+            },
+        )
+        
+        assert req.method == VerificationMethod.DNS_TXT
+        assert req.config["dns_domain"] == "example.com"
+    
+    def test_requirement_to_dict(self):
+        """Test serialization to dict."""
+        req = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            config={"key": "value"},
+            required=False,
+        )
+        
+        data = req.to_dict()
+        assert data["method"] == "admin_sig"
+        assert data["config"] == {"key": "value"}
+        assert data["required"] is False
+    
+    def test_requirement_from_dict(self):
+        """Test deserialization from dict."""
+        data = {
+            "method": "dns_txt",
+            "config": {"dns_domain": "test.com"},
+            "required": True,
+        }
+        
+        req = VerificationRequirement.from_dict(data)
+        assert req.method == VerificationMethod.DNS_TXT
+        assert req.config["dns_domain"] == "test.com"
+        assert req.required is True
+    
+    def test_requirement_roundtrip(self):
+        """Test serialization roundtrip."""
+        original = VerificationRequirement(
+            method=VerificationMethod.CUSTOM,
+            config={"custom_key": "custom_value"},
+            required=True,
+        )
+        
+        restored = VerificationRequirement.from_dict(original.to_dict())
+        assert restored.method == original.method
+        assert restored.config == original.config
+        assert restored.required == original.required
+
+
+class TestVerificationResult:
+    """Tests for VerificationResult dataclass."""
+    
+    def test_create_success_result(self):
+        """Test creating a successful verification result."""
+        result = VerificationResult(
+            verified=True,
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            details="Signature verified",
+            evidence={"admin_did": "did:example:admin"},
+        )
+        
+        assert result.verified is True
+        assert result.method == VerificationMethod.ADMIN_SIGNATURE
+        assert result.details == "Signature verified"
+        assert result.evidence["admin_did"] == "did:example:admin"
+        assert result.timestamp is not None
+    
+    def test_create_failure_result(self):
+        """Test creating a failed verification result."""
+        result = VerificationResult(
+            verified=False,
+            method=VerificationMethod.DNS_TXT,
+            details="No matching TXT record found",
+        )
+        
+        assert result.verified is False
+        assert result.method == VerificationMethod.DNS_TXT
+    
+    def test_result_to_dict(self):
+        """Test serialization to dict."""
+        result = VerificationResult(
+            verified=True,
+            method=VerificationMethod.NONE,
+            details="No verification required",
+        )
+        
+        data = result.to_dict()
+        assert data["verified"] is True
+        assert data["method"] == "none"
+        assert data["details"] == "No verification required"
+        assert "timestamp" in data
+    
+    def test_result_from_dict(self):
+        """Test deserialization from dict."""
+        data = {
+            "verified": True,
+            "method": "admin_sig",
+            "timestamp": "2025-06-15T12:00:00+00:00",
+            "details": "OK",
+            "evidence": {"test": "data"},
+        }
+        
+        result = VerificationResult.from_dict(data)
+        assert result.verified is True
+        assert result.method == VerificationMethod.ADMIN_SIGNATURE
+        assert result.timestamp.year == 2025
+        assert result.evidence["test"] == "data"
+
+
+class TestAdminSignatureVerifier:
+    """Tests for AdminSignatureVerifier."""
+    
+    @pytest.mark.asyncio
+    async def test_verify_no_evidence(self):
+        """Test verification fails without evidence."""
+        verifier = AdminSignatureVerifier()
+        requirement = VerificationRequirement(method=VerificationMethod.ADMIN_SIGNATURE)
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence=None,
+        )
+        
+        assert result.verified is False
+        assert "No evidence" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_missing_signature(self):
+        """Test verification fails with missing signature."""
+        verifier = AdminSignatureVerifier()
+        requirement = VerificationRequirement(method=VerificationMethod.ADMIN_SIGNATURE)
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence={"admin_did": "did:example:admin"},  # No signature
+        )
+        
+        assert result.verified is False
+        assert "Missing" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_valid_signature(self):
+        """Test verification succeeds with valid signature."""
+        verifier = AdminSignatureVerifier()
+        requirement = VerificationRequirement(method=VerificationMethod.ADMIN_SIGNATURE)
+        
+        domain_id = "domain-123"
+        member_did = "did:example:member"
+        admin_did = "did:example:admin"
+        
+        # Generate expected signature (simple mode)
+        expected_sig = hashlib.sha256(
+            f"{domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
+        
+        result = await verifier.verify(
+            domain_id=domain_id,
+            member_did=member_did,
+            requirement=requirement,
+            evidence={
+                "admin_did": admin_did,
+                "signature": expected_sig,
+            },
+        )
+        
+        assert result.verified is True
+        assert "Signature verified" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_invalid_signature(self):
+        """Test verification fails with invalid signature."""
+        verifier = AdminSignatureVerifier()
+        requirement = VerificationRequirement(method=VerificationMethod.ADMIN_SIGNATURE)
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence={
+                "admin_did": "did:example:admin",
+                "signature": "invalid-signature",
+            },
+        )
+        
+        assert result.verified is False
+        assert "mismatch" in result.details
+
+
+class TestDNSTxtVerifier:
+    """Tests for DNSTxtVerifier."""
+    
+    @pytest.mark.asyncio
+    async def test_verify_no_dns_domain(self):
+        """Test verification fails without DNS domain."""
+        verifier = DNSTxtVerifier()
+        requirement = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={},  # No dns_domain
+        )
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence=None,
+        )
+        
+        assert result.verified is False
+        assert "No DNS domain" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_with_mock_resolver_success(self):
+        """Test verification succeeds with matching TXT record."""
+        member_did = "did:example:member"
+        
+        async def mock_resolver(hostname):
+            return [f"valence-member={member_did}"]
+        
+        verifier = DNSTxtVerifier(dns_resolver=mock_resolver)
+        requirement = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={
+                "dns_domain": "example.com",
+                "expected_prefix": "valence-member=",
+            },
+        )
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did=member_did,
+            requirement=requirement,
+            evidence={"dns_domain": "example.com"},
+        )
+        
+        assert result.verified is True
+        assert "Found matching TXT record" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_with_mock_resolver_no_match(self):
+        """Test verification fails without matching TXT record."""
+        async def mock_resolver(hostname):
+            return ["some-other-record"]
+        
+        verifier = DNSTxtVerifier(dns_resolver=mock_resolver)
+        requirement = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={"dns_domain": "example.com"},
+        )
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence={"dns_domain": "example.com"},
+        )
+        
+        assert result.verified is False
+        assert "No matching TXT record" in result.details
+    
+    @pytest.mark.asyncio
+    async def test_verify_dns_lookup_error(self):
+        """Test verification handles DNS errors gracefully."""
+        async def mock_resolver(hostname):
+            raise Exception("DNS timeout")
+        
+        verifier = DNSTxtVerifier(dns_resolver=mock_resolver)
+        requirement = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={"dns_domain": "example.com"},
+        )
+        
+        result = await verifier.verify(
+            domain_id="domain-123",
+            member_did="did:example:member",
+            requirement=requirement,
+            evidence={"dns_domain": "example.com"},
+        )
+        
+        assert result.verified is False
+        assert "DNS lookup failed" in result.details
+
+
+class TestDomainServiceVerification:
+    """Tests for DomainService verification methods."""
+    
+    @pytest.mark.asyncio
+    async def test_set_verification_requirement(self, domain_service):
+        """Test setting a verification requirement on a domain."""
+        domain = await domain_service.create_domain(
+            name="verified-domain",
+            owner_did="did:example:owner",
+        )
+        
+        requirement = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            config={"admin_did": "did:example:admin"},
+        )
+        
+        updated = await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        assert updated.verification_requirement is not None
+        assert updated.verification_requirement.method == VerificationMethod.ADMIN_SIGNATURE
+    
+    @pytest.mark.asyncio
+    async def test_set_verification_requirement_owner_only(self, domain_service):
+        """Test that only owner can set verification requirements."""
+        domain = await domain_service.create_domain(
+            name="owner-only-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:admin",
+            role=DomainRole.ADMIN,
+        )
+        
+        requirement = VerificationRequirement(method=VerificationMethod.ADMIN_SIGNATURE)
+        
+        # Admin cannot set verification requirements
+        with pytest.raises(PermissionDeniedError):
+            await domain_service.set_verification_requirement(
+                domain_id=domain.domain_id,
+                requirement=requirement,
+                requester_did="did:example:admin",
+            )
+    
+    @pytest.mark.asyncio
+    async def test_clear_verification_requirement(self, domain_service):
+        """Test clearing a verification requirement."""
+        domain = await domain_service.create_domain(
+            name="clear-req-domain",
+            owner_did="did:example:owner",
+        )
+        
+        # Set requirement
+        requirement = VerificationRequirement(method=VerificationMethod.DNS_TXT)
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        # Clear requirement
+        updated = await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=None,
+        )
+        
+        assert updated.verification_requirement is None
+    
+    @pytest.mark.asyncio
+    async def test_verify_membership_no_requirement(self, domain_service):
+        """Test verification auto-succeeds when no requirement set."""
+        domain = await domain_service.create_domain(
+            name="no-req-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        result = await domain_service.verify_membership(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        assert result.verified is True
+        assert result.method == VerificationMethod.NONE
+    
+    @pytest.mark.asyncio
+    async def test_verify_membership_not_a_member(self, domain_service):
+        """Test verification fails for non-members."""
+        domain = await domain_service.create_domain(
+            name="member-only-domain",
+            owner_did="did:example:owner",
+        )
+        
+        with pytest.raises(MembershipNotFoundError):
+            await domain_service.verify_membership(
+                domain_id=domain.domain_id,
+                member_did="did:example:stranger",
+            )
+    
+    @pytest.mark.asyncio
+    async def test_verify_membership_with_admin_signature(self, domain_service):
+        """Test verification with admin signature."""
+        domain = await domain_service.create_domain(
+            name="sig-verify-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        # Set admin signature requirement
+        requirement = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+        )
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        admin_did = "did:example:owner"
+        member_did = "did:example:member"
+        
+        # Generate valid signature
+        expected_sig = hashlib.sha256(
+            f"{domain.domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
+        
+        result = await domain_service.verify_membership(
+            domain_id=domain.domain_id,
+            member_did=member_did,
+            evidence={
+                "admin_did": admin_did,
+                "signature": expected_sig,
+            },
+        )
+        
+        assert result.verified is True
+    
+    @pytest.mark.asyncio
+    async def test_get_verification_status(self, domain_service):
+        """Test getting verification status."""
+        domain = await domain_service.create_domain(
+            name="status-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        # Before verification
+        status = await domain_service.get_verification_status(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        assert status is None
+        
+        # After verification
+        await domain_service.verify_membership(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        status = await domain_service.get_verification_status(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        assert status is not None
+        assert status.verified is True
+    
+    @pytest.mark.asyncio
+    async def test_is_verified_member_no_requirement(self, domain_service):
+        """Test is_verified_member when no verification required."""
+        domain = await domain_service.create_domain(
+            name="no-verify-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        is_verified = await domain_service.is_verified_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        assert is_verified is True
+    
+    @pytest.mark.asyncio
+    async def test_is_verified_member_required(self, domain_service):
+        """Test is_verified_member with required verification."""
+        domain = await domain_service.create_domain(
+            name="required-verify-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        # Set required verification
+        requirement = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            required=True,
+        )
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        # Before verification
+        is_verified = await domain_service.is_verified_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        assert is_verified is False
+        
+        # After verification
+        admin_did = "did:example:owner"
+        member_did = "did:example:member"
+        expected_sig = hashlib.sha256(
+            f"{domain.domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
+        
+        await domain_service.verify_membership(
+            domain_id=domain.domain_id,
+            member_did=member_did,
+            evidence={
+                "admin_did": admin_did,
+                "signature": expected_sig,
+            },
+        )
+        
+        is_verified = await domain_service.is_verified_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        assert is_verified is True
+    
+    @pytest.mark.asyncio
+    async def test_is_verified_member_optional(self, domain_service):
+        """Test is_verified_member with optional verification."""
+        domain = await domain_service.create_domain(
+            name="optional-verify-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        # Set optional verification
+        requirement = VerificationRequirement(
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            required=False,  # Optional
+        )
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        # Even without verification, should be considered verified (optional)
+        is_verified = await domain_service.is_verified_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        assert is_verified is True
+    
+    @pytest.mark.asyncio
+    async def test_is_verified_member_not_a_member(self, domain_service):
+        """Test is_verified_member for non-members returns False."""
+        domain = await domain_service.create_domain(
+            name="non-member-domain",
+            owner_did="did:example:owner",
+        )
+        
+        is_verified = await domain_service.is_verified_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:stranger",
+        )
+        
+        assert is_verified is False
+    
+    @pytest.mark.asyncio
+    async def test_verify_with_custom_verifier(self, domain_service):
+        """Test verification with custom verifier."""
+        domain = await domain_service.create_domain(
+            name="custom-verify-domain",
+            owner_did="did:example:owner",
+        )
+        
+        await domain_service.add_member(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+        )
+        
+        requirement = VerificationRequirement(
+            method=VerificationMethod.CUSTOM,
+        )
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        # Create a custom verifier that always succeeds
+        class AlwaysSuccessVerifier:
+            async def verify(self, domain_id, member_did, requirement, evidence=None):
+                return VerificationResult(
+                    verified=True,
+                    method=VerificationMethod.CUSTOM,
+                    details="Custom verification passed",
+                )
+        
+        result = await domain_service.verify_membership(
+            domain_id=domain.domain_id,
+            member_did="did:example:member",
+            verifier=AlwaysSuccessVerifier(),
+        )
+        
+        assert result.verified is True
+        assert result.method == VerificationMethod.CUSTOM
+    
+    @pytest.mark.asyncio
+    async def test_domain_with_verification_roundtrip(self, domain_service, mock_db):
+        """Test domain serialization preserves verification requirement."""
+        domain = await domain_service.create_domain(
+            name="roundtrip-domain",
+            owner_did="did:example:owner",
+        )
+        
+        requirement = VerificationRequirement(
+            method=VerificationMethod.DNS_TXT,
+            config={"dns_domain": "example.com"},
+            required=True,
+        )
+        await domain_service.set_verification_requirement(
+            domain_id=domain.domain_id,
+            requirement=requirement,
+        )
+        
+        # Simulate roundtrip through database
+        stored = mock_db.domains[domain.domain_id]
+        restored = Domain.from_dict(stored)
+        
+        assert restored.verification_requirement is not None
+        assert restored.verification_requirement.method == VerificationMethod.DNS_TXT
+        assert restored.verification_requirement.config["dns_domain"] == "example.com"

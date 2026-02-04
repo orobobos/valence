@@ -395,6 +395,8 @@ class TrustEdge:
             "confidentiality": self.confidentiality,
             "judgment": self.judgment,
             "domain": self.domain,
+            "can_delegate": self.can_delegate,
+            "delegation_depth": self.delegation_depth,
             "decay_rate": self.decay_rate,
             "decay_model": self.decay_model.value,
             "last_refreshed": self.last_refreshed.isoformat() if self.last_refreshed else None,
@@ -1458,6 +1460,22 @@ class TrustService:
         if direct is not None:
             return direct
         
+        def get_effective_edges(src_did: str) -> list[TrustEdge4D]:
+            """Get edges for the given source, filtered by domain.
+            
+            For delegated trust computation:
+            - If domain is None: only return global (domain-less) edges
+            - If domain is specified: use list_trusted's override behavior
+              (domain-specific edges take precedence, with global fallback)
+            """
+            if domain is None:
+                # For global trust computation, only use global edges
+                all_edges = self.list_trusted(src_did, None)
+                return [e for e in all_edges if e.domain is None]
+            else:
+                # For domain-specific, use the override behavior
+                return self.list_trusted(src_did, domain)
+        
         # BFS to find delegation paths
         # Queue entries: (current_did, path_of_edges, remaining_depth)
         # remaining_depth tracks the minimum delegation_depth remaining in the chain
@@ -1465,7 +1483,7 @@ class TrustService:
         queue: deque[tuple[str, list[TrustEdge4D], int | None]] = deque()
         
         # Get initial edges from source that allow delegation
-        source_edges = self.list_trusted(source, domain)
+        source_edges = get_effective_edges(source)
         for edge in source_edges:
             if edge.can_delegate:
                 # delegation_depth=0 means no limit, otherwise it's the max hops allowed
@@ -1505,7 +1523,7 @@ class TrustService:
                 continue
             
             # Get outgoing edges from current node
-            current_edges = self.list_trusted(current_did, domain)
+            current_edges = get_effective_edges(current_did)
             for edge in current_edges:
                 # For intermediate hops, edge must allow delegation
                 # For final hop to target, we don't require can_delegate on the last edge
