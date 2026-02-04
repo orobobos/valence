@@ -8,21 +8,34 @@ The router node is a key component of the Valence mesh network. It:
 - Maintains no persistent state about message contents (privacy-preserving)
 
 Messages are end-to-end encrypted; routers only see routing metadata.
+
+Registration Protocol:
+- Router generates Ed25519 keypair for identity
+- Registration includes PoW (proof-of-work) for anti-Sybil
+- Heartbeats sent every 5 minutes with load metrics
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import secrets
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 import aiohttp
 from aiohttp import WSMsgType, web
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 logger = logging.getLogger(__name__)
+
+
+class RegistrationError(Exception):
+    """Raised when router registration fails."""
+    pass
 
 
 @dataclass
@@ -60,6 +73,8 @@ class RouterNode:
         max_connections: Maximum concurrent connections
         seed_url: URL of seed node to register with (optional)
         heartbeat_interval: Seconds between seed heartbeats
+        regions: Geographic regions this router serves
+        features: Supported features/protocols
     """
 
     host: str = "0.0.0.0"
@@ -67,6 +82,14 @@ class RouterNode:
     max_connections: int = 100
     seed_url: str | None = None
     heartbeat_interval: int = 300  # 5 minutes
+    
+    # Router identity and capabilities
+    regions: list[str] = field(default_factory=list)
+    features: list[str] = field(default_factory=list)
+    
+    # Ed25519 identity keypair (generated on init if not provided)
+    _private_key: Ed25519PrivateKey | None = field(default=None, repr=False)
+    _router_id: str | None = field(default=None, repr=False)
 
     # Runtime state
     connections: dict[str, Connection] = field(default_factory=dict)
@@ -77,6 +100,10 @@ class RouterNode:
     messages_queued: int = 0
     messages_delivered: int = 0
     connections_total: int = 0
+    
+    # Registration state
+    _registered: bool = field(default=False, repr=False)
+    _seed_id: str | None = field(default=None, repr=False)
 
     # Internal state
     _app: web.Application | None = field(default=None, repr=False)
@@ -87,6 +114,101 @@ class RouterNode:
     # Queue limits
     MAX_QUEUE_SIZE: int = 1000
     MAX_QUEUE_AGE: int = 3600  # 1 hour
+    
+    # PoW settings
+    POW_DIFFICULTY: int = 16  # Default difficulty (leading zero bits)
+    
+    def __post_init__(self):
+        """Initialize identity keypair if not provided."""
+        if self._private_key is None:
+            self._private_key = Ed25519PrivateKey.generate()
+        
+        if self._router_id is None:
+            # Router ID is the hex-encoded public key
+            public_key = self._private_key.public_key()
+            self._router_id = public_key.public_bytes_raw().hex()
+    
+    @property
+    def router_id(self) -> str:
+        """Get the router's public identity (hex-encoded Ed25519 public key)."""
+        return self._router_id
+    
+    @property
+    def endpoints(self) -> list[str]:
+        """Get the router's advertised endpoints."""
+        return [f"{self.host}:{self.port}"]
+    
+    def get_capacity(self) -> dict[str, Any]:
+        """Get current router capacity metrics."""
+        return {
+            "max_connections": self.max_connections,
+            "current_connections": len(self.connections),
+            "bandwidth_mbps": 100,  # Could be configurable
+        }
+    
+    def _sign(self, data: dict[str, Any]) -> str:
+        """Sign data with router's Ed25519 private key.
+        
+        Args:
+            data: Dictionary to sign (will be JSON-serialized)
+            
+        Returns:
+            Hex-encoded signature
+        """
+        message = json.dumps(data, sort_keys=True, separators=(',', ':')).encode()
+        signature = self._private_key.sign(message)
+        return signature.hex()
+    
+    def _generate_pow(self, difficulty: int | None = None) -> dict[str, Any]:
+        """Generate proof-of-work for registration.
+        
+        PoW: Find nonce where sha256(challenge || nonce || router_id)
+        has `difficulty` leading zero bits.
+        
+        Args:
+            difficulty: Number of leading zero bits required (default: POW_DIFFICULTY)
+            
+        Returns:
+            Dict with challenge, nonce, and difficulty
+        """
+        if difficulty is None:
+            difficulty = self.POW_DIFFICULTY
+        
+        # Generate random challenge
+        challenge = secrets.token_hex(16)
+        
+        nonce = 0
+        while True:
+            # Construct hash input
+            hash_input = f"{challenge}{nonce}{self.router_id}".encode()
+            hash_result = hashlib.sha256(hash_input).digest()
+            
+            # Count leading zero bits
+            leading_zeros = 0
+            for byte in hash_result:
+                if byte == 0:
+                    leading_zeros += 8
+                else:
+                    # Count leading zeros in this byte
+                    for i in range(7, -1, -1):
+                        if byte & (1 << i):
+                            break
+                        leading_zeros += 1
+                    break
+            
+            if leading_zeros >= difficulty:
+                logger.debug(f"PoW found: nonce={nonce}, zeros={leading_zeros}")
+                return {
+                    "challenge": challenge,
+                    "nonce": nonce,
+                    "difficulty": difficulty,
+                }
+            
+            nonce += 1
+            
+            # Safety limit to avoid infinite loop in tests with high difficulty
+            if nonce > 10_000_000:
+                raise RuntimeError(f"PoW generation exceeded limit at difficulty {difficulty}")
 
     async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse:
         """Handle incoming WebSocket connections from nodes."""
@@ -347,38 +469,78 @@ class RouterNode:
             }
         )
 
-    async def _register_with_seed(self) -> bool:
+    async def register_with_seed(self, seed_url: str | None = None) -> bool:
         """Register this router with the seed node.
+        
+        Registration includes:
+        - Ed25519 signed payload
+        - Proof-of-work for anti-Sybil protection
+        - Router capabilities (regions, features, capacity)
 
-        Returns True if registration successful.
+        Args:
+            seed_url: Override seed URL (uses self.seed_url if not provided)
+
+        Returns:
+            True if registration successful.
+            
+        Raises:
+            RegistrationError: If registration is rejected by seed.
         """
-        if not self.seed_url:
+        url = seed_url or self.seed_url
+        if not url:
             return False
 
-        registration_url = f"{self.seed_url.rstrip('/')}/api/v1/routers/register"
+        registration_url = f"{url.rstrip('/')}/register"
+        
+        # Generate proof-of-work
+        logger.info(f"Generating proof-of-work (difficulty={self.POW_DIFFICULTY})...")
+        proof_of_work = self._generate_pow()
+        
+        # Build registration payload
+        registration = {
+            "router_id": self.router_id,
+            "endpoints": self.endpoints,
+            "capacity": self.get_capacity(),
+            "regions": self.regions,
+            "features": self.features,
+            "proof_of_work": proof_of_work,
+            "timestamp": time.time(),
+        }
+        
+        # Sign the registration
+        registration["signature"] = self._sign(registration)
 
         try:
-            timeout = aiohttp.ClientTimeout(total=10)
+            timeout = aiohttp.ClientTimeout(total=30)  # Longer timeout for PoW verification
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    registration_url,
-                    json={
-                        "host": self.host,
-                        "port": self.port,
-                        "max_connections": self.max_connections,
-                    },
-                ) as response:
-                    if response.status == 200:
-                        logger.info(f"Registered with seed node: {self.seed_url}")
+                async with session.post(registration_url, json=registration) as response:
+                    result = await response.json()
+                    
+                    if result.get("status") == "accepted":
+                        self._registered = True
+                        self._seed_id = result.get("seed_id")
+                        logger.info(
+                            f"Registered with seed node {self._seed_id}: {url}"
+                        )
                         return True
                     else:
-                        text = await response.text()
+                        reason = result.get("reason", "unknown")
                         logger.warning(
-                            f"Seed registration failed ({response.status}): {text}"
+                            f"Seed registration rejected: {reason}"
                         )
-                        return False
+                        raise RegistrationError(reason)
+                        
+        except RegistrationError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to register with seed: {e}")
+            return False
+    
+    async def _register_with_seed(self) -> bool:
+        """Legacy method for backward compatibility."""
+        try:
+            return await self.register_with_seed()
+        except RegistrationError:
             return False
 
     async def _heartbeat_loop(self) -> None:
@@ -397,31 +559,53 @@ class RouterNode:
 
     async def _send_heartbeat(self) -> bool:
         """Send a heartbeat to the seed node.
+        
+        Heartbeat includes:
+        - current_connections: Active WebSocket connections
+        - load_pct: Estimated load percentage
+        - messages_relayed: Total messages relayed since start
+        - uptime_pct: Estimated uptime (placeholder)
 
         Returns True if heartbeat acknowledged.
         """
         if not self.seed_url:
             return False
 
-        heartbeat_url = f"{self.seed_url.rstrip('/')}/api/v1/routers/heartbeat"
+        heartbeat_url = f"{self.seed_url.rstrip('/')}/heartbeat"
+        
+        # Calculate load percentage
+        load_pct = (len(self.connections) / self.max_connections) * 100 if self.max_connections > 0 else 0
+        
+        # Build heartbeat payload
+        heartbeat = {
+            "router_id": self.router_id,
+            "current_connections": len(self.connections),
+            "load_pct": round(load_pct, 1),
+            "messages_relayed": self.messages_relayed,
+            "uptime_pct": 99.9,  # Placeholder - could track actual uptime
+            "timestamp": time.time(),
+        }
+        
+        # Sign the heartbeat
+        heartbeat["signature"] = self._sign(heartbeat)
 
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    heartbeat_url,
-                    json={
-                        "host": self.host,
-                        "port": self.port,
-                        "connections": len(self.connections),
-                        "messages_relayed": self.messages_relayed,
-                    },
-                ) as response:
+                async with session.post(heartbeat_url, json=heartbeat) as response:
                     if response.status == 200:
-                        logger.debug("Heartbeat acknowledged by seed")
+                        result = await response.json()
+                        health_status = result.get("health_status", "unknown")
+                        next_interval = result.get("next_heartbeat_in", self.heartbeat_interval)
+                        
+                        logger.debug(
+                            f"Heartbeat acknowledged: status={health_status}, "
+                            f"next_in={next_interval}s"
+                        )
                         return True
                     else:
-                        logger.warning(f"Heartbeat failed: {response.status}")
+                        text = await response.text()
+                        logger.warning(f"Heartbeat failed ({response.status}): {text}")
                         return False
         except Exception as e:
             logger.warning(f"Heartbeat error: {e}")

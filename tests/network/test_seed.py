@@ -505,6 +505,11 @@ class TestRegistrationEndpoint:
     @pytest.mark.asyncio
     async def test_register_new_router(self, seed_node):
         """Registration should add router to registry."""
+        # Disable verification for legacy test format
+        seed_node.config.verify_signatures = False
+        seed_node.config.verify_pow = False
+        seed_node.config.probe_endpoints = False
+        
         request = MagicMock()
         request.json = AsyncMock(return_value={
             "router_id": "z6MkNewRouter123",
@@ -514,6 +519,7 @@ class TestRegistrationEndpoint:
             "features": ["ipv6"],
             "router_signature": "test-sig",
         })
+        request.remote = "127.0.0.1"
         
         response = await seed_node.handle_register(request)
         
@@ -521,13 +527,18 @@ class TestRegistrationEndpoint:
         import json
         data = json.loads(response.text)
         
-        assert data["status"] == "ok"
+        assert data["status"] == "accepted"
         assert data["action"] == "registered"
         assert "z6MkNewRouter123" in seed_node.router_registry
     
     @pytest.mark.asyncio
     async def test_register_update_existing(self, seed_node, healthy_router):
         """Registration should update existing router."""
+        # Disable verification for legacy test format
+        seed_node.config.verify_signatures = False
+        seed_node.config.verify_pow = False
+        seed_node.config.probe_endpoints = False
+        
         seed_node.router_registry[healthy_router.router_id] = healthy_router
         original_registered_at = healthy_router.registered_at
         
@@ -537,6 +548,7 @@ class TestRegistrationEndpoint:
             "endpoints": ["10.0.0.2:8471"],  # New endpoint
             "router_signature": "new-sig",
         })
+        request.remote = "127.0.0.1"
         
         response = await seed_node.handle_register(request)
         

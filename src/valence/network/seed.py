@@ -17,6 +17,7 @@ Protocol:
 
 Security:
 - Routers must sign registration with their Ed25519 key
+- Proof-of-work required for anti-Sybil protection
 - Heartbeats include router signature for verification
 - No sensitive data stored - just public routing info
 """
@@ -25,14 +26,19 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import secrets
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import aiohttp
 from aiohttp import web
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.exceptions import InvalidSignature
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,19 @@ class SeedConfig:
     # Known other seeds for redundancy
     known_seeds: List[str] = field(default_factory=list)
     
+    # Proof-of-work difficulty (leading zero bits required)
+    pow_difficulty_base: int = 16  # First router from IP
+    pow_difficulty_second: int = 20  # Second router from same IP
+    pow_difficulty_third_plus: int = 24  # Third+ router from same IP
+    
+    # Enable/disable signature and PoW verification
+    verify_signatures: bool = True
+    verify_pow: bool = True
+    
+    # Endpoint probing settings
+    probe_endpoints: bool = True
+    probe_timeout_seconds: float = 5.0
+    
     def __post_init__(self):
         if self.seed_id is None:
             self.seed_id = f"seed-{secrets.token_hex(8)}"
@@ -79,14 +98,16 @@ class SeedConfig:
 class RouterRecord:
     """Record of a registered router."""
     
-    router_id: str  # Ed25519 public key (multibase or hex)
+    router_id: str  # Ed25519 public key (hex)
     endpoints: List[str]  # ["ip:port", ...]
     capacity: Dict[str, Any]  # {max_connections, current_load_pct, bandwidth_mbps}
-    health: Dict[str, Any]  # {last_seen, uptime_pct, avg_latency_ms}
+    health: Dict[str, Any]  # {last_seen, uptime_pct, avg_latency_ms, status}
     regions: List[str]  # Geographic regions served
     features: List[str]  # Supported features/protocols
     registered_at: float  # Unix timestamp
     router_signature: str  # Signature of registration data
+    proof_of_work: Optional[Dict[str, Any]] = None  # PoW proof
+    source_ip: Optional[str] = None  # IP address that registered this router
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -113,6 +134,8 @@ class RouterRecord:
             features=data.get("features", []),
             registered_at=data.get("registered_at", time.time()),
             router_signature=data.get("router_signature", ""),
+            proof_of_work=data.get("proof_of_work"),
+            source_ip=data.get("source_ip"),
         )
 
 
@@ -132,6 +155,9 @@ class SeedNode:
     
     config: SeedConfig = field(default_factory=SeedConfig)
     router_registry: Dict[str, RouterRecord] = field(default_factory=dict)
+    
+    # Track routers per IP for PoW difficulty scaling
+    _ip_router_count: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
     
     # Runtime state
     _app: Optional[web.Application] = field(default=None, repr=False)
@@ -278,6 +304,198 @@ class SeedNode:
         return selected
     
     # -------------------------------------------------------------------------
+    # VERIFICATION METHODS
+    # -------------------------------------------------------------------------
+    
+    def _get_pow_difficulty(self, source_ip: str) -> int:
+        """
+        Get required PoW difficulty based on number of routers from this IP.
+        
+        Anti-Sybil measure: More routers from same IP = harder PoW.
+        """
+        count = self._ip_router_count.get(source_ip, 0)
+        
+        if count == 0:
+            return self.config.pow_difficulty_base
+        elif count == 1:
+            return self.config.pow_difficulty_second
+        else:
+            return self.config.pow_difficulty_third_plus
+    
+    def _verify_signature(
+        self,
+        router_id: str,
+        data: Dict[str, Any],
+        signature: str,
+    ) -> bool:
+        """
+        Verify Ed25519 signature of registration data.
+        
+        Args:
+            router_id: Hex-encoded Ed25519 public key
+            data: The registration data that was signed
+            signature: Hex-encoded signature
+            
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        if not self.config.verify_signatures:
+            return True
+        
+        try:
+            # Parse public key from router_id (hex-encoded)
+            public_key_bytes = bytes.fromhex(router_id)
+            public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+            
+            # Reconstruct the signed message (exclude signature from data)
+            signed_data = {k: v for k, v in data.items() if k != "signature"}
+            message = json.dumps(signed_data, sort_keys=True, separators=(',', ':')).encode()
+            
+            # Verify signature
+            signature_bytes = bytes.fromhex(signature)
+            public_key.verify(signature_bytes, message)
+            
+            return True
+            
+        except (ValueError, InvalidSignature) as e:
+            logger.warning(f"Signature verification failed for {router_id[:20]}...: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error verifying signature: {e}")
+            return False
+    
+    def _verify_pow(
+        self,
+        router_id: str,
+        proof_of_work: Dict[str, Any],
+        required_difficulty: int,
+    ) -> bool:
+        """
+        Verify proof-of-work for anti-Sybil protection.
+        
+        PoW format:
+        {
+            "challenge": "<seed-provided or router-generated challenge>",
+            "nonce": <integer nonce>,
+            "difficulty": <difficulty level achieved>
+        }
+        
+        Verification: sha256(challenge || nonce || router_id) must have
+        `required_difficulty` leading zero bits.
+        
+        Args:
+            router_id: The router's public key (hex)
+            proof_of_work: The PoW proof dict
+            required_difficulty: Number of leading zero bits required
+            
+        Returns:
+            True if PoW is valid, False otherwise
+        """
+        if not self.config.verify_pow:
+            return True
+        
+        if not proof_of_work:
+            logger.warning(f"Missing proof_of_work for {router_id[:20]}...")
+            return False
+        
+        try:
+            challenge = proof_of_work.get("challenge", "")
+            nonce = proof_of_work.get("nonce", 0)
+            
+            # Construct the hash input
+            hash_input = f"{challenge}{nonce}{router_id}".encode()
+            hash_result = hashlib.sha256(hash_input).digest()
+            
+            # Count leading zero bits
+            leading_zeros = 0
+            for byte in hash_result:
+                if byte == 0:
+                    leading_zeros += 8
+                else:
+                    # Count leading zeros in this byte
+                    for i in range(7, -1, -1):
+                        if byte & (1 << i):
+                            break
+                        leading_zeros += 1
+                    break
+            
+            if leading_zeros >= required_difficulty:
+                return True
+            else:
+                logger.warning(
+                    f"PoW insufficient for {router_id[:20]}...: "
+                    f"got {leading_zeros} bits, need {required_difficulty}"
+                )
+                return False
+                
+        except Exception as e:
+            logger.error(f"PoW verification error: {e}")
+            return False
+    
+    async def _probe_endpoint(self, endpoint: str) -> bool:
+        """
+        Probe router endpoint to verify reachability.
+        
+        Connects to the router's health endpoint to verify it's accessible.
+        
+        Args:
+            endpoint: "host:port" string
+            
+        Returns:
+            True if endpoint is reachable, False otherwise
+        """
+        if not self.config.probe_endpoints:
+            return True
+        
+        try:
+            # Parse endpoint
+            if ":" in endpoint:
+                host, port = endpoint.rsplit(":", 1)
+                port = int(port)
+            else:
+                host = endpoint
+                port = 8471  # Default router port
+            
+            # Try HTTP health check
+            url = f"http://{host}:{port}/health"
+            timeout = aiohttp.ClientTimeout(total=self.config.probe_timeout_seconds)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        logger.debug(f"Endpoint probe successful: {endpoint}")
+                        return True
+                    else:
+                        logger.warning(
+                            f"Endpoint probe failed for {endpoint}: "
+                            f"status {response.status}"
+                        )
+                        return False
+                        
+        except asyncio.TimeoutError:
+            logger.warning(f"Endpoint probe timeout for {endpoint}")
+            return False
+        except Exception as e:
+            logger.warning(f"Endpoint probe failed for {endpoint}: {e}")
+            return False
+    
+    def _determine_health_status(self, router: RouterRecord) -> str:
+        """
+        Determine router health status based on metrics.
+        
+        Returns: "healthy", "warning", or "degraded"
+        """
+        load_pct = router.capacity.get("current_load_pct", 0)
+        uptime_pct = router.health.get("uptime_pct", 100)
+        
+        if load_pct > 90 or uptime_pct < 95:
+            return "degraded"
+        elif load_pct > 70 or uptime_pct < 99:
+            return "warning"
+        else:
+            return "healthy"
+    
+    # -------------------------------------------------------------------------
     # HTTP HANDLERS
     # -------------------------------------------------------------------------
     
@@ -331,49 +549,88 @@ class SeedNode:
     
     async def handle_register(self, request: web.Request) -> web.Response:
         """
-        Handle router registration.
+        Handle router registration with validation.
         
         POST /register
         {
-            "router_id": "z6MkhaXgBZDvotDkL...",
+            "router_id": "<hex-encoded Ed25519 public key>",
             "endpoints": ["192.168.1.100:8471"],
             "capacity": {"max_connections": 1000, "bandwidth_mbps": 100},
             "regions": ["us-west", "us-central"],
             "features": ["ipv6", "quic"],
-            "router_signature": "base64..."
+            "proof_of_work": {"challenge": "...", "nonce": 12345, "difficulty": 16},
+            "timestamp": 1706789012.345,
+            "signature": "<hex-encoded Ed25519 signature>"
         }
+        
+        Registration flow:
+        1. Validate required fields
+        2. Verify Ed25519 signature
+        3. Check proof-of-work (anti-Sybil)
+        4. Probe endpoint reachability
+        5. Register router
         """
         try:
             data = await request.json()
         except Exception as e:
             return web.json_response(
-                {"error": "Invalid JSON", "detail": str(e)},
+                {"status": "rejected", "reason": "invalid_json", "detail": str(e)},
                 status=400
             )
+        
+        # Get source IP for PoW difficulty calculation
+        source_ip = request.remote or "unknown"
         
         # Validate required fields
         router_id = data.get("router_id")
         if not router_id:
             return web.json_response(
-                {"error": "router_id required"},
+                {"status": "rejected", "reason": "missing_router_id"},
                 status=400
             )
         
         endpoints = data.get("endpoints", [])
         if not endpoints:
             return web.json_response(
-                {"error": "At least one endpoint required"},
+                {"status": "rejected", "reason": "missing_endpoints"},
                 status=400
             )
         
-        # TODO: Verify router_signature against router_id public key
-        # For now, we accept the registration but note it's unverified
-        signature = data.get("router_signature", "")
+        signature = data.get("signature", "")
+        proof_of_work = data.get("proof_of_work")
+        
+        # Check if updating existing router (skip some verifications for updates)
+        is_update = router_id in self.router_registry
+        
+        # Verify Ed25519 signature
+        if not self._verify_signature(router_id, data, signature):
+            return web.json_response(
+                {"status": "rejected", "reason": "invalid_signature"},
+                status=400
+            )
+        
+        # Check proof of work (only for new registrations)
+        if not is_update:
+            required_difficulty = self._get_pow_difficulty(source_ip)
+            if not self._verify_pow(router_id, proof_of_work, required_difficulty):
+                return web.json_response(
+                    {
+                        "status": "rejected",
+                        "reason": "insufficient_pow",
+                        "required_difficulty": required_difficulty,
+                    },
+                    status=400
+                )
+        
+        # Probe endpoint reachability (only for new registrations or changed endpoints)
+        if not is_update or endpoints != self.router_registry[router_id].endpoints:
+            if not await self._probe_endpoint(endpoints[0]):
+                return web.json_response(
+                    {"status": "rejected", "reason": "unreachable"},
+                    status=400
+                )
         
         now = time.time()
-        
-        # Check if updating existing or new registration
-        is_update = router_id in self.router_registry
         
         # Create or update record
         record = RouterRecord(
@@ -384,23 +641,30 @@ class SeedNode:
                 "last_seen": now,
                 "uptime_pct": 100.0,  # Assume healthy on registration
                 "avg_latency_ms": data.get("avg_latency_ms", 0),
+                "status": "healthy",
             },
             regions=data.get("regions", []),
             features=data.get("features", []),
             registered_at=now if not is_update else self.router_registry[router_id].registered_at,
             router_signature=signature,
+            proof_of_work=proof_of_work,
+            source_ip=source_ip,
         )
         
         self.router_registry[router_id] = record
         
+        # Track IP router count for new registrations
+        if not is_update:
+            self._ip_router_count[source_ip] += 1
+        
         action = "updated" if is_update else "registered"
         logger.info(
             f"Router {action}: {router_id[:20]}... "
-            f"endpoints={endpoints}, regions={record.regions}"
+            f"endpoints={endpoints}, regions={record.regions}, source_ip={source_ip}"
         )
         
         return web.json_response({
-            "status": "ok",
+            "status": "accepted",
             "action": action,
             "router_id": router_id,
             "seed_id": self.seed_id,
@@ -412,37 +676,48 @@ class SeedNode:
         
         POST /heartbeat
         {
-            "router_id": "z6MkhaXgBZDvotDkL...",
-            "current_load_pct": 35.5,
-            "active_connections": 350,
+            "router_id": "<hex-encoded Ed25519 public key>",
+            "current_connections": 350,
+            "load_pct": 35.5,
+            "messages_relayed": 12500,
             "uptime_pct": 99.8,
             "avg_latency_ms": 12.5,
-            "router_signature": "base64..."
+            "timestamp": 1706789012.345,
+            "signature": "<hex-encoded signature>"
         }
+        
+        Response includes health status: healthy/warning/degraded
         """
         try:
             data = await request.json()
         except Exception as e:
             return web.json_response(
-                {"error": "Invalid JSON", "detail": str(e)},
+                {"status": "error", "reason": "invalid_json", "detail": str(e)},
                 status=400
             )
         
         router_id = data.get("router_id")
         if not router_id:
             return web.json_response(
-                {"error": "router_id required"},
+                {"status": "error", "reason": "missing_router_id"},
                 status=400
             )
         
         # Check if router is registered
         if router_id not in self.router_registry:
             return web.json_response(
-                {"error": "Router not registered", "hint": "Call /register first"},
+                {"status": "error", "reason": "not_registered", "hint": "Call /register first"},
                 status=404
             )
         
-        # TODO: Verify router_signature
+        # Verify signature if provided
+        signature = data.get("signature", "")
+        if signature and self.config.verify_signatures:
+            if not self._verify_signature(router_id, data, signature):
+                return web.json_response(
+                    {"status": "error", "reason": "invalid_signature"},
+                    status=400
+                )
         
         # Update health and capacity
         record = self.router_registry[router_id]
@@ -455,22 +730,41 @@ class SeedNode:
         if "avg_latency_ms" in data:
             record.health["avg_latency_ms"] = float(data["avg_latency_ms"])
         
-        if "current_load_pct" in data:
+        # Update capacity metrics
+        if "load_pct" in data:
+            record.capacity["current_load_pct"] = float(data["load_pct"])
+        elif "current_load_pct" in data:
             record.capacity["current_load_pct"] = float(data["current_load_pct"])
-        if "active_connections" in data:
+            
+        if "current_connections" in data:
+            record.capacity["active_connections"] = int(data["current_connections"])
+        elif "active_connections" in data:
             record.capacity["active_connections"] = int(data["active_connections"])
+            
+        if "messages_relayed" in data:
+            record.capacity["messages_relayed"] = int(data["messages_relayed"])
         
         # Update endpoints if provided
         if "endpoints" in data:
             record.endpoints = data["endpoints"]
         
-        logger.debug(f"Heartbeat from {router_id[:20]}...: load={data.get('current_load_pct')}%")
+        # Determine health status
+        health_status = self._determine_health_status(record)
+        record.health["status"] = health_status
+        
+        logger.debug(
+            f"Heartbeat from {router_id[:20]}...: "
+            f"load={record.capacity.get('current_load_pct')}%, "
+            f"connections={record.capacity.get('active_connections')}, "
+            f"status={health_status}"
+        )
         
         return web.json_response({
             "status": "ok",
+            "health_status": health_status,
             "router_id": router_id,
             "seed_id": self.seed_id,
-            "next_heartbeat_in": 60,  # Suggest heartbeat interval
+            "next_heartbeat_in": 300,  # 5 minutes
         })
     
     async def handle_status(self, request: web.Request) -> web.Response:
