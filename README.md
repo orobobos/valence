@@ -240,12 +240,20 @@ These constrain what Valence can become:
 
 | Doc | Purpose |
 |-----|---------|
+| **[API Docs](/api/v1/docs)** | Interactive API documentation (Swagger UI) |
+| **[OpenAPI Spec](docs/openapi.yaml)** | OpenAPI 3.0 specification |
 | **[VISION](docs/VISION.md)** | The epistemic commons. Why this exists. |
 | **[PRINCIPLES](docs/PRINCIPLES.md)** | The constitution. What constrains evolution. |
 | **[SYSTEM](docs/SYSTEM.md)** | Architecture. How principles become structure. |
 | **[SPECS](spec/)** | Technical specifications for all components. |
 | **[ADOPTION](spec/ADOPTION.md)** | Phase-by-phase path to network. |
 | **[MANIFESTO](spec/MANIFESTO.md)** | The movement framing. |
+
+### API Reference
+
+When running the server, access the interactive API documentation at:
+- **Swagger UI**: `http://localhost:8420/api/v1/docs`
+- **OpenAPI JSON**: `http://localhost:8420/api/v1/openapi.json`
 
 ---
 

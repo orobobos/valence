@@ -1,0 +1,1386 @@
+openapi: 3.0.3
+info:
+  title: Valence API
+  description: |
+    The trust layer for AI agents. Valence provides infrastructure for how beliefs travel between minds.
+    
+    ## Overview
+    
+    Valence is a personal knowledge substrate that stores beliefs with confidence scores,
+    tracks conversations, and enables federation between nodes.
+    
+    ## Authentication
+    
+    The API supports two authentication methods:
+    
+    ### Bearer Token (Legacy)
+    ```
+    Authorization: Bearer <token>
+    ```
+    
+    ### OAuth 2.1 with PKCE
+    1. Register client via `/api/v1/oauth/register`
+    2. Start authorization flow at `/api/v1/oauth/authorize`
+    3. Exchange code for token at `/api/v1/oauth/token`
+    
+    ## Error Handling
+    
+    All endpoints return errors in a consistent format:
+    ```json
+    {
+      "error": "error_code",
+      "error_description": "Human-readable description"
+    }
+    ```
+    
+    MCP endpoints use JSON-RPC 2.0 error codes.
+    
+  version: 1.0.0
+  contact:
+    name: Valence
+    url: https://github.com/valence-dev/valence
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8420
+    description: Local development server
+  - url: '{baseUrl}'
+    description: Custom server
+    variables:
+      baseUrl:
+        default: http://localhost:8420
+        description: Base URL of the Valence server
+
+tags:
+  - name: Discovery
+    description: Server information and discovery endpoints
+  - name: Health
+    description: Health check endpoints
+  - name: MCP
+    description: Model Context Protocol (JSON-RPC over HTTP)
+  - name: OAuth
+    description: OAuth 2.1 authentication endpoints
+  - name: Federation
+    description: Federation protocol and node management
+  - name: Beliefs
+    description: Belief management and corroboration
+  - name: Compliance
+    description: GDPR and compliance endpoints
+
+paths:
+  /:
+    get:
+      tags:
+        - Discovery
+      summary: Server information
+      description: Returns basic server information and available endpoints. No authentication required.
+      operationId: getServerInfo
+      responses:
+        '200':
+          description: Server information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+              example:
+                server: valence-mcp-server
+                version: 0.1.0
+                apiVersion: v1
+                protocol: mcp
+                protocolVersion: "2024-11-05"
+                transport: http
+                tools:
+                  substrate: 12
+                  vkb: 10
+                  total: 22
+                endpoints:
+                  mcp: /api/v1/mcp
+                  health: /api/v1/health
+                  info: /
+                  federation: /api/v1/federation/status
+                  beliefs: /api/v1/beliefs
+                authentication:
+                  methods:
+                    - bearer
+                    - oauth2
+
+  /api/v1/health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns server health status including database connectivity.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: healthy
+                server: valence-mcp-server
+                version: 0.1.0
+                database: connected
+        '503':
+          description: Server is degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: degraded
+                server: valence-mcp-server
+                version: 0.1.0
+                database: "error: connection refused"
+
+  /api/v1/mcp:
+    post:
+      tags:
+        - MCP
+      summary: MCP JSON-RPC endpoint
+      description: |
+        Main endpoint for Model Context Protocol (MCP) operations.
+        Accepts JSON-RPC 2.0 requests for tool calls, resource reads, and prompts.
+        
+        ## Supported Methods
+        
+        - `initialize` - Initialize the MCP session
+        - `initialized` - Acknowledge initialization
+        - `ping` - Health check
+        - `tools/list` - List available tools
+        - `tools/call` - Call a tool
+        - `resources/list` - List available resources
+        - `resources/read` - Read a resource
+        - `prompts/list` - List available prompts
+        - `prompts/get` - Get a prompt
+        
+      operationId: mcpEndpoint
+      security:
+        - bearerAuth: []
+        - oauth2: [mcp:tools, mcp:resources, mcp:prompts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonRpcRequest'
+            examples:
+              initialize:
+                summary: Initialize session
+                value:
+                  jsonrpc: "2.0"
+                  method: initialize
+                  params:
+                    protocolVersion: "2024-11-05"
+                    capabilities: {}
+                    clientInfo:
+                      name: my-client
+                      version: "1.0.0"
+                  id: 1
+              listTools:
+                summary: List available tools
+                value:
+                  jsonrpc: "2.0"
+                  method: tools/list
+                  id: 2
+              callTool:
+                summary: Call a tool
+                value:
+                  jsonrpc: "2.0"
+                  method: tools/call
+                  params:
+                    name: belief_query
+                    arguments:
+                      query: "database scaling"
+                  id: 3
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcResponse'
+        '204':
+          description: Notification acknowledged (no response body)
+        '400':
+          description: Parse error or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+              example:
+                jsonrpc: "2.0"
+                error:
+                  code: -32700
+                  message: "Parse error: invalid JSON"
+                id: null
+        '401':
+          description: Unauthorized
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+              description: Authentication challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+              example:
+                jsonrpc: "2.0"
+                error:
+                  code: -32001
+                  message: "Unauthorized: Invalid or missing authentication token"
+                id: null
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+              example:
+                jsonrpc: "2.0"
+                error:
+                  code: -32002
+                  message: "Rate limited: Too many requests"
+                id: null
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonRpcError'
+
+  # OAuth Endpoints
+  /.well-known/oauth-protected-resource:
+    get:
+      tags:
+        - OAuth
+      summary: Protected resource metadata
+      description: |
+        RFC 9728 Protected Resource Metadata.
+        Returns information about the protected resource and its authorization servers.
+      operationId: protectedResourceMetadata
+      responses:
+        '200':
+          description: Protected resource metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMetadata'
+              example:
+                resource: http://localhost:8420/api/v1/mcp
+                authorization_servers:
+                  - http://localhost:8420
+                scopes_supported:
+                  - mcp:tools
+                  - mcp:resources
+                  - mcp:prompts
+                bearer_methods_supported:
+                  - header
+                resource_documentation: http://localhost:8420/docs
+
+  /.well-known/oauth-authorization-server:
+    get:
+      tags:
+        - OAuth
+      summary: Authorization server metadata
+      description: |
+        RFC 8414 Authorization Server Metadata.
+        Returns OAuth 2.1 server configuration.
+      operationId: authorizationServerMetadata
+      responses:
+        '200':
+          description: Authorization server metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationServerMetadata'
+
+  /api/v1/oauth/register:
+    post:
+      tags:
+        - OAuth
+      summary: Dynamic client registration
+      description: |
+        RFC 7591 Dynamic Client Registration.
+        Allows clients to register themselves for OAuth authentication.
+      operationId: registerClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientRegistrationRequest'
+            example:
+              redirect_uris:
+                - http://localhost:3000/callback
+              client_name: My MCP Client
+              grant_types:
+                - authorization_code
+                - refresh_token
+              scope: mcp:tools mcp:resources
+      responses:
+        '201':
+          description: Client registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientRegistrationResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /api/v1/oauth/authorize:
+    get:
+      tags:
+        - OAuth
+      summary: Authorization endpoint (display login)
+      description: |
+        OAuth 2.1 Authorization Endpoint.
+        Displays login form for user authentication.
+      operationId: authorizeGet
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: scope
+          in: query
+          schema:
+            type: string
+            default: mcp:tools
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+          description: PKCE code challenge (S256)
+        - name: code_challenge_method
+          in: query
+          schema:
+            type: string
+            enum: [S256]
+            default: S256
+      responses:
+        '200':
+          description: Login form HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        '302':
+          description: Redirect with error
+        '400':
+          description: Invalid request
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      tags:
+        - OAuth
+      summary: Authorization endpoint (submit login)
+      description: Process login form submission
+      operationId: authorizePost
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+      responses:
+        '302':
+          description: Redirect to client with authorization code
+        '200':
+          description: Login form with error
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/v1/oauth/token:
+    post:
+      tags:
+        - OAuth
+      summary: Token endpoint
+      description: |
+        OAuth 2.1 Token Endpoint.
+        Exchanges authorization code for tokens or refreshes access tokens.
+      operationId: token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AuthorizationCodeGrant'
+                - $ref: '#/components/schemas/RefreshTokenGrant'
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  # Federation Discovery Endpoints
+  /.well-known/vfp-node-metadata:
+    get:
+      tags:
+        - Federation
+      summary: VFP node metadata (DID document)
+      description: |
+        Returns the node's DID document for federation discovery.
+        This is the primary discovery endpoint for the Valence Federation Protocol.
+      operationId: vfpNodeMetadata
+      responses:
+        '200':
+          description: DID document
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/did+ld+json
+            Cache-Control:
+              schema:
+                type: string
+                example: max-age=3600
+          content:
+            application/did+ld+json:
+              schema:
+                $ref: '#/components/schemas/DIDDocument'
+        '404':
+          description: Federation not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /.well-known/vfp-trust-anchors:
+    get:
+      tags:
+        - Federation
+      summary: Trust anchors
+      description: |
+        Returns the node's trust anchors (nodes explicitly trusted).
+        Only available if the node publishes its trust anchors.
+      operationId: vfpTrustAnchors
+      responses:
+        '200':
+          description: Trust anchors list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustAnchorsResponse'
+        '404':
+          description: Federation not enabled or trust anchors not published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/federation/status:
+    get:
+      tags:
+        - Federation
+      summary: Federation status
+      description: Get federation status for this node
+      operationId: federationStatus
+      responses:
+        '200':
+          description: Federation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FederationStatus'
+        '404':
+          description: Federation not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Belief Corroboration Endpoints
+  /api/v1/beliefs/{belief_id}/corroboration:
+    get:
+      tags:
+        - Beliefs
+      summary: Get belief corroboration
+      description: |
+        Returns corroboration details for a belief, including
+        how many independent sources have corroborated it.
+      operationId: getBeliefCorroboration
+      parameters:
+        - name: belief_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the belief
+      responses:
+        '200':
+          description: Corroboration details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorroborationResponse'
+              example:
+                success: true
+                belief_id: "550e8400-e29b-41d4-a716-446655440000"
+                corroboration_count: 3
+                confidence_corroboration: 0.47
+                corroborating_sources:
+                  - source_did: "did:vkb:web:example.com"
+                    similarity: 0.95
+                    corroborated_at: "2025-02-03T12:00:00Z"
+                confidence_label: "moderately corroborated"
+        '400':
+          description: Invalid belief ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Belief not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/beliefs/most-corroborated:
+    get:
+      tags:
+        - Beliefs
+      summary: Get most corroborated beliefs
+      description: Returns beliefs with the highest corroboration counts
+      operationId: getMostCorroboratedBeliefs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Maximum number of results
+        - name: min_count
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 0
+          description: Minimum corroboration count
+        - name: domain
+          in: query
+          schema:
+            type: string
+          description: Filter by domain
+      responses:
+        '200':
+          description: List of corroborated beliefs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MostCorroboratedResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Compliance Endpoints
+  /api/v1/users/{id}/data:
+    delete:
+      tags:
+        - Compliance
+      summary: Delete user data (GDPR Article 17)
+      description: |
+        Implements GDPR Article 17 "Right to Erasure".
+        Performs cryptographic erasure of all user data:
+        - Creates tombstone records for federation propagation
+        - Performs key revocation (cryptographic erasure)
+        - Maintains audit trail
+      operationId: deleteUserData
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User identifier
+        - name: reason
+          in: query
+          schema:
+            type: string
+            enum:
+              - user_request
+              - consent_withdrawn
+              - purpose_fulfilled
+              - unlawful_processing
+              - legal_obligation
+              - objection
+            default: user_request
+          description: Deletion reason for audit
+        - name: legal_basis
+          in: query
+          schema:
+            type: string
+          description: Additional legal basis description
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Deletion failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/tombstones/{id}/verification:
+    get:
+      tags:
+        - Compliance
+      summary: Get deletion verification
+      description: |
+        Returns a verification report for compliance auditing.
+        Use this to verify that data deletion was completed correctly.
+      operationId: getDeletionVerification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Tombstone UUID
+      responses:
+        '200':
+          description: Verification report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationReport'
+        '400':
+          description: Invalid tombstone ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Tombstone not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/openapi.json:
+    get:
+      tags:
+        - Discovery
+      summary: OpenAPI specification
+      description: Returns this OpenAPI specification in JSON format
+      operationId: getOpenApiSpec
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/docs:
+    get:
+      tags:
+        - Discovery
+      summary: API documentation (Swagger UI)
+      description: Interactive API documentation using Swagger UI
+      operationId: swaggerUI
+      responses:
+        '200':
+          description: Swagger UI HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Legacy Bearer token authentication
+    oauth2:
+      type: oauth2
+      description: OAuth 2.1 with PKCE
+      flows:
+        authorizationCode:
+          authorizationUrl: /api/v1/oauth/authorize
+          tokenUrl: /api/v1/oauth/token
+          scopes:
+            mcp:tools: Access to MCP tools
+            mcp:resources: Access to MCP resources
+            mcp:prompts: Access to MCP prompts
+
+  schemas:
+    ServerInfo:
+      type: object
+      properties:
+        server:
+          type: string
+          description: Server name
+        version:
+          type: string
+          description: Server version
+        apiVersion:
+          type: string
+          description: API version
+        protocol:
+          type: string
+          description: Protocol name
+        protocolVersion:
+          type: string
+          description: MCP protocol version
+        transport:
+          type: string
+          description: Transport type
+        tools:
+          type: object
+          properties:
+            substrate:
+              type: integer
+            vkb:
+              type: integer
+            total:
+              type: integer
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+        authentication:
+          type: object
+          properties:
+            methods:
+              type: array
+              items:
+                type: string
+            oauth:
+              type: object
+              additionalProperties:
+                type: string
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - server
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        server:
+          type: string
+        version:
+          type: string
+        database:
+          type: string
+
+    JsonRpcRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        method:
+          type: string
+          description: The method to call
+        params:
+          type: object
+          description: Method parameters
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+          description: Request ID (omit for notifications)
+
+    JsonRpcResponse:
+      type: object
+      required:
+        - jsonrpc
+        - id
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        result:
+          description: Method result (present on success)
+        error:
+          $ref: '#/components/schemas/JsonRpcErrorObject'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+
+    JsonRpcError:
+      type: object
+      required:
+        - jsonrpc
+        - error
+        - id
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        error:
+          $ref: '#/components/schemas/JsonRpcErrorObject'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+
+    JsonRpcErrorObject:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          description: |
+            Error codes:
+            - -32700: Parse error
+            - -32600: Invalid request
+            - -32601: Method not found
+            - -32602: Invalid params
+            - -32603: Internal error
+            - -32001: Unauthorized
+            - -32002: Rate limited
+        message:
+          type: string
+        data:
+          description: Additional error data
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string
+        success:
+          type: boolean
+          default: false
+
+    OAuthError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - unauthorized_client
+            - unsupported_grant_type
+            - invalid_scope
+            - unsupported_response_type
+            - invalid_redirect_uri
+        error_description:
+          type: string
+
+    ProtectedResourceMetadata:
+      type: object
+      properties:
+        resource:
+          type: string
+          format: uri
+        authorization_servers:
+          type: array
+          items:
+            type: string
+            format: uri
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        bearer_methods_supported:
+          type: array
+          items:
+            type: string
+        resource_documentation:
+          type: string
+          format: uri
+
+    AuthorizationServerMetadata:
+      type: object
+      properties:
+        issuer:
+          type: string
+          format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
+        token_endpoint:
+          type: string
+          format: uri
+        registration_endpoint:
+          type: string
+          format: uri
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+
+    ClientRegistrationRequest:
+      type: object
+      required:
+        - redirect_uris
+      properties:
+        redirect_uris:
+          type: array
+          items:
+            type: string
+            format: uri
+        client_name:
+          type: string
+        grant_types:
+          type: array
+          items:
+            type: string
+          default: [authorization_code, refresh_token]
+        response_types:
+          type: array
+          items:
+            type: string
+          default: [code]
+        scope:
+          type: string
+          default: mcp:tools mcp:resources
+
+    ClientRegistrationResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_name:
+          type: string
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        grant_types:
+          type: array
+          items:
+            type: string
+        response_types:
+          type: array
+          items:
+            type: string
+        scope:
+          type: string
+        client_id_issued_at:
+          type: integer
+
+    AuthorizationCodeGrant:
+      type: object
+      required:
+        - grant_type
+        - code
+        - redirect_uri
+        - client_id
+        - code_verifier
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code]
+        code:
+          type: string
+        redirect_uri:
+          type: string
+          format: uri
+        client_id:
+          type: string
+        code_verifier:
+          type: string
+          description: PKCE code verifier
+
+    RefreshTokenGrant:
+      type: object
+      required:
+        - grant_type
+        - refresh_token
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        refresh_token:
+          type: string
+        client_id:
+          type: string
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+        refresh_token:
+          type: string
+        scope:
+          type: string
+
+    DIDDocument:
+      type: object
+      required:
+        - "@context"
+        - id
+      properties:
+        "@context":
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+          description: DID identifier
+        verificationMethod:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              controller:
+                type: string
+              publicKeyMultibase:
+                type: string
+        authentication:
+          type: array
+          items:
+            type: string
+        assertionMethod:
+          type: array
+          items:
+            type: string
+        service:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              serviceEndpoint:
+                type: string
+        "vfp:capabilities":
+          type: array
+          items:
+            type: string
+        "vfp:protocolVersion":
+          type: string
+        "vfp:profile":
+          type: object
+          properties:
+            name:
+              type: string
+            domains:
+              type: array
+              items:
+                type: string
+
+    TrustAnchorsResponse:
+      type: object
+      properties:
+        trust_anchors:
+          type: array
+          items:
+            type: object
+            properties:
+              did:
+                type: string
+              trust_level:
+                type: string
+              domains:
+                type: array
+                items:
+                  type: string
+              trust_score:
+                type: number
+              relationship_started_at:
+                type: string
+                format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FederationStatus:
+      type: object
+      properties:
+        node:
+          type: object
+          properties:
+            did:
+              type: string
+            name:
+              type: string
+            capabilities:
+              type: array
+              items:
+                type: string
+            protocol_version:
+              type: string
+        federation:
+          type: object
+          properties:
+            nodes:
+              type: object
+              properties:
+                total:
+                  type: integer
+                by_status:
+                  type: object
+                  additionalProperties:
+                    type: integer
+            sync:
+              type: object
+              properties:
+                active_peers:
+                  type: integer
+                beliefs_sent:
+                  type: integer
+                beliefs_received:
+                  type: integer
+            beliefs:
+              type: object
+              properties:
+                local:
+                  type: integer
+                federated:
+                  type: integer
+
+    CorroborationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        belief_id:
+          type: string
+          format: uuid
+        corroboration_count:
+          type: integer
+        confidence_corroboration:
+          type: number
+          minimum: 0
+          maximum: 1
+        corroborating_sources:
+          type: array
+          items:
+            type: object
+            properties:
+              source_did:
+                type: string
+              similarity:
+                type: number
+              corroborated_at:
+                type: string
+                format: date-time
+        confidence_label:
+          type: string
+          enum:
+            - uncorroborated
+            - single corroboration
+            - moderately corroborated
+            - well corroborated
+            - highly corroborated
+
+    MostCorroboratedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        beliefs:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              content:
+                type: string
+              corroboration_count:
+                type: integer
+              confidence_corroboration:
+                type: number
+              sources:
+                type: array
+                items:
+                  type: object
+              domain_path:
+                type: array
+                items:
+                  type: string
+        total_count:
+          type: integer
+
+    DeletionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        tombstone_id:
+          type: string
+          format: uuid
+        deleted_counts:
+          type: object
+          properties:
+            beliefs:
+              type: integer
+            sessions:
+              type: integer
+            patterns:
+              type: integer
+            entities:
+              type: integer
+        completed_at:
+          type: string
+          format: date-time
+
+    VerificationReport:
+      type: object
+      properties:
+        tombstone_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        deletion_reason:
+          type: string
+        deleted_at:
+          type: string
+          format: date-time
+        verification_hash:
+          type: string
+        items_deleted:
+          type: object
+        federation_propagated:
+          type: boolean

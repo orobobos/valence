@@ -18,11 +18,14 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from pathlib import Path
+
+import yaml
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from .auth import verify_token, get_token_store
@@ -623,6 +626,112 @@ are preserved for future conversations.
 """
 
 
+# ============================================================================
+# OpenAPI Endpoints
+# ============================================================================
+
+# Cache for the OpenAPI spec
+_openapi_spec_cache: dict | None = None
+
+
+def _load_openapi_spec() -> dict:
+    """Load and cache the OpenAPI specification."""
+    global _openapi_spec_cache
+    if _openapi_spec_cache is None:
+        spec_path = Path(__file__).parent.parent.parent.parent / "docs" / "openapi.yaml"
+        if spec_path.exists():
+            with open(spec_path) as f:
+                _openapi_spec_cache = yaml.safe_load(f)
+        else:
+            # Fallback minimal spec if file not found
+            _openapi_spec_cache = {
+                "openapi": "3.0.3",
+                "info": {
+                    "title": "Valence API",
+                    "version": "1.0.0",
+                },
+                "paths": {},
+            }
+    return _openapi_spec_cache
+
+
+async def openapi_spec_endpoint(request: Request) -> JSONResponse:
+    """Serve the OpenAPI specification as JSON."""
+    spec = _load_openapi_spec()
+    return JSONResponse(spec)
+
+
+async def swagger_ui_endpoint(request: Request) -> HTMLResponse:
+    """Serve Swagger UI for interactive API documentation."""
+    settings = get_settings()
+    
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valence API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <style>
+        html {{
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }}
+        *,
+        *:before,
+        *:after {{
+            box-sizing: inherit;
+        }}
+        body {{
+            margin: 0;
+            background: #fafafa;
+        }}
+        .swagger-ui .topbar {{
+            display: none;
+        }}
+        .swagger-ui .info {{
+            margin: 20px 0;
+        }}
+        .swagger-ui .info .title {{
+            font-size: 36px;
+            color: #1a1a2e;
+        }}
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {{
+            window.ui = SwaggerUIBundle({{
+                url: "{settings.base_url}/api/v1/openapi.json",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                persistAuthorization: true,
+                displayRequestDuration: true,
+                tryItOutEnabled: true,
+                requestInterceptor: function(request) {{
+                    // Add any custom request modifications here
+                    return request;
+                }},
+            }});
+        }};
+    </script>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
 async def info_endpoint(request: Request) -> JSONResponse:
     """Server info endpoint (no auth required)."""
     settings = get_settings()
@@ -648,6 +757,8 @@ async def info_endpoint(request: Request) -> JSONResponse:
             "info": "/",
             "federation": "/api/v1/federation/status",
             "beliefs": "/api/v1/beliefs",
+            "openapi": "/api/v1/openapi.json",
+            "docs": "/api/v1/docs",
         },
         "authentication": {
             "methods": ["bearer"],
@@ -709,6 +820,9 @@ def create_app() -> Starlette:
         # Versioned API endpoints
         Route(f"{API_V1}/health", health_endpoint, methods=["GET"]),
         Route(f"{API_V1}/mcp", mcp_endpoint, methods=["POST"]),
+        # OpenAPI documentation
+        Route(f"{API_V1}/openapi.json", openapi_spec_endpoint, methods=["GET"]),
+        Route(f"{API_V1}/docs", swagger_ui_endpoint, methods=["GET"]),
         # OAuth 2.1 endpoints (well-known paths per RFC, no version prefix)
         Route("/.well-known/oauth-protected-resource", protected_resource_metadata, methods=["GET"]),
         Route("/.well-known/oauth-authorization-server", authorization_server_metadata, methods=["GET"]),
