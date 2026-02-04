@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Malicious Router Detection** (Issue #119)
+  - Detect and report routers that misbehave (drop messages, delay, modify)
+  - Per-router behavior metrics tracking in `RouterBehaviorMetrics`:
+    - Delivery rate (messages delivered vs sent)
+    - ACK success/failure rates
+    - Latency tracking with running average
+    - Anomaly scoring
+  - Network baseline calculation for comparison:
+    - Aggregate statistics from all healthy routers
+    - Standard deviation-based anomaly detection
+    - Configurable thresholds for flagging
+  - Misbehavior types: `MESSAGE_DROP`, `MESSAGE_DELAY`, `MESSAGE_MODIFY`, `ACK_FAILURE`, `SELECTIVE_DROP`, `PERFORMANCE_DEGRADATION`
+  - `MisbehaviorReport` message type with evidence for seed submission
+  - `MisbehaviorEvidence` for detailed incident documentation
+  - Seed node misbehavior report handling:
+    - Aggregates reports from multiple nodes
+    - Flags routers when threshold reports reached
+    - Configurable report window and minimum reporters
+  - Automatic avoidance of flagged routers in selection
+  - Configurable via `NodeClient`:
+    - `misbehavior_detection_enabled`, `min_messages_for_detection`
+    - `delivery_rate_threshold`, `ack_failure_threshold`
+    - `auto_avoid_flagged_routers`, `flagged_router_penalty`
+    - `report_to_seeds`, `report_cooldown_seconds`
+  - New methods:
+    - `is_router_flagged()`, `get_flagged_routers()`, `clear_router_flag()`
+    - `get_router_behavior_metrics()`, `get_all_router_metrics()`
+    - `get_misbehavior_detection_stats()`, `get_network_baseline()`
+  - 30 comprehensive tests in `test_malicious_router_detection.py`
+
 - **Resilient Storage with Erasure Coding** (Issue #22)
   - Reed-Solomon erasure coding for belief storage redundancy
   - `valence.storage` module with complete implementation:
