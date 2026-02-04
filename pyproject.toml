@@ -18,7 +18,7 @@ keywords = [
 ]
 
 dependencies = [
-    # Core only - matrix-nio is optional
+    # Core dependencies
     "mcp>=1.0",
     "openai>=1.0",
     "psycopg2-binary>=2.9",
@@ -36,8 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-matrix = ["matrix-nio[e2e]>=0.24"]
-all = ["valence[matrix]"]
+all = []
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -53,7 +52,6 @@ dev = [
 valence = "valence.cli:main"
 valence-substrate = "valence.substrate.mcp_server:run"
 valence-vkb = "valence.vkb.mcp_server:run"
-valence-matrix = "valence.agents.matrix_bot:main"
 valence-server = "valence.server.app:run"
 valence-token = "valence.server.cli:main"
 valence-federation = "valence.cli.federation:main"

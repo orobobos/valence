@@ -238,7 +238,7 @@ class TestSessionOperations:
 
         cursor.execute("""
             INSERT INTO vkb_sessions (external_room_id, status, platform)
-            VALUES ('!test_room:example.com', 'active', 'matrix')
+            VALUES ('!test_room:example.com', 'active', 'slack')
             RETURNING id
         """)
         session_id = cursor.fetchone()[0]
@@ -251,7 +251,7 @@ class TestSessionOperations:
         # Create session
         cursor.execute("""
             INSERT INTO vkb_sessions (external_room_id, status, platform)
-            VALUES ('!exchange_test:example.com', 'active', 'matrix')
+            VALUES ('!exchange_test:example.com', 'active', 'slack')
             RETURNING id
         """)
         session_id = cursor.fetchone()[0]

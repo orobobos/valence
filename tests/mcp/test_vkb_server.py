@@ -79,7 +79,7 @@ class TestSessionStart:
 
         mock_get_cursor.fetchone.return_value = {
             "id": session_id,
-            "platform": "matrix",
+            "platform": "slack",
             "project_context": "test-project",
             "status": "active",
             "summary": None,
@@ -91,7 +91,7 @@ class TestSessionStart:
             "metadata": {},
         }
 
-        result = session_start("matrix", project_context="test-project")
+        result = session_start("slack", project_context="test-project")
 
         assert result["success"] is True
         assert result["session"]["project_context"] == "test-project"
@@ -105,7 +105,7 @@ class TestSessionStart:
 
         mock_get_cursor.fetchone.return_value = {
             "id": session_id,
-            "platform": "matrix",
+            "platform": "slack",
             "project_context": None,
             "status": "active",
             "summary": None,
@@ -113,14 +113,14 @@ class TestSessionStart:
             "started_at": now,
             "ended_at": None,
             "claude_session_id": None,
-            "external_room_id": "!room:matrix.org",
+            "external_room_id": "C12345678",
             "metadata": {},
         }
 
-        result = session_start("matrix", external_room_id="!room:matrix.org")
+        result = session_start("slack", external_room_id="C12345678")
 
         assert result["success"] is True
-        assert result["session"]["external_room_id"] == "!room:matrix.org"
+        assert result["session"]["external_room_id"] == "C12345678"
 
     def test_with_metadata(self, mock_get_cursor):
         """Should accept metadata."""
@@ -404,7 +404,7 @@ class TestSessionList:
 
         mock_get_cursor.fetchall.return_value = []
 
-        result = session_list(platform="matrix")
+        result = session_list(platform="slack")
 
         assert result["success"] is True
         call_args = mock_get_cursor.execute.call_args[0]
@@ -439,7 +439,7 @@ class TestSessionFindByRoom:
 
         mock_get_cursor.fetchone.return_value = {
             "id": session_id,
-            "platform": "matrix",
+            "platform": "slack",
             "project_context": None,
             "status": "active",
             "summary": None,
@@ -447,15 +447,15 @@ class TestSessionFindByRoom:
             "started_at": now,
             "ended_at": None,
             "claude_session_id": None,
-            "external_room_id": "!room:matrix.org",
+            "external_room_id": "C12345678",
             "metadata": {},
         }
 
-        result = session_find_by_room("!room:matrix.org")
+        result = session_find_by_room("C12345678")
 
         assert result["success"] is True
         assert result["found"] is True
-        assert result["session"]["external_room_id"] == "!room:matrix.org"
+        assert result["session"]["external_room_id"] == "C12345678"
 
     def test_not_found(self, mock_get_cursor):
         """Should return found=False when no session exists."""
@@ -463,7 +463,7 @@ class TestSessionFindByRoom:
 
         mock_get_cursor.fetchone.return_value = None
 
-        result = session_find_by_room("!nonexistent:matrix.org")
+        result = session_find_by_room("nonexistent-channel")
 
         assert result["success"] is True
         assert result["found"] is False

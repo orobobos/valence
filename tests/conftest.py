@@ -20,7 +20,7 @@ import pytest
 @pytest.fixture
 def clean_env(monkeypatch):
     """Remove all VKB_ and VALENCE_ environment variables."""
-    env_prefixes = ("VKB_", "VALENCE_", "OPENAI_", "MATRIX_")
+    env_prefixes = ("VKB_", "VALENCE_", "OPENAI_")
     for key in list(os.environ.keys()):
         if any(key.startswith(prefix) for prefix in env_prefixes):
             monkeypatch.delenv(key, raising=False)
@@ -47,14 +47,6 @@ def env_without_db_vars(monkeypatch):
 def env_with_openai_key(monkeypatch):
     """Set up OpenAI API key."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-api-key-12345")
-
-
-@pytest.fixture
-def env_with_matrix_vars(monkeypatch):
-    """Set up Matrix environment variables."""
-    monkeypatch.setenv("MATRIX_HOMESERVER", "https://matrix.example.com")
-    monkeypatch.setenv("MATRIX_USER", "@testbot:example.com")
-    monkeypatch.setenv("MATRIX_PASSWORD", "testpassword")
 
 
 # ============================================================================
@@ -305,22 +297,6 @@ def mock_openai():
         mock_response = MagicMock()
         mock_response.data = [mock_embedding]
         mock_client.embeddings.create.return_value = mock_response
-
-        yield mock_client
-
-
-@pytest.fixture
-def mock_matrix_client():
-    """Mock Matrix client for bot testing."""
-    with patch("valence.agents.matrix_bot.AsyncClient") as mock_class:
-        mock_client = MagicMock()
-        mock_class.return_value = mock_client
-
-        # Mock login response
-        mock_login = MagicMock()
-        mock_login.device_id = "TESTDEVICE"
-        mock_client.login.return_value = mock_login
-        mock_client.user_id = "@testbot:example.com"
 
         yield mock_client
 

@@ -217,12 +217,12 @@ class TestSessionStart:
     def test_session_start_with_external_room(self, mock_get_cursor, sample_session_row):
         """Test session start with external room ID."""
         mock_get_cursor.fetchone.return_value = sample_session_row(
-            external_room_id="!room:matrix.org"
+            external_room_id="!room:slack.com"
         )
 
         result = session_start(
-            platform="matrix",
-            external_room_id="!room:matrix.org"
+            platform="slack",
+            external_room_id="!room:slack.com"
         )
 
         assert result["success"] is True
@@ -355,10 +355,10 @@ class TestSessionList:
     def test_session_list_with_platform_filter(self, mock_get_cursor, sample_session_row):
         """Test session list with platform filter."""
         mock_get_cursor.fetchall.return_value = [
-            sample_session_row(platform="matrix")
+            sample_session_row(platform="slack")
         ]
 
-        result = session_list(platform="matrix")
+        result = session_list(platform="slack")
 
         assert result["success"] is True
         calls = mock_get_cursor.execute.call_args_list

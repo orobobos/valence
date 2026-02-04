@@ -50,7 +50,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "platform": {
                         "type": "string",
-                        "enum": ["claude-code", "matrix", "api", "slack"],
+                        "enum": ["claude-code", "api", "slack"],
                         "description": "Platform this session is on"
                     },
                     "project_context": {

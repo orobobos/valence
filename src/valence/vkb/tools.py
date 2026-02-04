@@ -36,7 +36,7 @@ VKB_TOOLS = [
             "properties": {
                 "platform": {
                     "type": "string",
-                    "enum": ["claude-code", "matrix", "api", "slack", "claude-web", "claude-desktop", "claude-mobile"],
+                    "enum": ["claude-code", "api", "slack", "claude-web", "claude-desktop", "claude-mobile"],
                     "description": "Platform this session is on",
                 },
                 "project_context": {
