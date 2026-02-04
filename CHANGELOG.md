@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Strip on Forward Field Redaction** (Issue #71)
+  - `PropagationRules.strip_on_forward` specifies field paths to remove when resharing
+  - Supports nested paths using dot notation (e.g., `metadata.source`, `data.user.email`)
+  - Original share content remains intact; only forwarded version has fields redacted
+  - Works with both `reshare()` and `propagate()` methods
+  - Helper functions: `strip_fields_from_content()` and `_strip_field_path()`
+  - Gracefully handles non-JSON content (returns unchanged)
+  - Gracefully handles missing fields (no error)
+  - `propagate()` composes strip fields as union of original and additional restrictions
+  - Comprehensive test coverage for flat, nested, deeply nested, and edge cases
+
 - **Malicious Router Detection** (Issue #119)
   - Detect and report routers that misbehave (drop messages, delay, modify)
   - Per-router behavior metrics tracking in `RouterBehaviorMetrics`:
