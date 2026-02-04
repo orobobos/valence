@@ -5,7 +5,8 @@ and cryptographic/policy enforcement.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Protocol, Any, List, AsyncIterator, Set
+from typing import Optional, Protocol, Any, List, AsyncIterator, Set, Dict
+import copy
 import uuid
 import time
 import hashlib
@@ -16,6 +17,65 @@ from .types import SharePolicy, ShareLevel, EnforcementType, PropagationRules
 from .encryption import EncryptionEnvelope
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_field_path(data: Dict[str, Any], path: str) -> None:
+    """Strip a field from a nested dictionary using dot-notation path.
+    
+    Modifies the dictionary in-place. Supports nested paths like "metadata.source".
+    If any part of the path doesn't exist, silently does nothing.
+    
+    Args:
+        data: The dictionary to modify
+        path: Dot-separated field path (e.g., "metadata.source", "top_level")
+    """
+    parts = path.split(".")
+    
+    # Navigate to parent of target field
+    current = data
+    for part in parts[:-1]:
+        if not isinstance(current, dict) or part not in current:
+            return  # Path doesn't exist, nothing to strip
+        current = current[part]
+    
+    # Remove the final field if it exists
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
+def strip_fields_from_content(
+    content: bytes,
+    fields_to_strip: List[str],
+) -> bytes:
+    """Strip specified fields from JSON content.
+    
+    Creates a copy of the content with specified fields removed.
+    Supports nested paths using dot notation (e.g., "metadata.source").
+    
+    Args:
+        content: The original content as bytes (must be valid JSON)
+        fields_to_strip: List of field paths to remove
+        
+    Returns:
+        Modified content as bytes with fields stripped.
+        Returns original content unchanged if not valid JSON.
+    """
+    if not fields_to_strip:
+        return content
+    
+    try:
+        content_dict = json.loads(content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # Not JSON content, can't strip fields
+        return content
+    
+    # Make a deep copy to avoid modifying the original
+    stripped_dict = copy.deepcopy(content_dict)
+    
+    for field_path in fields_to_strip:
+        _strip_field_path(stripped_dict, field_path)
+    
+    return json.dumps(stripped_dict).encode("utf-8")
 
 
 @dataclass
@@ -359,6 +419,33 @@ class ReshareResult:
     hops_remaining: Optional[int] = None  # Remaining hops allowed, or None if unlimited
 
 
+@dataclass
+class PropagateRequest:
+    """Request to propagate a share with composed (tighter) restrictions.
+    
+    Unlike reshare(), propagate() allows adding additional restrictions
+    on top of the original share's policy. The resulting policy is the
+    intersection/minimum of both sets of restrictions.
+    """
+    
+    share_id: str  # The share to propagate from
+    recipient_did: str  # New recipient
+    additional_restrictions: Optional[PropagationRules] = None  # Extra restrictions to compose
+
+
+@dataclass
+class PropagateResult:
+    """Result of a successful propagate operation."""
+    
+    share_id: str
+    consent_chain_id: str
+    encrypted_for: str
+    created_at: float
+    current_hop: int
+    hops_remaining: Optional[int] = None
+    composed_restrictions: Optional[dict] = None  # The final composed restrictions
+
+
 class SharingService:
     """Service for sharing beliefs with specific recipients.
     
@@ -617,18 +704,9 @@ class SharingService:
         envelope = EncryptionEnvelope.from_dict(original_share.encrypted_envelope)
         original_content = EncryptionEnvelope.decrypt(envelope, recipient_private_key)
         
-        # Strip fields if configured
+        # Strip fields if configured (supports nested paths like "metadata.source")
         strip_fields = propagation.get("strip_on_forward")
-        content_to_share = original_content
-        if strip_fields:
-            try:
-                content_dict = json.loads(original_content.decode("utf-8"))
-                for field in strip_fields:
-                    content_dict.pop(field, None)
-                content_to_share = json.dumps(content_dict).encode("utf-8")
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                # Not JSON content, can't strip fields
-                pass
+        content_to_share = strip_fields_from_content(original_content, strip_fields or [])
         
         # Get new recipient's public key
         recipient_key = await self.identity.get_public_key(request.recipient_did)
@@ -702,6 +780,264 @@ class SharingService:
             created_at=timestamp,
             current_hop=new_hop_count,
             hops_remaining=consent_chain.max_hops - new_hop_count if consent_chain.max_hops else None,
+        )
+    
+    async def propagate(
+        self, request: PropagateRequest, propagator_did: str
+    ) -> PropagateResult:
+        """Propagate a share with composed (tighter) restrictions.
+        
+        Unlike reshare(), propagate() allows adding additional restrictions
+        on top of the original share's policy. The resulting policy is the
+        most restrictive combination of both:
+        - allowed_domains: intersection of original and new domains
+        - max_hops: minimum of remaining hops and new max_hops
+        - expires_at: earlier of the two expiration times
+        - strip_on_forward: union of fields to strip
+        - min_trust_to_receive: maximum of the two thresholds
+        
+        Args:
+            request: The propagate request with share_id, recipient, and additional_restrictions
+            propagator_did: The DID of the entity propagating (must have received the share)
+            
+        Returns:
+            PropagateResult with the new share details and composed restrictions
+            
+        Raises:
+            ValueError: If validation fails or propagation not allowed
+            PermissionError: If propagator didn't receive the original share
+        """
+        # Get the original share
+        original_share = await self.db.get_share(request.share_id)
+        if not original_share:
+            raise ValueError("Original share not found")
+        
+        # Verify propagator received the original share
+        if original_share.recipient_did != propagator_did:
+            raise PermissionError("Only the recipient of a share can propagate it")
+        
+        # Verify the share was actually received
+        if original_share.received_at is None:
+            raise ValueError("Must receive share before propagating")
+        
+        # Get the consent chain
+        consent_chain = await self.db.get_consent_chain(original_share.consent_chain_id)
+        if not consent_chain:
+            raise ValueError("Consent chain not found")
+        
+        # Check if revoked
+        if consent_chain.revoked:
+            raise ValueError("Cannot propagate: original share has been revoked")
+        
+        # Check policy allows propagation (same rules as resharing)
+        policy_level = consent_chain.origin_policy.get("level")
+        if policy_level not in ("bounded", "cascading", "public"):
+            raise ValueError(
+                f"Cannot propagate: policy level '{policy_level}' does not allow propagation"
+            )
+        
+        # Get original propagation rules
+        original_propagation = consent_chain.origin_policy.get("propagation", {})
+        original_max_hops = original_propagation.get("max_hops")
+        original_domains = original_propagation.get("allowed_domains") or []
+        original_expires = original_propagation.get("expires_at")
+        original_strip = original_propagation.get("strip_on_forward") or []
+        original_min_trust = original_propagation.get("min_trust_to_receive")
+        
+        # Compute hops remaining from original policy
+        hops_remaining_original = None
+        if original_max_hops is not None:
+            hops_remaining_original = original_max_hops - consent_chain.current_hop
+            if hops_remaining_original <= 0:
+                raise ValueError(
+                    f"Cannot propagate: max_hops ({original_max_hops}) exceeded "
+                    f"(current_hop={consent_chain.current_hop})"
+                )
+        
+        # Compose restrictions with additional_restrictions
+        additional = request.additional_restrictions
+        composed = {}
+        
+        # Compose max_hops: take minimum of remaining hops
+        if additional and additional.max_hops is not None:
+            if hops_remaining_original is not None:
+                # Take min of what's left and what's requested
+                composed["max_hops"] = min(hops_remaining_original, additional.max_hops)
+            else:
+                composed["max_hops"] = additional.max_hops
+        elif hops_remaining_original is not None:
+            composed["max_hops"] = hops_remaining_original
+        else:
+            composed["max_hops"] = None
+        
+        # Check we still have hops available
+        if composed["max_hops"] is not None and composed["max_hops"] <= 0:
+            raise ValueError("Cannot propagate: no hops remaining after composition")
+        
+        # Compose allowed_domains: intersection (can only narrow, not widen)
+        new_domains = (additional.allowed_domains or []) if additional else []
+        if original_domains and new_domains:
+            # Intersection
+            composed["allowed_domains"] = list(set(original_domains) & set(new_domains))
+            if not composed["allowed_domains"]:
+                raise ValueError(
+                    "Cannot propagate: no common domains between original and additional restrictions"
+                )
+        elif original_domains:
+            composed["allowed_domains"] = original_domains
+        elif new_domains:
+            composed["allowed_domains"] = new_domains
+        else:
+            composed["allowed_domains"] = None
+        
+        # Validate recipient is in composed domains
+        if composed["allowed_domains"]:
+            if self.domain_service is None:
+                raise ValueError("Domain service required for domain-restricted propagation")
+            
+            recipient_in_domain = False
+            for domain in composed["allowed_domains"]:
+                if await self.domain_service.is_member(request.recipient_did, domain):
+                    recipient_in_domain = True
+                    break
+            
+            if not recipient_in_domain:
+                raise ValueError(
+                    f"Recipient {request.recipient_did} is not a member of any allowed domain "
+                    f"in composed restrictions"
+                )
+        
+        # Compose expires_at: take earlier expiration
+        new_expires = additional.expires_at if additional else None
+        if original_expires and new_expires:
+            from datetime import datetime
+            orig_dt = datetime.fromisoformat(original_expires)
+            if new_expires < orig_dt:
+                composed["expires_at"] = new_expires.isoformat()
+            else:
+                composed["expires_at"] = original_expires
+        elif original_expires:
+            composed["expires_at"] = original_expires
+        elif new_expires:
+            composed["expires_at"] = new_expires.isoformat()
+        else:
+            composed["expires_at"] = None
+        
+        # Check expiration
+        if composed["expires_at"]:
+            from datetime import datetime
+            exp_time = datetime.fromisoformat(composed["expires_at"])
+            if datetime.now() > exp_time:
+                raise ValueError("Cannot propagate: share has expired")
+        
+        # Compose strip_on_forward: union of fields
+        new_strip = (additional.strip_on_forward or []) if additional else []
+        composed["strip_on_forward"] = list(set(original_strip) | set(new_strip))
+        
+        # Compose min_trust_to_receive: take maximum (more restrictive)
+        new_min_trust = additional.min_trust_to_receive if additional else None
+        if original_min_trust is not None and new_min_trust is not None:
+            composed["min_trust_to_receive"] = max(original_min_trust, new_min_trust)
+        elif original_min_trust is not None:
+            composed["min_trust_to_receive"] = original_min_trust
+        elif new_min_trust is not None:
+            composed["min_trust_to_receive"] = new_min_trust
+        else:
+            composed["min_trust_to_receive"] = None
+        
+        # Get the original belief content (need to decrypt first)
+        propagator_private_key = await self.identity.get_private_key(propagator_did)
+        if not propagator_private_key:
+            raise ValueError("Propagator private key not available")
+        
+        envelope = EncryptionEnvelope.from_dict(original_share.encrypted_envelope)
+        original_content = EncryptionEnvelope.decrypt(envelope, propagator_private_key)
+        
+        # Strip fields based on composed strip_on_forward (supports nested paths)
+        content_to_share = strip_fields_from_content(
+            original_content, composed["strip_on_forward"] or []
+        )
+        
+        # Get new recipient's public key
+        recipient_key = await self.identity.get_public_key(request.recipient_did)
+        if not recipient_key:
+            raise ValueError("Recipient not found or has no public key")
+        
+        # Encrypt for new recipient
+        new_envelope = EncryptionEnvelope.encrypt(
+            content=content_to_share,
+            recipient_public_key=recipient_key,
+        )
+        
+        # Calculate new hop count
+        new_hop_count = consent_chain.current_hop + 1
+        
+        # Store new share (linked to same consent chain)
+        share_id = str(uuid.uuid4())
+        timestamp = time.time()
+        await self.db.create_share(
+            id=share_id,
+            consent_chain_id=consent_chain.id,
+            encrypted_envelope=new_envelope.to_dict(),
+            recipient_did=request.recipient_did,
+            belief_id=original_share.belief_id,
+        )
+        
+        # Get recipient's domains for audit/tracking
+        recipient_domains: List[str] = []
+        if self.domain_service and composed["allowed_domains"]:
+            for domain in composed["allowed_domains"]:
+                if await self.domain_service.is_member(request.recipient_did, domain):
+                    recipient_domains.append(domain)
+        
+        # Add hop to consent chain with composed restrictions
+        hop = {
+            "propagator": propagator_did,
+            "recipient": request.recipient_did,
+            "propagated_at": timestamp,
+            "hop_number": new_hop_count,
+            "from_share_id": request.share_id,
+            "new_share_id": share_id,
+            "recipient_domains": recipient_domains,
+            "composed_restrictions": composed,
+            "signature": self.identity.sign({
+                "original_share_id": request.share_id,
+                "recipient": request.recipient_did,
+                "propagated_at": timestamp,
+                "hop_number": new_hop_count,
+                "composed_restrictions": composed,
+            }),
+        }
+        await self.db.add_consent_chain_hop(
+            consent_chain_id=consent_chain.id,
+            hop=hop,
+        )
+        
+        # Update hop count in consent chain
+        await self.db.update_consent_chain_hop_count(
+            consent_chain_id=consent_chain.id,
+            current_hop=new_hop_count,
+        )
+        
+        # Calculate hops remaining based on composed max_hops
+        hops_remaining = None
+        if composed["max_hops"] is not None:
+            hops_remaining = composed["max_hops"] - 1  # -1 because this propagation uses one hop
+        
+        logger.info(
+            f"Propagated belief {original_share.belief_id} from {propagator_did} "
+            f"to {request.recipient_did} with composed restrictions "
+            f"(share_id={share_id}, consent_chain_id={consent_chain.id}, hop={new_hop_count})"
+        )
+        
+        return PropagateResult(
+            share_id=share_id,
+            consent_chain_id=consent_chain.id,
+            encrypted_for=request.recipient_did,
+            created_at=timestamp,
+            current_hop=new_hop_count,
+            hops_remaining=hops_remaining,
+            composed_restrictions=composed,
         )
     
     async def get_share(self, share_id: str) -> Optional[Share]:

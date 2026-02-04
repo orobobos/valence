@@ -7,9 +7,12 @@ They provide a way to organize members and control access to beliefs.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List, Protocol, Any
+from typing import Optional, List, Protocol, Any, Dict
 import uuid
 import logging
+import hashlib
+import hmac
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,287 @@ class DomainRole(Enum):
     OWNER = "owner"    # Full control, can delete domain
     ADMIN = "admin"    # Can manage members
     MEMBER = "member"  # Basic access
+
+
+class VerificationMethod(Enum):
+    """Supported verification methods for domain membership."""
+    
+    NONE = "none"                    # No verification required
+    ADMIN_SIGNATURE = "admin_sig"    # Requires signature from domain admin
+    DNS_TXT = "dns_txt"              # External DNS TXT record verification
+    CUSTOM = "custom"                # Custom/pluggable verification
+
+
+@dataclass
+class VerificationRequirement:
+    """Configuration for domain membership verification.
+    
+    Specifies what verification is needed to prove membership.
+    """
+    
+    method: VerificationMethod
+    config: Dict[str, Any] = field(default_factory=dict)
+    required: bool = True  # If False, verification is optional
+    
+    def to_dict(self) -> dict:
+        """Serialize to dictionary."""
+        return {
+            "method": self.method.value,
+            "config": self.config,
+            "required": self.required,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "VerificationRequirement":
+        """Deserialize from dictionary."""
+        return cls(
+            method=VerificationMethod(data["method"]),
+            config=data.get("config", {}),
+            required=data.get("required", True),
+        )
+
+
+@dataclass
+class VerificationResult:
+    """Result of a membership verification attempt."""
+    
+    verified: bool
+    method: VerificationMethod
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    details: Optional[str] = None
+    evidence: Optional[Dict[str, Any]] = None  # Proof/signature data
+    
+    def to_dict(self) -> dict:
+        """Serialize to dictionary."""
+        return {
+            "verified": self.verified,
+            "method": self.method.value,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "details": self.details,
+            "evidence": self.evidence,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "VerificationResult":
+        """Deserialize from dictionary."""
+        timestamp = data.get("timestamp")
+        if timestamp and isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+            
+        return cls(
+            verified=data["verified"],
+            method=VerificationMethod(data["method"]),
+            timestamp=timestamp,
+            details=data.get("details"),
+            evidence=data.get("evidence"),
+        )
+
+
+class Verifier(Protocol):
+    """Protocol for membership verification strategies."""
+    
+    async def verify(
+        self,
+        domain_id: str,
+        member_did: str,
+        requirement: VerificationRequirement,
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        """Verify a membership claim.
+        
+        Args:
+            domain_id: The domain UUID
+            member_did: DID claiming membership
+            requirement: The verification requirement configuration
+            evidence: Optional proof/credentials for verification
+            
+        Returns:
+            VerificationResult indicating success/failure
+        """
+        ...
+
+
+class AdminSignatureVerifier:
+    """Verifier that requires a signature from a domain admin.
+    
+    The admin signs a message containing the domain_id and member_did,
+    proving they authorize the membership.
+    """
+    
+    def __init__(self, get_admin_key_func=None):
+        """Initialize with optional key lookup function.
+        
+        Args:
+            get_admin_key_func: Async function(admin_did) -> public_key
+                               If None, uses simple HMAC verification
+        """
+        self.get_admin_key = get_admin_key_func
+    
+    async def verify(
+        self,
+        domain_id: str,
+        member_did: str,
+        requirement: VerificationRequirement,
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        """Verify membership via admin signature.
+        
+        Evidence should contain:
+        - admin_did: DID of the signing admin
+        - signature: The signature bytes (hex encoded)
+        - message: Optional custom message (defaults to domain_id:member_did)
+        """
+        if not evidence:
+            return VerificationResult(
+                verified=False,
+                method=VerificationMethod.ADMIN_SIGNATURE,
+                details="No evidence provided",
+            )
+        
+        admin_did = evidence.get("admin_did")
+        signature = evidence.get("signature")
+        
+        if not admin_did or not signature:
+            return VerificationResult(
+                verified=False,
+                method=VerificationMethod.ADMIN_SIGNATURE,
+                details="Missing admin_did or signature in evidence",
+            )
+        
+        # Build the message to verify
+        message = evidence.get("message", f"{domain_id}:{member_did}")
+        
+        # Get admin's key for verification
+        if self.get_admin_key:
+            try:
+                admin_key = await self.get_admin_key(admin_did)
+                if not admin_key:
+                    return VerificationResult(
+                        verified=False,
+                        method=VerificationMethod.ADMIN_SIGNATURE,
+                        details=f"Could not retrieve key for admin {admin_did}",
+                    )
+                # Full cryptographic verification would go here
+                # For now, use HMAC as a placeholder
+                expected_sig = hmac.new(
+                    admin_key.encode() if isinstance(admin_key, str) else admin_key,
+                    message.encode(),
+                    hashlib.sha256
+                ).hexdigest()
+                verified = hmac.compare_digest(signature, expected_sig)
+            except Exception as e:
+                return VerificationResult(
+                    verified=False,
+                    method=VerificationMethod.ADMIN_SIGNATURE,
+                    details=f"Verification error: {e}",
+                )
+        else:
+            # Simple mode: verify signature format matches expected pattern
+            # In production, would use proper cryptographic verification
+            expected_sig = hashlib.sha256(
+                f"{domain_id}:{member_did}:{admin_did}".encode()
+            ).hexdigest()
+            verified = hmac.compare_digest(signature, expected_sig)
+        
+        return VerificationResult(
+            verified=verified,
+            method=VerificationMethod.ADMIN_SIGNATURE,
+            details="Signature verified" if verified else "Signature mismatch",
+            evidence={"admin_did": admin_did, "verified_at": datetime.now(timezone.utc).isoformat()},
+        )
+
+
+class DNSTxtVerifier:
+    """Verifier that checks DNS TXT records for domain verification.
+    
+    Used for organizational domains where members can prove affiliation
+    by showing a TXT record at a specific DNS location.
+    
+    Config should specify:
+    - domain_pattern: DNS domain pattern (e.g., "_valence.{org}.example.com")
+    - expected_prefix: Expected TXT record prefix (e.g., "valence-member=")
+    """
+    
+    def __init__(self, dns_resolver=None):
+        """Initialize with optional DNS resolver.
+        
+        Args:
+            dns_resolver: Async function(hostname) -> List[str] of TXT records
+                         If None, uses a mock implementation
+        """
+        self.dns_resolver = dns_resolver
+    
+    async def _default_dns_lookup(self, hostname: str) -> List[str]:
+        """Default DNS lookup - returns empty (override for real DNS)."""
+        # In production, would use aiodns or similar
+        return []
+    
+    async def verify(
+        self,
+        domain_id: str,
+        member_did: str,
+        requirement: VerificationRequirement,
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        """Verify membership via DNS TXT record.
+        
+        Evidence should contain:
+        - dns_domain: The DNS domain to check (e.g., "example.com")
+        - Or the config should have domain_pattern
+        """
+        config = requirement.config
+        
+        # Get the DNS domain to query
+        if evidence and "dns_domain" in evidence:
+            dns_domain = evidence["dns_domain"]
+        elif "dns_domain" in config:
+            dns_domain = config["dns_domain"]
+        else:
+            return VerificationResult(
+                verified=False,
+                method=VerificationMethod.DNS_TXT,
+                details="No DNS domain specified in evidence or config",
+            )
+        
+        # Build the hostname to query
+        pattern = config.get("domain_pattern", "_valence.{dns_domain}")
+        hostname = pattern.format(dns_domain=dns_domain, domain_id=domain_id)
+        
+        # Expected TXT record content
+        expected_prefix = config.get("expected_prefix", "valence-member=")
+        expected_value = f"{expected_prefix}{member_did}"
+        
+        # Look up TXT records
+        resolver = self.dns_resolver or self._default_dns_lookup
+        try:
+            txt_records = await resolver(hostname)
+        except Exception as e:
+            return VerificationResult(
+                verified=False,
+                method=VerificationMethod.DNS_TXT,
+                details=f"DNS lookup failed: {e}",
+            )
+        
+        # Check if expected record exists
+        for record in txt_records:
+            if expected_value in record or record.startswith(expected_prefix):
+                # For exact member verification
+                if member_did in record:
+                    return VerificationResult(
+                        verified=True,
+                        method=VerificationMethod.DNS_TXT,
+                        details=f"Found matching TXT record at {hostname}",
+                        evidence={"hostname": hostname, "record": record},
+                    )
+        
+        return VerificationResult(
+            verified=False,
+            method=VerificationMethod.DNS_TXT,
+            details=f"No matching TXT record found at {hostname}",
+            evidence={"hostname": hostname, "records_found": len(txt_records)},
+        )
 
 
 @dataclass
@@ -35,6 +319,7 @@ class Domain:
     owner_did: str
     description: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    verification_requirement: Optional[VerificationRequirement] = None
     
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -44,6 +329,10 @@ class Domain:
             "owner_did": self.owner_did,
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "verification_requirement": (
+                self.verification_requirement.to_dict() 
+                if self.verification_requirement else None
+            ),
         }
     
     @classmethod
@@ -54,6 +343,10 @@ class Domain:
             created_at = datetime.fromisoformat(created_at)
         elif created_at is None:
             created_at = datetime.now(timezone.utc)
+        
+        verification_req = data.get("verification_requirement")
+        if verification_req and isinstance(verification_req, dict):
+            verification_req = VerificationRequirement.from_dict(verification_req)
             
         return cls(
             domain_id=data["domain_id"],
@@ -61,6 +354,7 @@ class Domain:
             owner_did=data["owner_did"],
             description=data.get("description"),
             created_at=created_at,
+            verification_requirement=verification_req,
         )
 
 
@@ -150,6 +444,31 @@ class DomainDatabaseProtocol(Protocol):
     async def list_domains_for_member(self, member_did: str) -> List[dict]:
         """List all domains a member belongs to."""
         ...
+    
+    async def set_verification_requirement(
+        self,
+        domain_id: str,
+        requirement: Optional[dict],
+    ) -> None:
+        """Set or clear verification requirement for a domain."""
+        ...
+    
+    async def store_verification_result(
+        self,
+        domain_id: str,
+        member_did: str,
+        result: dict,
+    ) -> None:
+        """Store a verification result for a membership."""
+        ...
+    
+    async def get_verification_result(
+        self,
+        domain_id: str,
+        member_did: str,
+    ) -> Optional[dict]:
+        """Get the latest verification result for a membership."""
+        ...
 
 
 class DomainError(Exception):
@@ -179,6 +498,16 @@ class MembershipNotFoundError(DomainError):
 
 class PermissionDeniedError(DomainError):
     """Raised when an operation is not permitted."""
+    pass
+
+
+class VerificationError(DomainError):
+    """Raised when membership verification fails."""
+    pass
+
+
+class VerificationRequiredError(DomainError):
+    """Raised when verification is required but not provided."""
     pass
 
 

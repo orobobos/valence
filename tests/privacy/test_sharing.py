@@ -16,6 +16,8 @@ from valence.privacy.sharing import (
     RevokeResult,
     ReshareRequest,
     ReshareResult,
+    PropagateRequest,
+    PropagateResult,
     RevocationNotification,
     Notification,
     SharingService,
@@ -3301,3 +3303,594 @@ class TestReshareWithDomains:
         # Should fail - need domain service for domain-restricted resharing
         with pytest.raises(ValueError, match="Domain service required"):
             await service_without_domains.reshare(reshare_request, resharer_did)
+
+
+class TestPropagateAPI:
+    """Tests for propagate() API with restriction composition (Issue #70)."""
+    
+    @pytest.fixture
+    def db(self):
+        return MockDatabase()
+    
+    @pytest.fixture
+    def identity(self):
+        return MockIdentityService()
+    
+    @pytest.fixture
+    def domain_service(self):
+        return MockDomainService()
+    
+    @pytest.fixture
+    def service(self, db, identity, domain_service):
+        return SharingService(db, identity, domain_service)
+    
+    async def _create_and_receive_bounded_share(
+        self, service, db, identity, domain_service,
+        belief_id="belief-propagate-001",
+        recipient_did="did:key:propagator",
+        content="Content to propagate",
+        allowed_domains=None,
+        max_hops=5,
+    ):
+        """Helper to create and receive a BOUNDED share."""
+        if allowed_domains is None:
+            allowed_domains = ["team-alpha", "team-beta"]
+        
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content=content)
+        identity.add_identity(recipient_did)
+        
+        # Add recipient to all allowed domains
+        for domain in allowed_domains:
+            domain_service.add_member(recipient_did, domain)
+        
+        policy = SharePolicy(
+            level=ShareLevel.BOUNDED,
+            enforcement=EnforcementType.POLICY,
+            propagation=PropagationRules(
+                max_hops=max_hops,
+                allowed_domains=allowed_domains,
+            ),
+        )
+        
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=recipient_did,
+            policy=policy,
+        )
+        
+        share_result = await service.share(request, identity.get_did())
+        
+        # Receive the share
+        receive_request = ReceiveRequest(share_id=share_result.share_id)
+        await service.receive(receive_request, recipient_did)
+        
+        return share_result, recipient_did
+    
+    @pytest.mark.asyncio
+    async def test_propagate_basic_success(self, service, db, identity, domain_service):
+        """Test basic propagate operation without additional restrictions."""
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service
+        )
+        
+        # Add second recipient to domain
+        new_recipient = "did:key:new-recipient"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        # Propagate without additional restrictions
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=None,
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        assert result.share_id is not None
+        assert result.consent_chain_id == share_result.consent_chain_id
+        assert result.encrypted_for == new_recipient
+        assert result.current_hop == 1
+        assert result.hops_remaining == 4  # 5 - 1 = 4
+    
+    @pytest.mark.asyncio
+    async def test_propagate_composes_max_hops_minimum(self, service, db, identity, domain_service):
+        """Test that propagate takes minimum of max_hops."""
+        # Original share has max_hops=5, so 5 hops remaining at start
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            max_hops=5,
+        )
+        
+        # Add new recipient
+        new_recipient = "did:key:hops-recipient"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        # Propagate with additional restriction: max_hops=2
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(max_hops=2),
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # min(5 remaining, 2 requested) = 2, then -1 for this hop = 1 remaining
+        assert result.hops_remaining == 1
+        assert result.composed_restrictions["max_hops"] == 2
+    
+    @pytest.mark.asyncio
+    async def test_propagate_composes_allowed_domains_intersection(
+        self, service, db, identity, domain_service
+    ):
+        """Test that propagate takes intersection of allowed_domains."""
+        # Original share allows ["team-alpha", "team-beta"]
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            allowed_domains=["team-alpha", "team-beta", "team-gamma"],
+        )
+        
+        # Add new recipient to team-alpha only
+        new_recipient = "did:key:intersection-recipient"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        # Propagate with additional restriction: only team-alpha allowed
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(allowed_domains=["team-alpha", "team-delta"]),
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # Intersection: ["team-alpha", "team-beta", "team-gamma"] ∩ ["team-alpha", "team-delta"]
+        # = ["team-alpha"]
+        assert result.composed_restrictions["allowed_domains"] == ["team-alpha"]
+    
+    @pytest.mark.asyncio
+    async def test_propagate_fails_with_no_common_domains(
+        self, service, db, identity, domain_service
+    ):
+        """Test that propagate fails when domain intersection is empty."""
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            allowed_domains=["team-alpha"],
+        )
+        
+        new_recipient = "did:key:no-common-recipient"
+        identity.add_identity(new_recipient)
+        
+        # Propagate with disjoint domains
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(allowed_domains=["team-omega"]),
+        )
+        
+        with pytest.raises(ValueError, match="no common domains"):
+            await service.propagate(propagate_request, propagator_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_composes_strip_on_forward_union(
+        self, service, db, identity, domain_service
+    ):
+        """Test that strip_on_forward fields are unioned."""
+        # Create share with strip_on_forward
+        belief_id = "belief-strip"
+        content = json.dumps({"public": "data", "field_a": "secret_a", "field_b": "secret_b"})
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content=content)
+        
+        propagator_did = "did:key:strip-propagator"
+        identity.add_identity(propagator_did)
+        domain_service.add_member(propagator_did, "strip-domain")
+        
+        policy = SharePolicy(
+            level=ShareLevel.BOUNDED,
+            enforcement=EnforcementType.POLICY,
+            propagation=PropagationRules(
+                max_hops=5,
+                allowed_domains=["strip-domain"],
+                strip_on_forward=["field_a"],
+            ),
+        )
+        
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=propagator_did,
+            policy=policy,
+        )
+        share_result = await service.share(request, identity.get_did())
+        
+        # Receive
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), propagator_did)
+        
+        # Add new recipient
+        new_recipient = "did:key:strip-recipient"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "strip-domain")
+        
+        # Propagate with additional strip_on_forward
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(strip_on_forward=["field_b"]),
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # Union: ["field_a"] ∪ ["field_b"] = ["field_a", "field_b"]
+        assert set(result.composed_restrictions["strip_on_forward"]) == {"field_a", "field_b"}
+    
+    @pytest.mark.asyncio
+    async def test_propagate_composes_min_trust_maximum(
+        self, service, db, identity, domain_service
+    ):
+        """Test that min_trust_to_receive takes maximum (most restrictive)."""
+        # Create share with min_trust_to_receive
+        belief_id = "belief-trust"
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Trust content")
+        
+        propagator_did = "did:key:trust-propagator"
+        identity.add_identity(propagator_did)
+        domain_service.add_member(propagator_did, "trust-domain")
+        
+        policy = SharePolicy(
+            level=ShareLevel.BOUNDED,
+            enforcement=EnforcementType.POLICY,
+            propagation=PropagationRules(
+                max_hops=5,
+                allowed_domains=["trust-domain"],
+                min_trust_to_receive=0.5,
+            ),
+        )
+        
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=propagator_did,
+            policy=policy,
+        )
+        share_result = await service.share(request, identity.get_did())
+        
+        # Receive
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), propagator_did)
+        
+        # Add new recipient
+        new_recipient = "did:key:trust-recipient"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "trust-domain")
+        
+        # Propagate with higher min_trust_to_receive
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(min_trust_to_receive=0.8),
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # max(0.5, 0.8) = 0.8 (more restrictive)
+        assert result.composed_restrictions["min_trust_to_receive"] == 0.8
+    
+    @pytest.mark.asyncio
+    async def test_propagate_fails_for_direct_policy(self, service, db, identity, domain_service):
+        """Test that propagate fails for DIRECT policy shares."""
+        belief_id = "belief-direct"
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Direct content")
+        
+        recipient_did = "did:key:direct-recipient"
+        identity.add_identity(recipient_did)
+        
+        # Create DIRECT share (default)
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=recipient_did,
+        )
+        share_result = await service.share(request, identity.get_did())
+        
+        # Receive
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), recipient_did)
+        
+        # Add new recipient
+        new_recipient = "did:key:direct-new"
+        identity.add_identity(new_recipient)
+        
+        # Try to propagate
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+        )
+        
+        with pytest.raises(ValueError, match="does not allow propagation"):
+            await service.propagate(propagate_request, recipient_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_fails_for_revoked_share(self, service, db, identity, domain_service):
+        """Test that propagate fails for revoked shares."""
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+        )
+        
+        # Revoke the share
+        revoke_request = RevokeRequest(share_id=share_result.share_id)
+        await service.revoke_share(revoke_request, identity.get_did())
+        
+        # Add new recipient
+        new_recipient = "did:key:revoked-new"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        # Try to propagate
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+        )
+        
+        with pytest.raises(ValueError, match="has been revoked"):
+            await service.propagate(propagate_request, propagator_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_fails_when_max_hops_exceeded(
+        self, service, db, identity, domain_service
+    ):
+        """Test that propagate fails when max_hops is exceeded."""
+        # Create with max_hops=1
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            belief_id="belief-maxhops-exceeded",
+            max_hops=1,
+        )
+        
+        # First propagation
+        first_recipient = "did:key:first-prop"
+        identity.add_identity(first_recipient)
+        domain_service.add_member(first_recipient, "team-alpha")
+        
+        result1 = await service.propagate(
+            PropagateRequest(share_id=share_result.share_id, recipient_did=first_recipient),
+            propagator_did,
+        )
+        
+        # Receive
+        await service.receive(ReceiveRequest(share_id=result1.share_id), first_recipient)
+        
+        # Second propagation should fail (max_hops=1 already used)
+        second_recipient = "did:key:second-prop"
+        identity.add_identity(second_recipient)
+        domain_service.add_member(second_recipient, "team-alpha")
+        
+        with pytest.raises(ValueError, match="max_hops.*exceeded"):
+            await service.propagate(
+                PropagateRequest(share_id=result1.share_id, recipient_did=second_recipient),
+                first_recipient,
+            )
+    
+    @pytest.mark.asyncio
+    async def test_propagate_only_by_recipient(self, service, db, identity, domain_service):
+        """Test that only the recipient can propagate."""
+        share_result, actual_recipient = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+        )
+        
+        imposter_did = "did:key:imposter"
+        identity.add_identity(imposter_did)
+        
+        new_recipient = "did:key:imposter-target"
+        identity.add_identity(new_recipient)
+        
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+        )
+        
+        with pytest.raises(PermissionError, match="Only the recipient"):
+            await service.propagate(propagate_request, imposter_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_requires_receiving_first(self, service, db, identity, domain_service):
+        """Test that propagate requires receiving the share first."""
+        # Create share but don't receive
+        belief_id = "belief-not-received"
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Not received")
+        
+        recipient_did = "did:key:not-received"
+        identity.add_identity(recipient_did)
+        domain_service.add_member(recipient_did, "team-alpha")
+        
+        policy = SharePolicy(
+            level=ShareLevel.BOUNDED,
+            enforcement=EnforcementType.POLICY,
+            propagation=PropagationRules(max_hops=5, allowed_domains=["team-alpha"]),
+        )
+        
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=recipient_did,
+            policy=policy,
+        )
+        share_result = await service.share(request, identity.get_did())
+        
+        # Try to propagate without receiving
+        new_recipient = "did:key:propagate-target"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+        )
+        
+        with pytest.raises(ValueError, match="Must receive share before propagating"):
+            await service.propagate(propagate_request, recipient_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_recipient_must_be_in_composed_domains(
+        self, service, db, identity, domain_service
+    ):
+        """Test that recipient must be in the composed (intersected) domains."""
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            allowed_domains=["team-alpha", "team-beta"],
+        )
+        
+        # New recipient is in team-beta but not team-alpha
+        new_recipient = "did:key:beta-only"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-beta")  # Only in team-beta
+        
+        # Propagate with restriction to team-alpha only
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(allowed_domains=["team-alpha"]),
+        )
+        
+        with pytest.raises(ValueError, match="not a member of any allowed domain"):
+            await service.propagate(propagate_request, propagator_did)
+    
+    @pytest.mark.asyncio
+    async def test_propagate_updates_consent_chain_hop(
+        self, service, db, identity, domain_service
+    ):
+        """Test that propagate adds a hop to the consent chain."""
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+        )
+        
+        new_recipient = "did:key:chain-hop"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+            additional_restrictions=PropagationRules(max_hops=2),
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # Check consent chain has the hop
+        chain = await service.get_consent_chain(result.consent_chain_id)
+        
+        # Should have receive hop + propagate hop
+        propagate_hops = [h for h in chain.hops if h.get("propagator")]
+        assert len(propagate_hops) == 1
+        
+        hop = propagate_hops[0]
+        assert hop["propagator"] == propagator_did
+        assert hop["recipient"] == new_recipient
+        assert hop["hop_number"] == 1
+        assert hop["composed_restrictions"]["max_hops"] == 2
+        assert "signature" in hop
+    
+    @pytest.mark.asyncio
+    async def test_propagate_decrypts_and_reencrypts_content(
+        self, service, db, identity, domain_service
+    ):
+        """Test that propagated content is properly encrypted for new recipient."""
+        original_content = "Secret propagated content"
+        share_result, propagator_did = await self._create_and_receive_bounded_share(
+            service, db, identity, domain_service,
+            content=original_content,
+        )
+        
+        new_recipient = "did:key:decrypt-test"
+        identity.add_identity(new_recipient)
+        domain_service.add_member(new_recipient, "team-alpha")
+        
+        propagate_request = PropagateRequest(
+            share_id=share_result.share_id,
+            recipient_did=new_recipient,
+        )
+        
+        result = await service.propagate(propagate_request, propagator_did)
+        
+        # New recipient should be able to receive and decrypt
+        receive_result = await service.receive(
+            ReceiveRequest(share_id=result.share_id),
+            new_recipient,
+        )
+        
+        assert receive_result.content.decode("utf-8") == original_content
+    
+    @pytest.mark.asyncio
+    async def test_propagate_chain_of_restrictions(
+        self, service, db, identity, domain_service
+    ):
+        """Test a chain of propagations with progressively tighter restrictions."""
+        # Start with generous restrictions
+        original_domains = ["alpha", "beta", "gamma", "delta"]
+        for domain in original_domains:
+            domain_service.add_member("did:key:origin", domain)
+        
+        # Create original share
+        belief_id = "belief-chain-restrictions"
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Chain content")
+        
+        first_recipient = "did:key:chain-first"
+        identity.add_identity(first_recipient)
+        for domain in original_domains:
+            domain_service.add_member(first_recipient, domain)
+        
+        policy = SharePolicy(
+            level=ShareLevel.BOUNDED,
+            enforcement=EnforcementType.POLICY,
+            propagation=PropagationRules(
+                max_hops=10,
+                allowed_domains=original_domains,
+            ),
+        )
+        
+        request = ShareRequest(
+            belief_id=belief_id,
+            recipient_did=first_recipient,
+            policy=policy,
+        )
+        share1 = await service.share(request, identity.get_did())
+        await service.receive(ReceiveRequest(share_id=share1.share_id), first_recipient)
+        
+        # First propagation: narrow to alpha, beta
+        second_recipient = "did:key:chain-second"
+        identity.add_identity(second_recipient)
+        domain_service.add_member(second_recipient, "alpha")
+        domain_service.add_member(second_recipient, "beta")
+        
+        prop1_result = await service.propagate(
+            PropagateRequest(
+                share_id=share1.share_id,
+                recipient_did=second_recipient,
+                additional_restrictions=PropagationRules(
+                    max_hops=5,
+                    allowed_domains=["alpha", "beta"],
+                ),
+            ),
+            first_recipient,
+        )
+        await service.receive(ReceiveRequest(share_id=prop1_result.share_id), second_recipient)
+        
+        # Check first propagation results
+        assert set(prop1_result.composed_restrictions["allowed_domains"]) == {"alpha", "beta"}
+        assert prop1_result.composed_restrictions["max_hops"] == 5
+        
+        # Second propagation: narrow to alpha only
+        third_recipient = "did:key:chain-third"
+        identity.add_identity(third_recipient)
+        domain_service.add_member(third_recipient, "alpha")
+        
+        prop2_result = await service.propagate(
+            PropagateRequest(
+                share_id=prop1_result.share_id,
+                recipient_did=third_recipient,
+                additional_restrictions=PropagationRules(
+                    max_hops=2,  # min(4 remaining, 2) = 2
+                    allowed_domains=["alpha"],
+                ),
+            ),
+            second_recipient,
+        )
+        
+        # Check second propagation: domains narrowed, hops reduced
+        assert prop2_result.composed_restrictions["allowed_domains"] == ["alpha"]
+        assert prop2_result.composed_restrictions["max_hops"] == 2
+        assert prop2_result.hops_remaining == 1  # 2 - 1 = 1

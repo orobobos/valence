@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS trust_edges (
     -- Optional domain scoping (NULL = general trust)
     domain TEXT,
     
+    -- Delegation settings for transitive trust
+    can_delegate BOOLEAN NOT NULL DEFAULT FALSE,  -- Whether trust can be transitively delegated
+    delegation_depth INTEGER NOT NULL DEFAULT 0,  -- Max delegation chain length (0 = no limit)
+    
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

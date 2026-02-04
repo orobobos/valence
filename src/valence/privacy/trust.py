@@ -86,6 +86,8 @@ class TrustEdge:
     confidentiality: float = 0.5
     judgment: float = 0.1  # Very low default - trust in judgment must be earned
     domain: Optional[str] = None
+    can_delegate: bool = False  # Default: non-transitive trust
+    delegation_depth: int = 0  # 0 = no limit when can_delegate=True
     decay_rate: float = 0.0  # 0.0 = no decay
     decay_model: DecayModel = DecayModel.EXPONENTIAL
     last_refreshed: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -738,7 +740,8 @@ class TrustGraphStore:
                     """
                     SELECT id, source_did, target_did,
                            competence, integrity, confidentiality, judgment,
-                           domain, created_at, updated_at, expires_at
+                           domain, can_delegate, delegation_depth,
+                           created_at, updated_at, expires_at
                     FROM trust_edges
                     WHERE source_did = %s AND target_did = %s AND domain = %s
                     """,
@@ -749,7 +752,8 @@ class TrustGraphStore:
                     """
                     SELECT id, source_did, target_did,
                            competence, integrity, confidentiality, judgment,
-                           domain, created_at, updated_at, expires_at
+                           domain, can_delegate, delegation_depth,
+                           created_at, updated_at, expires_at
                     FROM trust_edges
                     WHERE source_did = %s AND target_did = %s AND domain IS NULL
                     """,
@@ -769,6 +773,8 @@ class TrustGraphStore:
                 confidentiality=row["confidentiality"],
                 judgment=row["judgment"],
                 domain=row["domain"],
+                can_delegate=row.get("can_delegate", False),
+                delegation_depth=row.get("delegation_depth", 0),
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 expires_at=row["expires_at"],
@@ -796,7 +802,8 @@ class TrustGraphStore:
             query = """
                 SELECT id, source_did, target_did,
                        competence, integrity, confidentiality, judgment,
-                       domain, created_at, updated_at, expires_at
+                       domain, can_delegate, delegation_depth,
+                       created_at, updated_at, expires_at
                 FROM trust_edges
                 WHERE source_did = %s
             """
@@ -822,6 +829,8 @@ class TrustGraphStore:
                     confidentiality=row["confidentiality"],
                     judgment=row["judgment"],
                     domain=row["domain"],
+                    can_delegate=row.get("can_delegate", False),
+                    delegation_depth=row.get("delegation_depth", 0),
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     expires_at=row["expires_at"],
@@ -851,7 +860,8 @@ class TrustGraphStore:
             query = """
                 SELECT id, source_did, target_did,
                        competence, integrity, confidentiality, judgment,
-                       domain, created_at, updated_at, expires_at
+                       domain, can_delegate, delegation_depth,
+                       created_at, updated_at, expires_at
                 FROM trust_edges
                 WHERE target_did = %s
             """
@@ -877,6 +887,8 @@ class TrustGraphStore:
                     confidentiality=row["confidentiality"],
                     judgment=row["judgment"],
                     domain=row["domain"],
+                    can_delegate=row.get("can_delegate", False),
+                    delegation_depth=row.get("delegation_depth", 0),
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     expires_at=row["expires_at"],
@@ -1101,6 +1113,8 @@ class TrustService:
         confidentiality: float,
         judgment: float = 0.1,
         domain: str | None = None,
+        can_delegate: bool = False,
+        delegation_depth: int = 0,
         expires_at: datetime | None = None,
     ) -> TrustEdge4D:
         """Grant trust from source to target.
@@ -1115,6 +1129,8 @@ class TrustService:
             confidentiality: Trust in target's ability to keep secrets (0-1)
             judgment: Trust in target's decision-making quality (0-1, default 0.1)
             domain: Optional scope/context for this trust relationship
+            can_delegate: Whether trust can be transitively delegated (default False)
+            delegation_depth: Maximum delegation chain length (0 = no limit when can_delegate=True)
             expires_at: Optional expiration time
             
         Returns:
@@ -1131,6 +1147,8 @@ class TrustService:
             confidentiality=confidentiality,
             judgment=judgment,
             domain=domain,
+            can_delegate=can_delegate,
+            delegation_depth=delegation_depth,
             expires_at=expires_at,
         )
         
@@ -1180,30 +1198,69 @@ class TrustService:
     ) -> TrustEdge4D | None:
         """Get the trust edge from source to target.
         
+        When a domain is specified, first checks for a domain-specific edge,
+        then falls back to the global (domain=None) edge if not found.
+        Domain-scoped trust overrides global trust for that domain.
+        
         Args:
             source_did: DID of the trusting agent
             target_did: DID of the trusted agent
-            domain: Optional scope to query
+            domain: Optional scope to query. If specified, will check for
+                   domain-specific edge first, then fall back to global.
             
         Returns:
             TrustEdge4D if found and not expired, None otherwise
         """
         if self._use_memory:
-            key = self._make_key(source_did, target_did, domain)
-            edge = self._memory_store.get(key)
-            if edge and not edge.is_expired():
-                return edge
-            elif edge and edge.is_expired():
-                # Clean up expired edge
-                del self._memory_store[key]
-            return None
-        else:
-            edge = self._store.get_edge(source_did, target_did, domain)
-            if edge and edge.is_expired():
-                # Clean up and return None
-                self._store.delete_edge(source_did, target_did, domain)
+            # Try domain-specific edge first (if domain specified)
+            if domain is not None:
+                key = self._make_key(source_did, target_did, domain)
+                edge = self._memory_store.get(key)
+                if edge and not edge.is_expired():
+                    return edge
+                elif edge and edge.is_expired():
+                    del self._memory_store[key]
+                
+                # Fall back to global edge
+                global_key = self._make_key(source_did, target_did, None)
+                global_edge = self._memory_store.get(global_key)
+                if global_edge and not global_edge.is_expired():
+                    return global_edge
+                elif global_edge and global_edge.is_expired():
+                    del self._memory_store[global_key]
                 return None
-            return edge
+            else:
+                # Just look for global edge
+                key = self._make_key(source_did, target_did, None)
+                edge = self._memory_store.get(key)
+                if edge and not edge.is_expired():
+                    return edge
+                elif edge and edge.is_expired():
+                    del self._memory_store[key]
+                return None
+        else:
+            # Try domain-specific edge first (if domain specified)
+            if domain is not None:
+                edge = self._store.get_edge(source_did, target_did, domain)
+                if edge and not edge.is_expired():
+                    return edge
+                elif edge and edge.is_expired():
+                    self._store.delete_edge(source_did, target_did, domain)
+                
+                # Fall back to global edge
+                global_edge = self._store.get_edge(source_did, target_did, None)
+                if global_edge and not global_edge.is_expired():
+                    return global_edge
+                elif global_edge and global_edge.is_expired():
+                    self._store.delete_edge(source_did, target_did, None)
+                return None
+            else:
+                # Just look for global edge
+                edge = self._store.get_edge(source_did, target_did, None)
+                if edge and edge.is_expired():
+                    self._store.delete_edge(source_did, target_did, None)
+                    return None
+                return edge
     
     def list_trusted(
         self,
@@ -1212,9 +1269,16 @@ class TrustService:
     ) -> list[TrustEdge4D]:
         """List all agents trusted by the source.
         
+        When a domain is specified, returns the effective trust edges for that
+        domain context. For each target, returns the domain-specific edge if it
+        exists, otherwise returns the global edge. Domain-scoped trust overrides
+        global trust for that domain.
+        
         Args:
             source_did: DID of the trusting agent
-            domain: Optional scope filter (None returns all)
+            domain: Optional scope filter. If specified, returns effective trust
+                   for that domain (domain-specific edges override global).
+                   If None, returns all edges (both global and domain-scoped).
             
         Returns:
             List of TrustEdge4D objects (excluding expired)
@@ -1223,20 +1287,45 @@ class TrustService:
             result = []
             expired_keys = []
             
-            for key, edge in self._memory_store.items():
-                src, tgt, dom = key
-                if src != source_did:
-                    continue
+            if domain is not None:
+                # Collect all edges from this source, separating by target
+                # For each target: domain-specific edge overrides global
+                global_edges: dict[str, TrustEdge4D] = {}  # target -> edge
+                domain_edges: dict[str, TrustEdge4D] = {}  # target -> edge
                 
-                # Filter by domain if specified
-                if domain is not None and (dom or None) != domain:
-                    continue
+                for key, edge in self._memory_store.items():
+                    src, tgt, dom = key
+                    if src != source_did:
+                        continue
+                    
+                    if edge.is_expired():
+                        expired_keys.append(key)
+                        continue
+                    
+                    if dom == domain:
+                        domain_edges[tgt] = edge
+                    elif dom == "":  # Global (domain is None stored as "")
+                        global_edges[tgt] = edge
                 
-                if edge.is_expired():
-                    expired_keys.append(key)
-                    continue
-                
-                result.append(edge)
+                # Domain-specific edges override global for each target
+                all_targets = set(global_edges.keys()) | set(domain_edges.keys())
+                for target in all_targets:
+                    if target in domain_edges:
+                        result.append(domain_edges[target])
+                    elif target in global_edges:
+                        result.append(global_edges[target])
+            else:
+                # Return all edges (no domain filter)
+                for key, edge in self._memory_store.items():
+                    src, tgt, dom = key
+                    if src != source_did:
+                        continue
+                    
+                    if edge.is_expired():
+                        expired_keys.append(key)
+                        continue
+                    
+                    result.append(edge)
             
             # Clean up expired
             for key in expired_keys:
@@ -1244,7 +1333,31 @@ class TrustService:
             
             return result
         else:
-            return self._store.get_edges_from(source_did, domain, include_expired=False)
+            if domain is not None:
+                # Get both domain-specific and global edges
+                domain_edges = self._store.get_edges_from(
+                    source_did, domain, include_expired=False
+                )
+                global_edges = self._store.get_edges_from(
+                    source_did, None, include_expired=False
+                )
+                
+                # Build result: domain-specific overrides global for each target
+                domain_by_target = {e.target_did: e for e in domain_edges}
+                global_by_target = {e.target_did: e for e in global_edges}
+                
+                result = []
+                all_targets = set(domain_by_target.keys()) | set(global_by_target.keys())
+                for target in all_targets:
+                    if target in domain_by_target:
+                        result.append(domain_by_target[target])
+                    elif target in global_by_target:
+                        result.append(global_by_target[target])
+                
+                return result
+            else:
+                # Return all edges (no domain filter)
+                return self._store.get_edges_from(source_did, None, include_expired=False)
     
     def list_trusters(
         self,
@@ -1286,6 +1399,159 @@ class TrustService:
             return result
         else:
             return self._store.get_edges_to(target_did, domain, include_expired=False)
+    
+    def compute_delegated_trust(
+        self,
+        source: str,
+        target: str,
+        domain: str | None = None,
+    ) -> TrustEdge4D | None:
+        """Compute transitive trust through delegation chains with decay.
+        
+        Finds paths from source to target through edges where can_delegate=True,
+        applies decay at each hop based on the intermediary's judgment score,
+        and respects delegation_depth limits.
+        
+        The decay formula at each hop:
+            delegated_trust[dim] = min(current[dim], next[dim]) * current.judgment
+        
+        This captures the intuition that:
+        1. We can't trust the target more than we trust the intermediary
+        2. The intermediary's judgment affects how much we weight their recommendation
+        
+        Args:
+            source: Source DID (the entity seeking trust information)
+            target: Target DID (the entity being evaluated)
+            domain: Optional domain to scope the trust lookup
+            
+        Returns:
+            TrustEdge representing delegated trust from source to target,
+            or None if no valid delegation path exists.
+            
+        Example:
+            >>> service = TrustService(use_memory=True)
+            >>> # Alice trusts Bob with high judgment, allows delegation depth 2
+            >>> edge = TrustEdge(
+            ...     source_did="alice", target_did="bob",
+            ...     competence=0.8, integrity=0.8, confidentiality=0.8,
+            ...     judgment=0.9, can_delegate=True, delegation_depth=2
+            ... )
+            >>> service._memory_store[("alice", "bob", "")] = edge
+            >>> # Bob trusts Carol
+            >>> edge2 = TrustEdge(
+            ...     source_did="bob", target_did="carol",
+            ...     competence=0.9, integrity=0.9, confidentiality=0.9, judgment=0.8
+            ... )
+            >>> service._memory_store[("bob", "carol", "")] = edge2
+            >>> # Compute Alice's delegated trust in Carol
+            >>> delegated = service.compute_delegated_trust("alice", "carol")
+            >>> # Decay: min(0.8, 0.9) * 0.9 = 0.72 for competence
+        """
+        from collections import deque
+        
+        # Check for direct trust first
+        direct = self.get_trust(source, target, domain)
+        if direct is not None:
+            return direct
+        
+        # BFS to find delegation paths
+        # Queue entries: (current_did, path_of_edges, remaining_depth)
+        # remaining_depth tracks the minimum delegation_depth remaining in the chain
+        # None means no limit (unlimited delegation)
+        queue: deque[tuple[str, list[TrustEdge4D], int | None]] = deque()
+        
+        # Get initial edges from source that allow delegation
+        source_edges = self.list_trusted(source, domain)
+        for edge in source_edges:
+            if edge.can_delegate:
+                # delegation_depth=0 means no limit, otherwise it's the max hops allowed
+                initial_depth: int | None = edge.delegation_depth if edge.delegation_depth > 0 else None
+                queue.append((edge.target_did, [edge], initial_depth))
+        
+        found_paths: list[list[TrustEdge4D]] = []
+        # Track visited nodes with (depth, remaining_limit) to avoid inferior paths
+        visited: dict[str, tuple[int, int | None]] = {}
+        
+        while queue:
+            current_did, path, remaining_depth = queue.popleft()
+            current_hops = len(path)
+            
+            # Check if we've found a better path to this node already
+            if current_did in visited:
+                prev_hops, prev_remaining = visited[current_did]
+                # Skip if we've reached this node in fewer hops
+                if prev_hops < current_hops:
+                    continue
+                # Skip if same hops but better remaining depth
+                if prev_hops == current_hops:
+                    if prev_remaining is None:  # Unlimited is better
+                        continue
+                    if remaining_depth is not None and prev_remaining >= remaining_depth:
+                        continue
+            
+            visited[current_did] = (current_hops, remaining_depth)
+            
+            # Found target - this is a valid delegation path
+            if current_did == target:
+                found_paths.append(path)
+                continue
+            
+            # Can't go further if depth exhausted
+            if remaining_depth is not None and remaining_depth <= 0:
+                continue
+            
+            # Get outgoing edges from current node
+            current_edges = self.list_trusted(current_did, domain)
+            for edge in current_edges:
+                # For intermediate hops, edge must allow delegation
+                # For final hop to target, we don't require can_delegate on the last edge
+                if edge.target_did == target:
+                    # Final hop - doesn't need can_delegate
+                    new_remaining = remaining_depth - 1 if remaining_depth is not None else None
+                    queue.append((edge.target_did, path + [edge], new_remaining))
+                elif edge.can_delegate:
+                    # Intermediate hop - must allow delegation
+                    # Calculate new remaining depth
+                    if remaining_depth is None:
+                        # No limit from upstream; use this edge's limit if any
+                        new_remaining = edge.delegation_depth if edge.delegation_depth > 0 else None
+                    elif edge.delegation_depth == 0:
+                        # This edge has no limit; decrement upstream limit
+                        new_remaining = remaining_depth - 1
+                    else:
+                        # Both have limits; take the more restrictive and decrement
+                        new_remaining = min(remaining_depth, edge.delegation_depth) - 1
+                    
+                    # Only continue if we have depth left
+                    if new_remaining is None or new_remaining >= 0:
+                        queue.append((edge.target_did, path + [edge], new_remaining))
+        
+        if not found_paths:
+            return None
+        
+        # Compute delegated trust for each path with decay
+        path_trusts: list[TrustEdge4D] = []
+        for path in found_paths:
+            # Start with the first edge
+            result = path[0]
+            
+            # Chain through each subsequent edge, applying decay
+            for next_edge in path[1:]:
+                result = compute_delegated_trust(result, next_edge)
+            
+            path_trusts.append(result)
+        
+        # Combine paths: take max of each dimension (optimistic combination)
+        # This represents "trust via the best available path"
+        return TrustEdge4D(
+            source_did=source,
+            target_did=target,
+            competence=max(t.competence for t in path_trusts),
+            integrity=max(t.integrity for t in path_trusts),
+            confidentiality=max(t.confidentiality for t in path_trusts),
+            judgment=max(t.judgment for t in path_trusts),
+            domain=domain,
+        )
     
     def clear(self) -> int:
         """Clear all trust edges (mainly for testing).
@@ -1340,6 +1606,8 @@ def grant_trust(
     confidentiality: float,
     judgment: float = 0.1,
     domain: str | None = None,
+    can_delegate: bool = False,
+    delegation_depth: int = 0,
     expires_at: datetime | None = None,
 ) -> TrustEdge4D:
     """Grant trust (convenience function using default service)."""
@@ -1351,6 +1619,8 @@ def grant_trust(
         confidentiality=confidentiality,
         judgment=judgment,
         domain=domain,
+        can_delegate=can_delegate,
+        delegation_depth=delegation_depth,
         expires_at=expires_at,
     )
 
@@ -1399,5 +1669,31 @@ def list_trusters(
     """List trusters (convenience function using default service)."""
     return get_trust_service().list_trusters(
         target_did=target_did,
+        domain=domain,
+    )
+
+
+def compute_delegated_trust_from_service(
+    source: str,
+    target: str,
+    domain: str | None = None,
+) -> TrustEdge4D | None:
+    """Compute delegated trust through the trust graph (convenience function).
+    
+    Finds paths from source to target through delegatable edges, applies
+    decay at each hop based on the intermediary's judgment, and respects
+    delegation_depth limits.
+    
+    Args:
+        source: Source DID (the entity seeking trust information)
+        target: Target DID (the entity being evaluated)
+        domain: Optional domain to scope the trust lookup
+        
+    Returns:
+        TrustEdge representing delegated trust, or None if no path exists.
+    """
+    return get_trust_service().compute_delegated_trust(
+        source=source,
+        target=target,
         domain=domain,
     )
