@@ -71,9 +71,11 @@ Requirements:
 Definition of Done:
 - [ ] Code complete
 - [ ] **Tests updated** — if behavior changes (exceptions, signatures, return types), update affected tests
+- [ ] **Docs updated** — README, CHANGELOG, or audit status if applicable
 - [ ] Tests pass locally (`./scripts/check`)
 - [ ] CI green
 - [ ] PR ready for review
+- [ ] **Out-of-scope issues filed** — don't fix unrelated problems inline
 
 Model: [opus/sonnet/haiku]
 Timeout: [seconds]
@@ -116,6 +118,79 @@ Before pushing any PR:
 1. `grep -r "side_effect=Exception" tests/` — check for generic exception mocks
 2. Run affected test files directly: `pytest tests/path/to/affected_test.py -v`
 3. If tests fail, fix them before pushing
+
+## Out-of-Scope Findings
+
+Sub-agents often discover issues beyond their assigned task. **Don't fix them inline — open issues.**
+
+### When to Open an Issue
+
+| Discovery | Action |
+|-----------|--------|
+| Bug in unrelated code | Open issue with reproduction steps |
+| Missing test coverage elsewhere | Open issue, note affected files |
+| Doc inconsistency | Open issue or fix if trivial (<5 lines) |
+| Security concern | Open issue with `security` label, flag to main agent |
+| Performance problem | Open issue with profiling data if available |
+| Architectural smell | Open issue for discussion |
+
+### Issue Template for Sub-Agent Findings
+
+```markdown
+## Found During
+PR #X / Issue #Y — [brief context]
+
+## Problem
+[Clear description]
+
+## Location
+`path/to/file.py:123`
+
+## Suggested Fix
+[If obvious]
+
+## Severity
+[Low/Medium/High]
+```
+
+### Why This Matters
+
+- Keeps PRs focused and reviewable
+- Creates audit trail of discovered issues
+- Allows proper prioritization by main agent
+- Prevents scope creep that delays merges
+
+## Documentation Updates
+
+**Code changes often require doc updates.** Check before marking work complete.
+
+### Doc Update Checklist
+
+| Code Change | Doc to Update |
+|-------------|---------------|
+| New feature | README.md, FEATURE-SPEC.md |
+| API change | openapi.yaml, relevant docs/ |
+| Config change | README.md (config section) |
+| Bug fix | CHANGELOG.md |
+| Security fix | CHANGELOG.md, security docs if applicable |
+| Behavior change | Affected doc files |
+
+### Where Docs Live
+
+- `README.md` — User-facing overview, quickstart
+- `CHANGELOG.md` — All notable changes
+- `docs/` — Detailed specs and guides
+- `docs/audits/` — Audit reports (update status sections)
+- Code docstrings — API documentation
+
+### Audit Doc Updates
+
+When fixing issues found in audits, update the audit doc's status section:
+```markdown
+| Finding | Status | PR/Issue |
+|---------|--------|----------|
+| [finding] | ✅ Fixed | #123 |
+```
 
 ## Failure Recovery
 
