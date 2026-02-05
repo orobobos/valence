@@ -165,6 +165,7 @@ async def register_client(request: Request) -> JSONResponse:
             "grant_types": client.grant_types,
             "response_types": client.response_types,
             "scope": client.scope,
+            "token_endpoint_auth_method": "none",  # Public clients (RFC 7591)
             "client_id_issued_at": int(client.created_at),
         },
         status_code=201,
