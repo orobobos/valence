@@ -231,10 +231,11 @@ async def mcp_endpoint(request: Request) -> Response:
         return JSONResponse(response)
 
     except json.JSONDecodeError as e:
+        logger.warning(f"MCP parse error: {e}")
         return JSONResponse(
             {
                 "jsonrpc": "2.0",
-                "error": {"code": -32700, "message": f"Parse error: {str(e)}"},
+                "error": {"code": -32700, "message": "Parse error"},
                 "id": None,
             },
             status_code=400,
@@ -244,7 +245,7 @@ async def mcp_endpoint(request: Request) -> Response:
         return JSONResponse(
             {
                 "jsonrpc": "2.0",
-                "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                "error": {"code": -32603, "message": "Internal error"},
                 "id": None,
             },
             status_code=500,
@@ -308,7 +309,7 @@ async def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any] | None:
             return None
         return {
             "jsonrpc": "2.0",
-            "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+            "error": {"code": -32603, "message": "Internal error"},
             "id": request_id,
         }
 

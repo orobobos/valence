@@ -84,7 +84,7 @@ async def delete_user_data_endpoint(request: Request) -> JSONResponse:
             
     except Exception as e:
         logger.exception(f"Error deleting user data: {e}")
-        return internal_error(str(e))
+        return internal_error("Internal server error")
 
 
 async def get_deletion_verification_endpoint(request: Request) -> JSONResponse:

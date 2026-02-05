@@ -186,7 +186,7 @@ class FederationNode:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
             logger.exception("Error in introduce endpoint")
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Internal server error"}, status_code=500)
     
     async def _share(self, request: Request) -> JSONResponse:
         """Handle shared belief.
@@ -283,7 +283,7 @@ class FederationNode:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
             logger.exception("Error in share endpoint")
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Internal server error"}, status_code=500)
     
     async def _query(self, request: Request) -> JSONResponse:
         """Handle belief query.
@@ -349,7 +349,7 @@ class FederationNode:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
             logger.exception("Error in query endpoint")
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Internal server error"}, status_code=500)
     
     async def _list_peers(self, request: Request) -> JSONResponse:
         """List known peers.
