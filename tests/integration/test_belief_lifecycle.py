@@ -314,7 +314,7 @@ class TestBeliefTensions:
             cur.execute(
                 """
                 INSERT INTO tensions (belief_a_id, belief_b_id, type, description)
-                VALUES (%s, %s, 'supersession', 'Outdated decision')
+                VALUES (%s, %s, 'temporal_conflict', 'Outdated decision')
                 RETURNING id
             """,
                 (old_id, new_id),

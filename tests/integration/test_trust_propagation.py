@@ -97,7 +97,7 @@ class TestFederationNodes:
             cur.execute(
                 """
                 UPDATE federation_nodes
-                SET status = 'inactive', modified_at = NOW()
+                SET status = 'suspended', last_seen_at = NOW()
                 WHERE id = %s
                 RETURNING status
             """,
@@ -279,10 +279,10 @@ class TestTrustBoundaries:
                 cur.execute(
                     """
                     INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
-                    VALUES (%s, %s, 'active')
+                    VALUES (%s, %s, %s, 'active')
                     RETURNING id
                 """,
-                    (did, f"http://{name}.example.com"),
+                    (did, f"http://{name}.example.com", "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"),
                 )
                 node_id = cur.fetchone()["id"]
                 node_ids_map[name] = node_id
@@ -469,7 +469,7 @@ class TestTrustRecovery:
             cur.execute(
                 """
                 INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
-                VALUES (%s, 'http://rehab.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'probation')
+                VALUES (%s, 'http://rehab.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'suspended')
                 RETURNING id
             """,
                 (did,),
@@ -512,7 +512,7 @@ class TestTrustRecovery:
             cur.execute(
                 """
                 INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
-                VALUES (%s, 'http://bad.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'blocked')
+                VALUES (%s, 'http://bad.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'suspended')
                 RETURNING id
             """,
                 (did,),

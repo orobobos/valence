@@ -84,13 +84,14 @@ class TestPeerRegistration:
             cur.execute(
                 """
                 INSERT INTO federation_nodes (did, federation_endpoint, mcp_endpoint, public_key_multibase, status)
-                VALUES (%s, %s, %s, 'pending')
+                VALUES (%s, %s, %s, %s, 'discovered')
                 RETURNING id, status
             """,
                 (
                     did,
                     "http://peer.example.com:8080/federation",
                     "http://peer.example.com:8080/mcp",
+                    "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
                 ),
             )
 
@@ -106,7 +107,7 @@ class TestPeerRegistration:
             cur.execute(
                 """
                 INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
-                VALUES (%s, 'http://test.example.com', 'pending')
+                VALUES (%s, 'http://test.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'discovered')
                 RETURNING id
             """,
                 (did,),
@@ -194,7 +195,7 @@ class TestBeliefSync:
                 cur.execute(
                     """
                     INSERT INTO sync_log (entity_type, entity_id, operation, peer_node_id, status)
-                    VALUES ('belief', %s, 'push', 'test-peer', 'pending')
+                    VALUES ('belief', %s, 'push', 'test-peer', 'discovered')
                     RETURNING id
                 """,
                     (belief_id,),
