@@ -847,3 +847,222 @@ class TestTrustAttestationMessages:
         
         assert msg.type == MessageType.TRUST_ATTESTATION_RESPONSE
         assert msg.accepted is True
+
+
+# =============================================================================
+# SESSION TOKEN STORAGE TESTS
+# =============================================================================
+
+
+class TestInMemorySessionStore:
+    """Tests for InMemorySessionStore."""
+
+    def test_store_and_validate(self):
+        """Test storing and validating a session token."""
+        from valence.federation.protocol import InMemorySessionStore
+        from datetime import datetime, timedelta
+        
+        store = InMemorySessionStore()
+        token = "test-token-123"
+        did = "did:vkb:web:test.example.com"
+        expires = datetime.now() + timedelta(hours=1)
+        
+        store.store(token, did, expires)
+        result = store.validate(token)
+        
+        assert result == did
+
+    def test_validate_expired_token(self):
+        """Test that expired tokens return None."""
+        from valence.federation.protocol import InMemorySessionStore
+        from datetime import datetime, timedelta
+        
+        store = InMemorySessionStore()
+        token = "expired-token"
+        did = "did:vkb:web:test"
+        expires = datetime.now() - timedelta(hours=1)  # Already expired
+        
+        store.store(token, did, expires)
+        result = store.validate(token)
+        
+        assert result is None
+
+    def test_validate_unknown_token(self):
+        """Test that unknown tokens return None."""
+        from valence.federation.protocol import InMemorySessionStore
+        
+        store = InMemorySessionStore()
+        result = store.validate("unknown-token")
+        
+        assert result is None
+
+    def test_revoke_token(self):
+        """Test revoking a session token."""
+        from valence.federation.protocol import InMemorySessionStore
+        from datetime import datetime, timedelta
+        
+        store = InMemorySessionStore()
+        token = "revokable-token"
+        expires = datetime.now() + timedelta(hours=1)
+        
+        store.store(token, "did:vkb:web:test", expires)
+        assert store.validate(token) is not None
+        
+        store.revoke(token)
+        assert store.validate(token) is None
+
+    def test_cleanup_expired(self):
+        """Test cleanup of expired tokens."""
+        from valence.federation.protocol import InMemorySessionStore
+        from datetime import datetime, timedelta
+        
+        store = InMemorySessionStore()
+        now = datetime.now()
+        
+        # Add some expired and valid tokens
+        store.store("expired1", "did1", now - timedelta(hours=1))
+        store.store("expired2", "did2", now - timedelta(minutes=30))
+        store.store("valid", "did3", now + timedelta(hours=1))
+        
+        removed = store.cleanup_expired()
+        
+        assert removed == 2
+        assert store.validate("valid") == "did3"
+
+
+class TestSessionStoreIntegration:
+    """Tests for session store integration with auth flow."""
+
+    def test_verify_stores_session(self):
+        """Test that verify_auth_challenge stores session token."""
+        from valence.federation.protocol import (
+            create_auth_challenge, 
+            verify_auth_challenge,
+            InMemorySessionStore,
+            set_session_store,
+            get_session_store,
+        )
+        from valence.federation.identity import generate_keypair, sign_message
+        import base64
+        
+        # Set up in-memory store for testing
+        store = InMemorySessionStore()
+        set_session_store(store)
+        
+        kp = generate_keypair()
+        client_did = f"did:vkb:key:{kp.public_key_multibase}"
+        
+        # Create challenge
+        challenge_response = create_auth_challenge(client_did)
+        challenge = challenge_response.challenge
+        
+        # Sign challenge
+        signature = sign_message(challenge.encode(), kp.private_key_bytes)
+        signature_b64 = base64.b64encode(signature).decode()
+        
+        # Verify
+        result = verify_auth_challenge(
+            client_did,
+            challenge,
+            signature_b64,
+            kp.public_key_multibase,
+        )
+        
+        # Check token was stored
+        assert hasattr(result, "session_token")
+        validated_did = store.validate(result.session_token)
+        assert validated_did == client_did
+
+
+# =============================================================================
+# CURSOR-BASED PAGINATION TESTS
+# =============================================================================
+
+
+class TestCursorPagination:
+    """Tests for cursor-based pagination in handle_request_beliefs."""
+
+    def test_cursor_format(self, mock_get_cursor):
+        """Test that cursor has correct format."""
+        from datetime import datetime
+        from uuid import uuid4
+        
+        belief_id = uuid4()
+        created_at = datetime.now()
+        
+        # Mock belief rows with created_at
+        mock_get_cursor.fetchall.return_value = [
+            {
+                "id": belief_id,
+                "content": "Test belief",
+                "confidence": {"overall": 0.8},
+                "domain_path": ["test"],
+                "valid_from": None,
+                "valid_until": None,
+                "visibility": "public",
+                "share_level": "belief_only",
+                "created_at": created_at,
+            }
+        ]
+        mock_get_cursor.fetchone.return_value = {"total": 1}
+        
+        request = RequestBeliefsRequest(
+            requester_did="did:vkb:web:test",
+            limit=1,
+        )
+        
+        with patch("valence.federation.protocol.get_federation_config") as mock_config:
+            mock_config.return_value = MagicMock(
+                federation_node_did="did:vkb:web:local",
+                federation_private_key=None,
+            )
+            
+            result = handle_request_beliefs(request, uuid4(), 0.5)
+        
+        # Response should have a cursor if there are more results
+        assert isinstance(result, BeliefsResponse)
+        # Cursor would be set if len(results) == limit
+        if result.cursor:
+            assert ":" in result.cursor  # Format is "timestamp:id"
+
+    def test_invalid_cursor_ignored(self, mock_get_cursor):
+        """Test that invalid cursor is gracefully ignored."""
+        mock_get_cursor.fetchall.return_value = []
+        mock_get_cursor.fetchone.return_value = {"total": 0}
+        
+        request = RequestBeliefsRequest(
+            requester_did="did:vkb:web:test",
+            cursor="invalid-cursor-format",
+        )
+        
+        with patch("valence.federation.protocol.get_federation_config") as mock_config:
+            mock_config.return_value = MagicMock(
+                federation_node_did="did:vkb:web:local",
+                federation_private_key=None,
+            )
+            
+            result = handle_request_beliefs(request, uuid4(), 0.5)
+        
+        # Should still return a result (empty)
+        assert isinstance(result, BeliefsResponse)
+        assert result.beliefs == []
+
+    def test_no_cursor_for_last_page(self, mock_get_cursor):
+        """Test that no cursor is returned for last page."""
+        mock_get_cursor.fetchall.return_value = []  # No results
+        mock_get_cursor.fetchone.return_value = {"total": 0}
+        
+        request = RequestBeliefsRequest(
+            requester_did="did:vkb:web:test",
+            limit=10,
+        )
+        
+        with patch("valence.federation.protocol.get_federation_config") as mock_config:
+            mock_config.return_value = MagicMock(
+                federation_node_did="did:vkb:web:local",
+                federation_private_key=None,
+            )
+            
+            result = handle_request_beliefs(request, uuid4(), 0.5)
+        
+        assert result.cursor is None

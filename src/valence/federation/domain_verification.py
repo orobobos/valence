@@ -694,15 +694,36 @@ async def get_federation_trust(
 ) -> float:
     """Get trust level for a remote federation.
     
-    This is a simplified implementation. In production, this would
-    integrate with the full trust system.
+    Integrates with TrustManager to compute the effective trust level
+    for a remote federation node.
     
+    Args:
+        local_did: Our node's DID (currently unused, for future bilateral trust)
+        remote_did: The remote federation's DID
+        
     Returns:
         Trust level from 0.0 to 1.0
     """
-    # TODO: Integrate with TrustManager from .trust module
-    # For now, return a default medium trust
-    return 0.5
+    from .discovery import get_node_by_did
+    from .trust import TrustManager
+    
+    # Look up the remote node
+    node = get_node_by_did(remote_did)
+    if not node:
+        # Unknown node - return low default trust
+        logger.debug(f"No node found for DID {remote_did}, returning default trust")
+        return 0.3
+    
+    # Get effective trust from TrustManager
+    try:
+        trust_manager = TrustManager()
+        effective_trust = trust_manager.get_effective_trust(node.id)
+        logger.debug(f"Trust for {remote_did}: {effective_trust}")
+        return effective_trust
+    except Exception as e:
+        logger.warning(f"Error getting trust for {remote_did}: {e}")
+        # Return medium trust on error
+        return 0.5
 
 
 # =============================================================================

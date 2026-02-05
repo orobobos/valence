@@ -678,3 +678,86 @@ class TestGetSyncStatus:
         result = get_sync_status()
 
         assert "error" in result
+
+
+# =============================================================================
+# SYNC MANAGER AUTH HEADERS TESTS
+# =============================================================================
+
+
+class TestSyncManagerAuthHeaders:
+    """Tests for SyncManager authentication headers."""
+
+    def test_get_auth_headers_configured(self):
+        """Test getting auth headers when federation is configured."""
+        from valence.federation.sync import SyncManager
+        from valence.federation.identity import generate_keypair
+        
+        kp = generate_keypair()
+        
+        with patch("valence.federation.sync.get_federation_config") as mock_config:
+            mock_settings = MagicMock()
+            mock_settings.federation_node_did = "did:vkb:web:test.example.com"
+            mock_settings.federation_private_key = kp.private_key_hex
+            mock_settings.federation_sync_interval_seconds = 300
+            mock_config.return_value = mock_settings
+            
+            manager = SyncManager()
+            headers = manager._get_auth_headers({"type": "test"})
+            
+            assert "X-Federation-DID" in headers
+            assert headers["X-Federation-DID"] == "did:vkb:web:test.example.com"
+            assert "X-Federation-Timestamp" in headers
+            assert "X-Federation-Signature" in headers
+
+    def test_get_auth_headers_not_configured(self):
+        """Test getting auth headers when federation not configured."""
+        from valence.federation.sync import SyncManager
+        
+        with patch("valence.federation.sync.get_federation_config") as mock_config:
+            mock_settings = MagicMock()
+            mock_settings.federation_node_did = None
+            mock_settings.federation_private_key = None
+            mock_settings.federation_sync_interval_seconds = 300
+            mock_config.return_value = mock_settings
+            
+            manager = SyncManager()
+            headers = manager._get_auth_headers()
+            
+            assert headers == {}
+
+    def test_get_auth_headers_no_did(self):
+        """Test getting auth headers when DID is not set."""
+        from valence.federation.sync import SyncManager
+        from valence.federation.identity import generate_keypair
+        
+        kp = generate_keypair()
+        
+        with patch("valence.federation.sync.get_federation_config") as mock_config:
+            mock_settings = MagicMock()
+            mock_settings.federation_node_did = None  # No DID
+            mock_settings.federation_private_key = kp.private_key_hex
+            mock_settings.federation_sync_interval_seconds = 300
+            mock_config.return_value = mock_settings
+            
+            manager = SyncManager()
+            headers = manager._get_auth_headers()
+            
+            assert headers == {}
+
+    def test_get_auth_headers_invalid_key(self):
+        """Test getting auth headers with invalid private key."""
+        from valence.federation.sync import SyncManager
+        
+        with patch("valence.federation.sync.get_federation_config") as mock_config:
+            mock_settings = MagicMock()
+            mock_settings.federation_node_did = "did:vkb:web:test"
+            mock_settings.federation_private_key = "invalid-hex"  # Invalid
+            mock_settings.federation_sync_interval_seconds = 300
+            mock_config.return_value = mock_settings
+            
+            manager = SyncManager()
+            headers = manager._get_auth_headers()
+            
+            # Should return empty on error
+            assert headers == {}

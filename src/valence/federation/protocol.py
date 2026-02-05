@@ -362,11 +362,150 @@ class TrustAttestationResponse(ProtocolMessage):
 
 
 # =============================================================================
+# SESSION TOKEN STORAGE
+# =============================================================================
+
+
+class SessionTokenStore:
+    """Abstract base for session token storage.
+    
+    Session tokens are used to authenticate subsequent requests after
+    the initial challenge-response authentication.
+    """
+    
+    def store(self, token: str, did: str, expires_at: datetime) -> None:
+        """Store a session token."""
+        raise NotImplementedError
+    
+    def validate(self, token: str) -> str | None:
+        """Validate a token and return the associated DID, or None if invalid."""
+        raise NotImplementedError
+    
+    def revoke(self, token: str) -> None:
+        """Revoke a session token."""
+        raise NotImplementedError
+
+
+class InMemorySessionStore(SessionTokenStore):
+    """In-memory session token storage for development/testing."""
+    
+    def __init__(self):
+        self._tokens: dict[str, tuple[str, datetime]] = {}
+    
+    def store(self, token: str, did: str, expires_at: datetime) -> None:
+        self._tokens[token] = (did, expires_at)
+    
+    def validate(self, token: str) -> str | None:
+        if token not in self._tokens:
+            return None
+        did, expires_at = self._tokens[token]
+        if datetime.now() > expires_at:
+            del self._tokens[token]
+            return None
+        return did
+    
+    def revoke(self, token: str) -> None:
+        self._tokens.pop(token, None)
+    
+    def cleanup_expired(self) -> int:
+        """Remove expired tokens. Returns count of removed tokens."""
+        now = datetime.now()
+        expired = [t for t, (_, exp) in self._tokens.items() if now > exp]
+        for token in expired:
+            del self._tokens[token]
+        return len(expired)
+
+
+class RedisSessionStore(SessionTokenStore):
+    """Redis-backed session token storage for production.
+    
+    Requires redis-py: pip install redis
+    
+    Uses Redis key expiration for automatic cleanup.
+    Key format: vfp:session:{token}
+    Value: JSON with {did, expires_at}
+    """
+    
+    KEY_PREFIX = "vfp:session:"
+    
+    def __init__(self, redis_url: str = "redis://localhost:6379/0"):
+        try:
+            import redis
+            self._redis = redis.from_url(redis_url)
+            # Test connection
+            self._redis.ping()
+            logger.info("Redis session store initialized")
+        except ImportError:
+            raise RuntimeError("redis-py required for RedisSessionStore: pip install redis")
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to Redis: {e}")
+    
+    def store(self, token: str, did: str, expires_at: datetime) -> None:
+        import json
+        key = f"{self.KEY_PREFIX}{token}"
+        value = json.dumps({"did": did, "expires_at": expires_at.isoformat()})
+        ttl_seconds = int((expires_at - datetime.now()).total_seconds())
+        if ttl_seconds > 0:
+            self._redis.setex(key, ttl_seconds, value)
+    
+    def validate(self, token: str) -> str | None:
+        import json
+        key = f"{self.KEY_PREFIX}{token}"
+        value = self._redis.get(key)
+        if not value:
+            return None
+        try:
+            data = json.loads(value)
+            return data.get("did")
+        except Exception:
+            return None
+    
+    def revoke(self, token: str) -> None:
+        key = f"{self.KEY_PREFIX}{token}"
+        self._redis.delete(key)
+
+
+def _get_session_store() -> SessionTokenStore:
+    """Get the configured session token store.
+    
+    Uses Redis if VALENCE_REDIS_URL is set, otherwise falls back to in-memory.
+    """
+    import os
+    redis_url = os.environ.get("VALENCE_REDIS_URL")
+    
+    if redis_url:
+        try:
+            return RedisSessionStore(redis_url)
+        except Exception as e:
+            logger.warning(f"Failed to initialize Redis session store: {e}, falling back to in-memory")
+    
+    return InMemorySessionStore()
+
+
+# Global session store instance (lazy initialized)
+_session_store: SessionTokenStore | None = None
+
+
+def get_session_store() -> SessionTokenStore:
+    """Get the global session token store."""
+    global _session_store
+    if _session_store is None:
+        _session_store = _get_session_store()
+    return _session_store
+
+
+def set_session_store(store: SessionTokenStore) -> None:
+    """Set a custom session store (for testing)."""
+    global _session_store
+    _session_store = store
+
+
+# =============================================================================
 # AUTHENTICATION STATE
 # =============================================================================
 
 
-# In-memory challenge store (should use Redis in production)
+# In-memory challenge store (challenges are short-lived, in-memory is fine)
 _pending_challenges: dict[str, tuple[str, datetime]] = {}
 
 
@@ -458,7 +597,8 @@ def verify_auth_challenge(
     session_token = secrets.token_hex(32)
     expires_at = datetime.now() + timedelta(hours=1)
 
-    # TODO: Store session token (use Redis in production)
+    # Store session token (uses Redis in production if VALENCE_REDIS_URL is set)
+    get_session_store().store(session_token, client_did, expires_at)
 
     return AuthVerifyResponse(
         session_token=session_token,
@@ -734,6 +874,21 @@ def handle_request_beliefs(
         conditions.append("(confidence->>'overall')::numeric >= %s")
         params.append(request.min_confidence)
 
+    # Cursor-based pagination: cursor format is "created_at:id" (ISO timestamp:UUID)
+    # This allows stable pagination even with concurrent inserts
+    if request.cursor:
+        try:
+            cursor_parts = request.cursor.split(":", 1)
+            if len(cursor_parts) == 2:
+                cursor_time = datetime.fromisoformat(cursor_parts[0])
+                cursor_id = cursor_parts[1]
+                # Use tuple comparison for stable ordering: (created_at, id) < (cursor_time, cursor_id)
+                conditions.append("(created_at, id::text) < (%s, %s)")
+                params.extend([cursor_time, cursor_id])
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Invalid pagination cursor: {request.cursor}: {e}")
+            # Continue without cursor filter
+
     # Limit
     limit = min(request.limit, 100)  # Cap at 100
 
@@ -743,12 +898,13 @@ def handle_request_beliefs(
                visibility, share_level, created_at
         FROM beliefs
         WHERE {' AND '.join(conditions)}
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT %s
     """
     params.append(limit)
 
     beliefs_data = []
+    last_row = None
     with get_cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
@@ -757,21 +913,34 @@ def handle_request_beliefs(
             belief_dict = _belief_row_to_federated(row, requester_trust)
             if belief_dict:
                 beliefs_data.append(belief_dict)
+                last_row = row
 
-    # Get total count for pagination
+    # Get total count for pagination (without cursor/limit filters)
+    base_conditions = [c for c in conditions if "created_at, id" not in c]
     count_query = f"""
         SELECT COUNT(*) as total FROM beliefs
-        WHERE {' AND '.join(conditions[:-1] if limit else conditions)}
+        WHERE {' AND '.join(base_conditions)}
     """
+    # Remove cursor params and limit from count query params
+    count_params = params[:-1]  # Remove limit
+    if request.cursor:
+        count_params = count_params[:-2]  # Remove cursor params if present
+    
     with get_cursor() as cur:
-        cur.execute(count_query, params[:-1] if limit else params)
+        cur.execute(count_query, count_params if count_params else None)
         total = cur.fetchone()["total"]
+
+    # Generate next cursor if there are more results
+    next_cursor = None
+    if last_row and len(beliefs_data) == limit:
+        # Format: ISO timestamp:UUID
+        next_cursor = f"{last_row['created_at'].isoformat()}:{last_row['id']}"
 
     return BeliefsResponse(
         request_id=request.request_id,
         beliefs=beliefs_data,
         total_available=total,
-        cursor=None,  # TODO: Implement cursor-based pagination
+        cursor=next_cursor,
     )
 
 

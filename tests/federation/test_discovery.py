@@ -741,3 +741,159 @@ class TestGetKnownPeers:
         result = get_known_peers()
 
         assert result == []
+
+
+class TestExchangePeers:
+    """Tests for exchange_peers function."""
+
+    @pytest.fixture
+    def sample_federation_node(self):
+        """Create a sample FederationNode."""
+        from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+        return FederationNode(
+            id=uuid4(),
+            did="did:vkb:web:peer.example.com",
+            federation_endpoint="https://peer.example.com/federation",
+            status=NodeStatus.ACTIVE,
+            trust_phase=TrustPhase.CONTRIBUTOR,
+        )
+
+    @pytest.mark.asyncio
+    async def test_exchange_peers_no_endpoint(self):
+        """Test exchange with node without endpoint returns empty."""
+        from valence.federation.discovery import exchange_peers
+        from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+        
+        node = FederationNode(
+            id=uuid4(),
+            did="did:vkb:web:test.example.com",
+            federation_endpoint=None,  # No endpoint
+            status=NodeStatus.ACTIVE,
+            trust_phase=TrustPhase.OBSERVER,
+        )
+        
+        result = await exchange_peers(node)
+        
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_exchange_peers_success(self, sample_federation_node, mock_get_cursor):
+        """Test successful peer exchange."""
+        from valence.federation.discovery import exchange_peers
+        
+        # Mock our known peers
+        mock_get_cursor.fetchall.return_value = [
+            {"did": "did:vkb:web:our1.example.com", "federation_endpoint": "https://our1.example.com/fed", "domains": [], "trust_phase": "contributor"},
+        ]
+        
+        # Mock the HTTP response
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "peers": [
+                {"did": "did:vkb:web:new.example.com", "federation_endpoint": "https://new.example.com/fed"},
+            ]
+        })
+        
+        mock_session = AsyncMock()
+        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        
+        with patch("aiohttp.ClientSession") as mock_client:
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_client.return_value.__aexit__ = AsyncMock()
+            
+            # Mock get_node_by_did to return None (new peer)
+            with patch("valence.federation.discovery.get_node_by_did", return_value=None):
+                # Mock discover_node to return a DIDDocument
+                with patch("valence.federation.discovery.discover_node", return_value=MagicMock()):
+                    # Mock register_node to return a new node
+                    from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+                    new_node = FederationNode(
+                        id=uuid4(),
+                        did="did:vkb:web:new.example.com",
+                        federation_endpoint="https://new.example.com/fed",
+                        status=NodeStatus.ACTIVE,
+                        trust_phase=TrustPhase.OBSERVER,
+                    )
+                    with patch("valence.federation.discovery.register_node", return_value=new_node):
+                        result = await exchange_peers(sample_federation_node)
+        
+        assert len(result) == 1
+        assert result[0].did == "did:vkb:web:new.example.com"
+
+    @pytest.mark.asyncio
+    async def test_exchange_peers_network_error(self, sample_federation_node, mock_get_cursor):
+        """Test peer exchange with network error."""
+        from valence.federation.discovery import exchange_peers
+        import aiohttp
+        
+        mock_get_cursor.fetchall.return_value = []
+        
+        with patch("aiohttp.ClientSession") as mock_client:
+            mock_session = AsyncMock()
+            mock_session.post.side_effect = aiohttp.ClientError("Connection failed")
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_client.return_value.__aexit__ = AsyncMock()
+            
+            result = await exchange_peers(sample_federation_node)
+        
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_exchange_peers_http_error(self, sample_federation_node, mock_get_cursor):
+        """Test peer exchange with HTTP error response."""
+        from valence.federation.discovery import exchange_peers
+        
+        mock_get_cursor.fetchall.return_value = []
+        
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        
+        mock_session = AsyncMock()
+        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        
+        with patch("aiohttp.ClientSession") as mock_client:
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_client.return_value.__aexit__ = AsyncMock()
+            
+            result = await exchange_peers(sample_federation_node)
+        
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_exchange_peers_skips_known(self, sample_federation_node, mock_get_cursor):
+        """Test that exchange skips already known peers."""
+        from valence.federation.discovery import exchange_peers
+        from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+        
+        mock_get_cursor.fetchall.return_value = []
+        
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "peers": [
+                {"did": "did:vkb:web:known.example.com", "federation_endpoint": "https://known.example.com/fed"},
+            ]
+        })
+        
+        mock_session = AsyncMock()
+        mock_session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response)))
+        
+        # Return an existing node
+        known_node = FederationNode(
+            id=uuid4(),
+            did="did:vkb:web:known.example.com",
+            federation_endpoint="https://known.example.com/fed",
+            status=NodeStatus.ACTIVE,
+            trust_phase=TrustPhase.CONTRIBUTOR,
+        )
+        
+        with patch("aiohttp.ClientSession") as mock_client:
+            mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_client.return_value.__aexit__ = AsyncMock()
+            
+            with patch("valence.federation.discovery.get_node_by_did", return_value=known_node):
+                result = await exchange_peers(sample_federation_node)
+        
+        # Should return empty because peer was already known
+        assert result == []

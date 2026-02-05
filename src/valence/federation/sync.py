@@ -336,6 +336,32 @@ class SyncManager:
         self._running = False
         self._sync_task: asyncio.Task | None = None
 
+    def _get_auth_headers(self, request_body: dict[str, Any] | None = None) -> dict[str, str]:
+        """Get authentication headers for outbound federation requests.
+        
+        Args:
+            request_body: Optional request body to include in signature
+            
+        Returns:
+            Dict of authentication headers, or empty dict if auth not configured
+        """
+        from .identity import create_auth_headers
+        
+        settings = self.settings
+        did = settings.federation_node_did
+        private_key_hex = settings.federation_private_key
+        
+        if not did or not private_key_hex:
+            logger.debug("Federation auth not configured, sending unauthenticated request")
+            return {}
+        
+        try:
+            private_key_bytes = bytes.fromhex(private_key_hex)
+            return create_auth_headers(did, private_key_bytes, request_body)
+        except Exception as e:
+            logger.warning(f"Failed to create auth headers: {e}")
+            return {}
+
     async def start(self):
         """Start the sync manager."""
         if self._running:
@@ -455,16 +481,21 @@ class SyncManager:
         # Send to node
         try:
             url = f"{federation_endpoint}/beliefs"
+            request_body = {
+                "type": "SHARE_BELIEF",
+                "request_id": str(uuid4()),
+                "beliefs": beliefs_data,
+                "timestamp": datetime.now().isoformat(),
+            }
+            
+            # Build authentication headers
+            auth_headers = self._get_auth_headers(request_body)
+            
             async with aiohttp.ClientSession() as session:
-                # TODO: Add authentication headers
                 async with session.post(
                     url,
-                    json={
-                        "type": "SHARE_BELIEF",
-                        "request_id": str(uuid4()),
-                        "beliefs": beliefs_data,
-                        "timestamp": datetime.now().isoformat(),
-                    },
+                    json=request_body,
+                    headers=auth_headers,
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     if response.status == 200:
@@ -626,18 +657,23 @@ class SyncManager:
         try:
             url = f"{federation_endpoint}/sync"
             since = last_sync or (datetime.now() - timedelta(days=7))
+            
+            request_body = {
+                "type": "SYNC_REQUEST",
+                "request_id": str(uuid4()),
+                "since": since.isoformat(),
+                "domains": [],  # All domains
+                "cursor": cursor,
+            }
+            
+            # Build authentication headers
+            auth_headers = self._get_auth_headers(request_body)
 
             async with aiohttp.ClientSession() as session:
-                # TODO: Add authentication
                 async with session.post(
                     url,
-                    json={
-                        "type": "SYNC_REQUEST",
-                        "request_id": str(uuid4()),
-                        "since": since.isoformat(),
-                        "domains": [],  # All domains
-                        "cursor": cursor,
-                    },
+                    json=request_body,
+                    headers=auth_headers,
                     timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status == 200:

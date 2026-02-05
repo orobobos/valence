@@ -1145,3 +1145,124 @@ class TestCryptoNotAvailable:
         with patch("valence.federation.identity.CRYPTO_AVAILABLE", False):
             with pytest.raises(NotImplementedError, match="requires cryptography"):
                 KeyPair.from_private_key_hex("00" * 32)
+
+
+# =============================================================================
+# TEST AUTH HEADERS
+# =============================================================================
+
+
+class TestCreateAuthHeaders:
+    """Tests for create_auth_headers function."""
+
+    def test_creates_required_headers(self):
+        """Should create all required auth headers."""
+        from valence.federation.identity import create_auth_headers, generate_keypair
+        
+        kp = generate_keypair()
+        did = "did:vkb:web:test.example.com"
+        
+        headers = create_auth_headers(did, kp.private_key_bytes)
+        
+        assert "X-Federation-DID" in headers
+        assert "X-Federation-Timestamp" in headers
+        assert "X-Federation-Signature" in headers
+        assert headers["X-Federation-DID"] == did
+
+    def test_headers_with_body(self):
+        """Should include body hash in signature when body provided."""
+        from valence.federation.identity import create_auth_headers, generate_keypair
+        
+        kp = generate_keypair()
+        did = "did:vkb:web:test.example.com"
+        body = {"type": "SHARE_BELIEF", "beliefs": []}
+        
+        headers = create_auth_headers(did, kp.private_key_bytes, body)
+        
+        assert headers["X-Federation-DID"] == did
+        assert headers["X-Federation-Signature"]  # Has signature
+
+    def test_timestamp_is_recent(self):
+        """Timestamp should be recent."""
+        from valence.federation.identity import create_auth_headers, generate_keypair
+        from datetime import datetime
+        
+        kp = generate_keypair()
+        headers = create_auth_headers("did:vkb:web:test", kp.private_key_bytes)
+        
+        timestamp = datetime.fromisoformat(headers["X-Federation-Timestamp"])
+        age = (datetime.now() - timestamp).total_seconds()
+        
+        assert age < 5  # Should be within 5 seconds
+
+
+class TestVerifyAuthHeaders:
+    """Tests for verify_auth_headers function."""
+
+    def test_missing_headers_fails(self):
+        """Should fail when headers are missing."""
+        from valence.federation.identity import verify_auth_headers
+        
+        valid, error = verify_auth_headers({})
+        
+        assert not valid
+        assert "Missing" in error
+
+    def test_partial_headers_fails(self):
+        """Should fail with partial headers."""
+        from valence.federation.identity import verify_auth_headers
+        
+        headers = {"X-Federation-DID": "did:vkb:web:test"}
+        valid, error = verify_auth_headers(headers)
+        
+        assert not valid
+        assert "Missing" in error
+
+    def test_expired_timestamp_fails(self):
+        """Should fail for expired timestamp."""
+        from valence.federation.identity import verify_auth_headers
+        from datetime import datetime, timedelta
+        
+        old_time = (datetime.now() - timedelta(minutes=10)).isoformat()
+        headers = {
+            "X-Federation-DID": "did:vkb:web:test",
+            "X-Federation-Timestamp": old_time,
+            "X-Federation-Signature": "dGVzdA==",
+        }
+        
+        valid, error = verify_auth_headers(headers, max_age_seconds=300)
+        
+        assert not valid
+        assert "too old" in error
+
+    def test_future_timestamp_fails(self):
+        """Should fail for future timestamp (clock skew protection)."""
+        from valence.federation.identity import verify_auth_headers
+        from datetime import datetime, timedelta
+        
+        future_time = (datetime.now() + timedelta(minutes=5)).isoformat()
+        headers = {
+            "X-Federation-DID": "did:vkb:web:test",
+            "X-Federation-Timestamp": future_time,
+            "X-Federation-Signature": "dGVzdA==",
+        }
+        
+        valid, error = verify_auth_headers(headers)
+        
+        assert not valid
+        assert "future" in error
+
+    def test_invalid_timestamp_format_fails(self):
+        """Should fail for invalid timestamp format."""
+        from valence.federation.identity import verify_auth_headers
+        
+        headers = {
+            "X-Federation-DID": "did:vkb:web:test",
+            "X-Federation-Timestamp": "not-a-timestamp",
+            "X-Federation-Signature": "dGVzdA==",
+        }
+        
+        valid, error = verify_auth_headers(headers)
+        
+        assert not valid
+        assert "Invalid timestamp" in error

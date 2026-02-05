@@ -1265,3 +1265,80 @@ class TestIntegration:
                     # Only attestation should have evidence
                     assert len(result.evidence) == 1
                     assert result.evidence[0].method == DomainVerificationMethod.MUTUAL_ATTESTATION
+
+
+# =============================================================================
+# TRUST MANAGER INTEGRATION TESTS
+# =============================================================================
+
+
+class TestGetFederationTrust:
+    """Tests for get_federation_trust TrustManager integration."""
+
+    @pytest.mark.asyncio
+    async def test_returns_trust_for_known_node(self):
+        """Test that trust is returned for a known node."""
+        from valence.federation.domain_verification import get_federation_trust
+        from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+        from uuid import uuid4
+        
+        node = FederationNode(
+            id=uuid4(),
+            did="did:vkb:web:known.example.com",
+            federation_endpoint="https://known.example.com/fed",
+            status=NodeStatus.ACTIVE,
+            trust_phase=TrustPhase.CONTRIBUTOR,
+        )
+        
+        with patch("valence.federation.domain_verification.get_node_by_did", return_value=node):
+            with patch("valence.federation.domain_verification.TrustManager") as mock_tm_class:
+                mock_tm = MagicMock()
+                mock_tm.get_effective_trust.return_value = 0.75
+                mock_tm_class.return_value = mock_tm
+                
+                trust = await get_federation_trust(
+                    "did:vkb:web:local",
+                    "did:vkb:web:known.example.com",
+                )
+                
+                assert trust == 0.75
+                mock_tm.get_effective_trust.assert_called_once_with(node.id)
+
+    @pytest.mark.asyncio
+    async def test_returns_low_trust_for_unknown_node(self):
+        """Test that low trust is returned for unknown nodes."""
+        from valence.federation.domain_verification import get_federation_trust
+        
+        with patch("valence.federation.domain_verification.get_node_by_did", return_value=None):
+            trust = await get_federation_trust(
+                "did:vkb:web:local",
+                "did:vkb:web:unknown.example.com",
+            )
+            
+            assert trust == 0.3  # Default for unknown
+
+    @pytest.mark.asyncio
+    async def test_returns_medium_trust_on_error(self):
+        """Test that medium trust is returned on TrustManager error."""
+        from valence.federation.domain_verification import get_federation_trust
+        from valence.federation.models import FederationNode, NodeStatus, TrustPhase
+        from uuid import uuid4
+        
+        node = FederationNode(
+            id=uuid4(),
+            did="did:vkb:web:error.example.com",
+            federation_endpoint="https://error.example.com/fed",
+            status=NodeStatus.ACTIVE,
+            trust_phase=TrustPhase.OBSERVER,
+        )
+        
+        with patch("valence.federation.domain_verification.get_node_by_did", return_value=node):
+            with patch("valence.federation.domain_verification.TrustManager") as mock_tm_class:
+                mock_tm_class.side_effect = Exception("Database error")
+                
+                trust = await get_federation_trust(
+                    "did:vkb:web:local",
+                    "did:vkb:web:error.example.com",
+                )
+                
+                assert trust == 0.5  # Medium trust on error

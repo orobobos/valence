@@ -793,3 +793,104 @@ def verify_belief_signature(
         return verify_signature(message, signature, public_key_multibase)
     except Exception:
         return False
+
+
+def create_auth_headers(
+    did: str,
+    private_key_bytes: bytes,
+    request_body: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Create authentication headers for federation requests.
+    
+    Uses HTTP Signatures-style authentication with Ed25519:
+    - X-Federation-DID: The sender's DID
+    - X-Federation-Timestamp: ISO timestamp for replay protection
+    - X-Federation-Signature: Base64-encoded signature of timestamp + body hash
+    
+    Args:
+        did: The sender's DID
+        private_key_bytes: Ed25519 private key for signing
+        request_body: Optional request body to include in signature
+        
+    Returns:
+        Dict of authentication headers
+    """
+    timestamp = datetime.now().isoformat()
+    
+    # Create message to sign: timestamp + optional body hash
+    if request_body:
+        body_canonical = canonical_json(request_body)
+        body_hash = hashlib.sha256(body_canonical).hexdigest()
+        message = f"{timestamp}:{body_hash}".encode("utf-8")
+    else:
+        message = timestamp.encode("utf-8")
+    
+    signature = sign_message(message, private_key_bytes)
+    signature_b64 = base64.b64encode(signature).decode("ascii")
+    
+    return {
+        "X-Federation-DID": did,
+        "X-Federation-Timestamp": timestamp,
+        "X-Federation-Signature": signature_b64,
+    }
+
+
+def verify_auth_headers(
+    headers: dict[str, str],
+    request_body: dict[str, Any] | None = None,
+    max_age_seconds: int = 300,
+) -> tuple[bool, str | None]:
+    """Verify authentication headers from a federation request.
+    
+    Args:
+        headers: Request headers containing X-Federation-* values
+        request_body: Optional request body that was signed
+        max_age_seconds: Maximum age of timestamp (replay protection)
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    did = headers.get("X-Federation-DID")
+    timestamp_str = headers.get("X-Federation-Timestamp")
+    signature_b64 = headers.get("X-Federation-Signature")
+    
+    if not all([did, timestamp_str, signature_b64]):
+        return False, "Missing authentication headers"
+    
+    # Check timestamp freshness
+    try:
+        timestamp = datetime.fromisoformat(timestamp_str)  # type: ignore
+        age = (datetime.now() - timestamp).total_seconds()
+        if age > max_age_seconds:
+            return False, "Request timestamp too old"
+        if age < -60:  # Allow 60s clock skew into future
+            return False, "Request timestamp in future"
+    except ValueError:
+        return False, "Invalid timestamp format"
+    
+    # Resolve DID to get public key
+    try:
+        parsed_did = parse_did(did)  # type: ignore
+        did_doc = resolve_did_sync(parsed_did.full)
+        if not did_doc or not did_doc.public_key_multibase:
+            return False, "Could not resolve DID or missing public key"
+        public_key = did_doc.public_key_multibase
+    except Exception as e:
+        return False, f"DID resolution failed: {e}"
+    
+    # Reconstruct and verify signature
+    if request_body:
+        body_canonical = canonical_json(request_body)
+        body_hash = hashlib.sha256(body_canonical).hexdigest()
+        message = f"{timestamp_str}:{body_hash}".encode("utf-8")
+    else:
+        message = timestamp_str.encode("utf-8")  # type: ignore
+    
+    try:
+        signature = base64.b64decode(signature_b64)  # type: ignore
+        if not verify_signature(message, signature, public_key):
+            return False, "Invalid signature"
+    except Exception as e:
+        return False, f"Signature verification failed: {e}"
+    
+    return True, None

@@ -605,6 +605,11 @@ def get_known_peers() -> list[dict[str, Any]]:
 async def exchange_peers(node: FederationNode) -> list[FederationNode]:
     """Exchange peer lists with another node.
 
+    Implements the peer exchange protocol:
+    1. Send our known peers to the other node
+    2. Receive their known peers in response
+    3. Discover and register any new peers
+
     Args:
         node: The node to exchange with
 
@@ -614,10 +619,66 @@ async def exchange_peers(node: FederationNode) -> list[FederationNode]:
     if not node.federation_endpoint:
         return []
 
-    # TODO: Implement peer exchange protocol
-    # This would involve:
-    # 1. Sending our known peers to the other node
-    # 2. Receiving their known peers
-    # 3. Discovering and registering new peers
+    # Get our known peers to share
+    our_peers = get_known_peers()
+    
+    try:
+        url = f"{node.federation_endpoint}/peers/exchange"
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json={
+                    "peers": our_peers,
+                    "request_id": str(uuid4()),
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"Peer exchange with {node.did} failed: HTTP {response.status}"
+                    )
+                    return []
+                
+                result = await response.json()
+                their_peers = result.get("peers", [])
+                
+    except aiohttp.ClientError as e:
+        logger.warning(f"Network error during peer exchange with {node.did}: {e}")
+        return []
+    except Exception as e:
+        logger.warning(f"Error during peer exchange with {node.did}: {e}")
+        return []
 
-    return []
+    # Discover and register new peers
+    discovered_nodes: list[FederationNode] = []
+    
+    for peer_info in their_peers:
+        peer_did = peer_info.get("did")
+        peer_endpoint = peer_info.get("federation_endpoint")
+        
+        if not peer_did or not peer_endpoint:
+            continue
+        
+        # Check if we already know this peer
+        existing = get_node_by_did(peer_did)
+        if existing:
+            continue
+        
+        # Try to discover and register the new peer
+        try:
+            did_doc = await discover_node(peer_endpoint)
+            if did_doc:
+                new_node = register_node(did_doc)
+                if new_node:
+                    discovered_nodes.append(new_node)
+                    logger.info(f"Discovered new peer via exchange: {peer_did}")
+        except Exception as e:
+            logger.debug(f"Failed to register peer {peer_did}: {e}")
+            continue
+    
+    logger.info(
+        f"Peer exchange with {node.did}: shared {len(our_peers)} peers, "
+        f"received {len(their_peers)}, discovered {len(discovered_nodes)} new"
+    )
+    
+    return discovered_nodes
