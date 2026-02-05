@@ -85,9 +85,9 @@ class TestBeliefSchemaFields:
         - Integrity verification for federated beliefs
         """
         columns = mock_db_connection.get_belief_columns()
-        assert (
-            "content_hash" in columns
-        ), "content_hash column required for deduplication. SHA-256 hash of content enables efficient federation sync and integrity verification."
+        assert "content_hash" in columns, (
+            "content_hash column required for deduplication. SHA-256 hash of content enables efficient federation sync and integrity verification."
+        )
 
     @pytest.mark.xfail(
         reason="visibility enum not in base schema - requires migration 001 or 002",

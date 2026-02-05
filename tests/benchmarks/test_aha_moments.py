@@ -917,9 +917,9 @@ class TestAhaMoments:
             print(f"  {i + 1}. [{mark}] grade={grade} conf={b.confidence_overall:.2f}: {b.content[:60]}...")
 
         # Assertions - Valence should improve or match baseline
-        assert (
-            valence_metrics.mrr >= baseline_metrics.mrr
-        ), f"Valence MRR ({valence_metrics.mrr:.3f}) should beat baseline ({baseline_metrics.mrr:.3f})"
+        assert valence_metrics.mrr >= baseline_metrics.mrr, (
+            f"Valence MRR ({valence_metrics.mrr:.3f}) should beat baseline ({baseline_metrics.mrr:.3f})"
+        )
 
         # At least one metric should improve
         improvements = [

@@ -481,9 +481,9 @@ class TestAuthorization:
             )
 
         # Should have called compare_digest for both username and password
-        assert (
-            len(compare_digest_calls) >= 2
-        ), f"Expected at least 2 calls to secrets.compare_digest for timing-safe credential comparison, but got {len(compare_digest_calls)} calls"
+        assert len(compare_digest_calls) >= 2, (
+            f"Expected at least 2 calls to secrets.compare_digest for timing-safe credential comparison, but got {len(compare_digest_calls)} calls"
+        )
 
         # Verify the comparison included the credentials
         compared_values = [call[0] for call in compare_digest_calls]
