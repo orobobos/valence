@@ -1,9 +1,25 @@
 # Valence Federation Protocol Security Audit
 
-**Date:** 2026-02-04  
-**Auditor:** OpenClaw Security Subagent  
-**Scope:** Federation layer: trust model, Sybil resistance, protocol security, sync protocol, privacy  
+**Date:** 2026-02-04
+**Auditor:** OpenClaw Security Subagent
+**Scope:** Federation layer: trust model, Sybil resistance, protocol security, sync protocol, privacy
 **Commit:** As of 2026-02-04 (post-roadmap completion)
+
+---
+
+## Status Update (2026-02-05)
+
+Post-audit fixes have addressed critical implementation gaps:
+
+| Finding | Status | PR/Issue |
+|---------|--------|----------|
+| Vector clock conflict detection unused | ✅ Fixed | #239 (closes #234) |
+| TOCTOU race in belief import | ✅ Fixed | #238 (closes #235) |
+| Missing UNIQUE on federation_id | ✅ Fixed | #238 (closes #237) |
+| Missing auth on outbound sync | ✅ Fixed | #240 (closes #236) |
+| S-1: Patient Sybil attack | ⚠️ Known limitation | Documented |
+| P-1: Replay attack window | 📋 Backlog | Future work |
+| P-2: Challenge storage (Redis) | 📋 Backlog | Future work |
 
 ---
 
@@ -53,7 +69,7 @@ PHASE_TRANSITION = {
 **Weaknesses:**
 
 #### Finding T-1: Trust Phase Gaming Window
-**Severity:** MEDIUM  
+**Severity:** MEDIUM
 
 A node can rapidly accumulate trust through sync_success signals (0.005 per sync) with minimal meaningful contribution. A node performing 200 automated sync operations over 30 days could achieve PARTICIPANT status with minimal value added.
 
@@ -321,7 +337,7 @@ def compare_vector_clocks(clock_a, clock_b) -> str:
     for key in all_keys:
         if val_a < val_b: a_less = True
         elif val_b < val_a: b_less = True
-    
+
     if a_less and not b_less: return "a_before_b"
     # ... proper concurrent detection
 ```
