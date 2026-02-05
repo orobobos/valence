@@ -231,6 +231,28 @@ class TestClientRegistration:
         assert response.status_code == 201
         assert response.json()["scope"] == "mcp:tools"
 
+    def test_register_client_includes_token_endpoint_auth_method(self, client):
+        """Test registration response includes token_endpoint_auth_method.
+        
+        Per RFC 7591 Section 3.2.1, the registration response SHOULD include
+        token_endpoint_auth_method. For public clients, this should be "none".
+        
+        See GitHub issue #204.
+        """
+        response = client.post(
+            f"{API_V1}/oauth/register",
+            json={
+                "redirect_uris": ["http://localhost:3000/callback"],
+                "client_name": "Test App",
+            },
+        )
+        
+        assert response.status_code == 201
+        data = response.json()
+        
+        assert "token_endpoint_auth_method" in data
+        assert data["token_endpoint_auth_method"] == "none"
+
 
 # ============================================================================
 # Authorization Endpoint Tests
