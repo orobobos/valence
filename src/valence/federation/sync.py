@@ -138,7 +138,7 @@ def _create_auth_headers(
     private_key_hex = config.federation_private_key
 
     if not did or not private_key_hex:
-        raise RuntimeError("Federation credentials not configured. " "Set VALENCE_FEDERATION_NODE_DID and VALENCE_FEDERATION_PRIVATE_KEY.")
+        raise RuntimeError("Federation credentials not configured. Set VALENCE_FEDERATION_NODE_DID and VALENCE_FEDERATION_PRIVATE_KEY.")
 
     # Extract path from URL
     parsed = urlparse(url)
