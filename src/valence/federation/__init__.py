@@ -331,12 +331,8 @@ from .tools import (
     handle_federation_tool,
 )
 from .trust import (
-    CONCENTRATION_THRESHOLDS,
     DECAY_HALF_LIFE_DAYS,
-    PHASE_TRANSITION,
-    PREFERENCE_MULTIPLIERS,
     SIGNAL_WEIGHTS,
-    THREAT_THRESHOLDS,
     TrustManager,
     TrustSignal,
     assess_and_respond_to_threat,
@@ -345,6 +341,14 @@ from .trust import (
     get_trust_manager,
     process_corroboration,
     process_dispute,
+)
+from .trust_policy import (
+    CONCENTRATION_THRESHOLDS,
+    PHASE_TRANSITION,
+    PREFERENCE_MULTIPLIERS,
+)
+from .threat_detector import (
+    THREAT_THRESHOLDS,
 )
 from .trust_propagation import (
     DEFAULT_APPLY_RING_COEFFICIENT,
