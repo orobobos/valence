@@ -33,7 +33,6 @@ import asyncio
 import json
 import logging
 import os
-import random
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -41,7 +40,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import aiohttp
 from aiohttp import WSMsgType
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import (
@@ -49,331 +47,32 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import (
     X25519PublicKey,
 )
 
-from .config import (
+from ..config import (
     PrivacyLevel,
     TrafficAnalysisMitigationConfig,
 )
-from .connection_manager import ConnectionManager, ConnectionManagerConfig
-from .crypto import decrypt_message, encrypt_message
-from .discovery import DiscoveryClient, RouterInfo
-from .health_monitor import HealthMonitor, HealthMonitorConfig
-from .message_handler import MessageHandler, MessageHandlerConfig
-from .messages import (
+from ..connection_manager import ConnectionManager, ConnectionManagerConfig
+from ..crypto import decrypt_message, encrypt_message
+from ..discovery import DiscoveryClient, RouterInfo
+from ..health_monitor import HealthMonitor, HealthMonitorConfig
+from ..message_handler import MessageHandler, MessageHandlerConfig
+from ..messages import (
     AckMessage,
     HealthGossip,
 )
-from .router_client import RouterClient, RouterClientConfig
+from ..router_client import RouterClient, RouterClientConfig
+from .cover_traffic import CoverTrafficConfig
+from .errors import (
+    ConnectionError,
+    StaleStateError,
+    StateConflictError,
+)
+from .failover import FailoverState
+from .pending import PendingAck, PendingMessage
+from .router_connection import RouterConnection
+from .state import STATE_VERSION, ConnectionState
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# STATE PERSISTENCE (Issue #111)
-# =============================================================================
-
-STATE_VERSION = 1
-
-
-@dataclass
-class ConnectionState:
-    """
-    Serializable connection state for persistence and recovery.
-
-    This captures the essential state needed to recover after a
-    disconnect/reconnect cycle.
-    """
-
-    version: int = STATE_VERSION
-    node_id: str = ""
-    saved_at: float = 0.0
-    sequence_number: int = 0
-    pending_acks: list[dict[str, Any]] = field(default_factory=list)
-    message_queue: list[dict[str, Any]] = field(default_factory=list)
-    seen_messages: list[str] = field(default_factory=list)
-    failover_states: dict[str, dict[str, Any]] = field(default_factory=dict)
-    stats: dict[str, int] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "version": self.version,
-            "node_id": self.node_id,
-            "saved_at": self.saved_at,
-            "sequence_number": self.sequence_number,
-            "pending_acks": self.pending_acks,
-            "message_queue": self.message_queue,
-            "seen_messages": self.seen_messages,
-            "failover_states": self.failover_states,
-            "stats": self.stats,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ConnectionState:
-        return cls(
-            version=data.get("version", 1),
-            node_id=data.get("node_id", ""),
-            saved_at=data.get("saved_at", 0.0),
-            sequence_number=data.get("sequence_number", 0),
-            pending_acks=data.get("pending_acks", []),
-            message_queue=data.get("message_queue", []),
-            seen_messages=data.get("seen_messages", []),
-            failover_states=data.get("failover_states", {}),
-            stats=data.get("stats", {}),
-        )
-
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2)
-
-    @classmethod
-    def from_json(cls, json_str: str) -> ConnectionState:
-        return cls.from_dict(json.loads(json_str))
-
-
-class StateConflictError(Exception):
-    """Raised when there's a conflict between saved and current state."""
-
-    pass
-
-
-class StaleStateError(Exception):
-    """Raised when saved state is too old to be useful."""
-
-    pass
-
-
-# =============================================================================
-# ACK TRACKING
-# =============================================================================
-
-
-@dataclass
-class PendingAck:
-    """Tracks a message awaiting acknowledgment."""
-
-    message_id: str
-    recipient_id: str
-    content: bytes
-    recipient_public_key: X25519PublicKey
-    sent_at: float
-    router_id: str
-    timeout_ms: int = 30000
-    retries: int = 0
-    max_retries: int = 2
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "message_id": self.message_id,
-            "recipient_id": self.recipient_id,
-            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
-            "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
-            "sent_at": self.sent_at,
-            "router_id": self.router_id,
-            "timeout_ms": self.timeout_ms,
-            "retries": self.retries,
-            "max_retries": self.max_retries,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PendingAck:
-        content = data["content"]
-        if isinstance(content, str):
-            content = bytes.fromhex(content)
-
-        pub_key_hex = data["recipient_public_key_hex"]
-        pub_key = X25519PublicKey.from_public_bytes(bytes.fromhex(pub_key_hex))
-
-        return cls(
-            message_id=data["message_id"],
-            recipient_id=data["recipient_id"],
-            content=content,
-            recipient_public_key=pub_key,
-            sent_at=data["sent_at"],
-            router_id=data["router_id"],
-            timeout_ms=data.get("timeout_ms", 30000),
-            retries=data.get("retries", 0),
-            max_retries=data.get("max_retries", 2),
-        )
-
-
-# =============================================================================
-# EXCEPTIONS
-# =============================================================================
-
-
-class NodeError(Exception):
-    """Base exception for node errors."""
-
-    pass
-
-
-class ConnectionError(NodeError):
-    """Raised when connection to router fails."""
-
-    pass
-
-
-class NoRoutersAvailableError(NodeError):
-    """Raised when no routers are available."""
-
-    pass
-
-
-# =============================================================================
-# DATA MODELS
-# =============================================================================
-
-
-@dataclass
-class RouterConnection:
-    """Represents an active connection to a router."""
-
-    router: RouterInfo
-    websocket: aiohttp.ClientWebSocketResponse
-    session: aiohttp.ClientSession
-    connected_at: float
-    last_seen: float
-    messages_sent: int = 0
-    messages_received: int = 0
-    ack_pending: int = 0
-    ack_success: int = 0
-    ack_failure: int = 0
-    ping_latency_ms: float = 0.0
-    back_pressure_active: bool = False
-    back_pressure_until: float = 0.0
-    back_pressure_retry_ms: int = 1000
-
-    @property
-    def is_under_back_pressure(self) -> bool:
-        if not self.back_pressure_active:
-            return False
-        return time.time() < self.back_pressure_until
-
-    @property
-    def ack_success_rate(self) -> float:
-        total = self.ack_success + self.ack_failure
-        if total == 0:
-            return 1.0
-        return self.ack_success / total
-
-    @property
-    def health_score(self) -> float:
-        ack_score = self.ack_success_rate
-        latency_score = max(0, 1.0 - (self.ping_latency_ms / 500))
-        load_pct = self.router.capacity.get("current_load_pct", 0)
-        load_score = 1.0 - (load_pct / 100)
-        return (ack_score * 0.5) + (latency_score * 0.3) + (load_score * 0.2)
-
-
-@dataclass
-class PendingMessage:
-    """Message queued for delivery during failover."""
-
-    message_id: str
-    recipient_id: str
-    content: bytes
-    recipient_public_key: X25519PublicKey
-    queued_at: float
-    retries: int = 0
-    max_retries: int = 3
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "message_id": self.message_id,
-            "recipient_id": self.recipient_id,
-            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
-            "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
-            "queued_at": self.queued_at,
-            "retries": self.retries,
-            "max_retries": self.max_retries,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PendingMessage:
-        content = data["content"]
-        if isinstance(content, str):
-            content = bytes.fromhex(content)
-
-        pub_key_hex = data["recipient_public_key_hex"]
-        pub_key = X25519PublicKey.from_public_bytes(bytes.fromhex(pub_key_hex))
-
-        return cls(
-            message_id=data["message_id"],
-            recipient_id=data["recipient_id"],
-            content=content,
-            recipient_public_key=pub_key,
-            queued_at=data["queued_at"],
-            retries=data.get("retries", 0),
-            max_retries=data.get("max_retries", 3),
-        )
-
-
-@dataclass
-class FailoverState:
-    """Tracks failover state for a router."""
-
-    router_id: str
-    failed_at: float
-    fail_count: int
-    cooldown_until: float
-    queued_messages: list[PendingMessage] = field(default_factory=list)
-
-    def is_in_cooldown(self) -> bool:
-        return time.time() < self.cooldown_until
-
-    def remaining_cooldown(self) -> float:
-        return max(0, self.cooldown_until - time.time())
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "router_id": self.router_id,
-            "failed_at": self.failed_at,
-            "fail_count": self.fail_count,
-            "cooldown_until": self.cooldown_until,
-            "queued_messages": [msg.to_dict() for msg in self.queued_messages],
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> FailoverState:
-        queued = [PendingMessage.from_dict(msg_data) for msg_data in data.get("queued_messages", [])]
-        return cls(
-            router_id=data["router_id"],
-            failed_at=data["failed_at"],
-            fail_count=data["fail_count"],
-            cooldown_until=data["cooldown_until"],
-            queued_messages=queued,
-        )
-
-
-@dataclass
-class CoverTrafficConfig:
-    """Configuration for cover traffic generation."""
-
-    enabled: bool = False
-    rate_per_minute: float = 2.0
-    idle_threshold_seconds: float = 30.0
-    pad_messages: bool = True
-    target_peers: list[str] = field(default_factory=list)
-    randomize_timing: bool = True
-    min_interval_seconds: float = 15.0
-    max_interval_seconds: float = 60.0
-
-    def get_next_interval(self) -> float:
-        if not self.enabled:
-            return float("inf")
-
-        base_interval = 60.0 / self.rate_per_minute if self.rate_per_minute > 0 else 60.0
-
-        if self.randomize_timing:
-            interval = random.expovariate(1.0 / base_interval)
-            interval = max(self.min_interval_seconds, min(self.max_interval_seconds, interval))
-        else:
-            interval = base_interval
-
-        return interval
-
-
-# =============================================================================
-# NODE CLIENT - FACADE
-# =============================================================================
 
 
 @dataclass
@@ -1559,11 +1258,6 @@ class NodeClient:
             },
             "stats": {k: v for k, v in self._stats.items() if k.startswith(("batched", "batch_", "jitter", "constant_rate"))},
         }
-
-
-# =============================================================================
-# CONVENIENCE FUNCTIONS
-# =============================================================================
 
 
 def create_node_client(

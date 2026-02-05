@@ -15,6 +15,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.connection_manager import (
     ConnectionManager,
     ConnectionManagerConfig,

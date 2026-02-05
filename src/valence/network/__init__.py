@@ -73,6 +73,7 @@ from valence.network.messages import (
 )
 from valence.network.node import (
     ConnectionState,
+    CoverTrafficConfig,
     FailoverState,
     NodeClient,
     NodeError,
@@ -176,6 +177,7 @@ __all__ = [
     "PendingAck",
     "FailoverState",
     "ConnectionState",
+    "CoverTrafficConfig",
     "StateConflictError",
     "StaleStateError",
     "NodeError",

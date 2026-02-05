@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import numpy as np
 import pytest
+
 from valence.federation.privacy import (
     DEFAULT_DELTA,
     DEFAULT_EPSILON,
