@@ -169,9 +169,7 @@ class TemporalValidity:
         elif self.valid_until is None:
             return f"valid from {self.valid_from.isoformat()}"
         else:
-            return (
-                f"valid {self.valid_from.isoformat()} to {self.valid_until.isoformat()}"
-            )
+            return f"valid {self.valid_from.isoformat()} to {self.valid_until.isoformat()}"
 
 
 @dataclass

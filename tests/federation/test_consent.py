@@ -343,12 +343,8 @@ class TestFederationConsentPolicy:
 
         assert restored.federation_id == policy.federation_id
         assert restored.outgoing_policy == policy.outgoing_policy
-        assert (
-            restored.allowed_outgoing_federations == policy.allowed_outgoing_federations
-        )
-        assert (
-            restored.blocked_incoming_federations == policy.blocked_incoming_federations
-        )
+        assert restored.allowed_outgoing_federations == policy.allowed_outgoing_federations
+        assert restored.blocked_incoming_federations == policy.blocked_incoming_federations
         assert restored.min_trust_for_outgoing == policy.min_trust_for_outgoing
 
 
@@ -1905,9 +1901,7 @@ class MockTrustService:
         """Set trust score between federations."""
         self._trust[(from_fed, to_fed)] = score
 
-    async def get_federation_trust(
-        self, from_federation: str, to_federation: str
-    ) -> float:
+    async def get_federation_trust(self, from_federation: str, to_federation: str) -> float:
         """Get trust score between two federations."""
         return self._trust.get((from_federation, to_federation), 0.5)
 

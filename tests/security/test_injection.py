@@ -11,7 +11,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from valence.core.db import VALID_TABLES, count_rows, table_exists
 
 
@@ -192,11 +191,7 @@ class TestCommandInjectionPrevention:
 
         # Get module source if possible
         source_file = inspect.getfile(valence)
-        assert (
-            "shell=True" not in open(source_file).read()
-            if source_file.endswith(".py")
-            else True
-        )
+        assert "shell=True" not in open(source_file).read() if source_file.endswith(".py") else True
 
     def test_path_traversal_in_schema_init(self):
         """init_schema() must not be vulnerable to path traversal.
@@ -273,6 +268,4 @@ class TestBatchOperationInjection:
         # This is a simplified check - a real audit would be more thorough
 
         # Check for the fixed count_rows (should use allowlist)
-        assert (
-            "VALID_TABLES" in source
-        ), "count_rows should reference VALID_TABLES allowlist"
+        assert "VALID_TABLES" in source, "count_rows should reference VALID_TABLES allowlist"

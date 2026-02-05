@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-
 from valence.privacy.extraction import (
     ExtractedInsight,
     ExtractionAlreadyReviewedError,
@@ -333,9 +332,7 @@ class TestMockInsightExtractor:
         def custom_themes(content: str) -> str:
             return "Custom themes: AI, Technology"
 
-        extractor = MockInsightExtractor(
-            custom_extractors={ExtractionLevel.THEMES: custom_themes}
-        )
+        extractor = MockInsightExtractor(custom_extractors={ExtractionLevel.THEMES: custom_themes})
 
         result = extractor.extract("any content", ExtractionLevel.THEMES)
         assert result == "Custom themes: AI, Technology"
@@ -733,9 +730,7 @@ class TestGlobalService:
 
     def test_set_extraction_service(self):
         """Can set global service singleton."""
-        custom = ExtractionService(
-            extractor=MockInsightExtractor(extractor_id="global-custom")
-        )
+        custom = ExtractionService(extractor=MockInsightExtractor(extractor_id="global-custom"))
         set_extraction_service(custom)
 
         svc = get_extraction_service()

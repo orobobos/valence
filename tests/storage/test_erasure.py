@@ -12,7 +12,6 @@ import os
 from uuid import uuid4
 
 import pytest
-
 from valence.storage.erasure import (
     ErasureCodec,
     InsufficientShardsError,
@@ -284,9 +283,7 @@ class TestErasureCodecEncodeDecode:
         assert result.success
         assert result.data == sample_data
 
-    def test_decode_with_multiple_data_shards_missing(
-        self, codec_personal, sample_data
-    ):
+    def test_decode_with_multiple_data_shards_missing(self, codec_personal, sample_data):
         """Decode works with multiple data shards missing."""
         shard_set = codec_personal.encode(sample_data)
 
@@ -326,9 +323,7 @@ class TestErasureCodecRecovery:
 
         for indices in itertools.combinations(range(3), 2):
             test_set = ShardSet(
-                shards=[
-                    shard_set.shards[i] if i in indices else None for i in range(3)
-                ],
+                shards=[shard_set.shards[i] if i in indices else None for i in range(3)],
                 data_shards_k=2,
                 total_shards_n=3,
                 original_size=shard_set.original_size,
@@ -348,9 +343,7 @@ class TestErasureCodecRecovery:
 
         for indices in itertools.combinations(range(5), 3):
             test_set = ShardSet(
-                shards=[
-                    shard_set.shards[i] if i in indices else None for i in range(5)
-                ],
+                shards=[shard_set.shards[i] if i in indices else None for i in range(5)],
                 data_shards_k=3,
                 total_shards_n=5,
                 original_size=shard_set.original_size,

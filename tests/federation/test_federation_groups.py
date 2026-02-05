@@ -9,7 +9,6 @@ from uuid import uuid4
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from valence.federation.groups import (
     # Classes
     FederationGroup,
@@ -110,9 +109,7 @@ def test_federation_group(federation_id, creator_did, creator_signing_key):
 class TestFederationGroupCreation:
     """Tests for create_federation_group function (Issue #73 core)."""
 
-    def test_create_basic_federation_group(
-        self, federation_id, creator_did, creator_signing_key
-    ):
+    def test_create_basic_federation_group(self, federation_id, creator_did, creator_signing_key):
         """Test creating a basic federation group."""
         group, creator_kp = create_federation_group(
             federation_id=federation_id,
@@ -126,9 +123,7 @@ class TestFederationGroupCreation:
         assert group.status == GroupStatus.ACTIVE
         assert creator_kp is not None
 
-    def test_creator_is_first_member_with_admin_role(
-        self, test_federation_group, creator_did
-    ):
+    def test_creator_is_first_member_with_admin_role(self, test_federation_group, creator_did):
         """Test that creator becomes first member with admin role."""
         assert test_federation_group.member_count == 1
         assert test_federation_group.has_member(creator_did)
@@ -147,9 +142,7 @@ class TestFederationGroupCreation:
         assert test_federation_group.group_state is not None
         assert isinstance(test_federation_group.group_state, GroupState)
 
-    def test_create_with_custom_metadata(
-        self, federation_id, creator_did, creator_signing_key
-    ):
+    def test_create_with_custom_metadata(self, federation_id, creator_did, creator_signing_key):
         """Test creating group with custom name, description, domains."""
         group, _ = create_federation_group(
             federation_id=federation_id,
@@ -167,9 +160,7 @@ class TestFederationGroupCreation:
         assert "technology" in group.allowed_domains
         assert group.metadata.get("priority") == "high"
 
-    def test_create_generates_signing_key_if_not_provided(
-        self, federation_id, creator_did
-    ):
+    def test_create_generates_signing_key_if_not_provided(self, federation_id, creator_did):
         """Test that signing key is auto-generated if not provided."""
         group, creator_kp = create_federation_group(
             federation_id=federation_id,
@@ -245,26 +236,17 @@ class TestFederationGroupQueries:
         assert members[0]["role"] == "admin"
         assert members[0]["status"] == "active"
 
-    def test_verify_federation_membership_true(
-        self, test_federation_group, creator_did
-    ):
+    def test_verify_federation_membership_true(self, test_federation_group, creator_did):
         """Test membership verification for existing member."""
         assert verify_federation_membership(test_federation_group, creator_did) is True
 
-    def test_verify_federation_membership_false(
-        self, test_federation_group, member_did
-    ):
+    def test_verify_federation_membership_false(self, test_federation_group, member_did):
         """Test membership verification for non-member."""
         assert verify_federation_membership(test_federation_group, member_did) is False
 
-    def test_get_federation_member_role(
-        self, test_federation_group, creator_did, member_did
-    ):
+    def test_get_federation_member_role(self, test_federation_group, creator_did, member_did):
         """Test getting member role."""
-        assert (
-            get_federation_member_role(test_federation_group, creator_did)
-            == GroupRole.ADMIN
-        )
+        assert get_federation_member_role(test_federation_group, creator_did) == GroupRole.ADMIN
         assert get_federation_member_role(test_federation_group, member_did) is None
 
 
@@ -344,12 +326,8 @@ class TestFederationGroupStorage:
     def test_list_groups(self, creator_did, creator_signing_key):
         """Test listing all federation groups."""
         # Create multiple groups
-        group1, _ = create_federation_group(
-            uuid4(), creator_did, creator_signing_key, name="Group 1"
-        )
-        group2, _ = create_federation_group(
-            uuid4(), creator_did, creator_signing_key, name="Group 2"
-        )
+        group1, _ = create_federation_group(uuid4(), creator_did, creator_signing_key, name="Group 1")
+        group2, _ = create_federation_group(uuid4(), creator_did, creator_signing_key, name="Group 2")
 
         store_federation_group(group1)
         store_federation_group(group2)
@@ -403,9 +381,7 @@ class TestMLSIntegration:
         assert test_federation_group.member_count == 2
         assert test_federation_group.has_member(member_did)
 
-    def test_federation_group_reflects_mls_state_changes(
-        self, test_federation_group, creator_did
-    ):
+    def test_federation_group_reflects_mls_state_changes(self, test_federation_group, creator_did):
         """Test that federation group properties reflect MLS state changes."""
         # Get initial values
         initial_epoch = test_federation_group.epoch
@@ -413,9 +389,7 @@ class TestMLSIntegration:
 
         # Verify they match underlying state
         assert initial_epoch == test_federation_group.group_state.epoch
-        assert initial_members == len(
-            test_federation_group.group_state.get_active_members()
-        )
+        assert initial_members == len(test_federation_group.group_state.get_active_members())
 
 
 # =============================================================================
@@ -426,9 +400,7 @@ class TestMLSIntegration:
 class TestDomainIntegration:
     """Tests for domain-related features."""
 
-    def test_allowed_domains_stored(
-        self, federation_id, creator_did, creator_signing_key
-    ):
+    def test_allowed_domains_stored(self, federation_id, creator_did, creator_signing_key):
         """Test that allowed_domains are stored correctly."""
         group, _ = create_federation_group(
             federation_id=federation_id,
@@ -441,9 +413,7 @@ class TestDomainIntegration:
         assert "science.physics" in group.allowed_domains
         assert "science.chemistry" in group.allowed_domains
 
-    def test_allowed_domains_in_serialization(
-        self, federation_id, creator_did, creator_signing_key
-    ):
+    def test_allowed_domains_in_serialization(self, federation_id, creator_did, creator_signing_key):
         """Test that allowed_domains survive serialization."""
         group, _ = create_federation_group(
             federation_id=federation_id,

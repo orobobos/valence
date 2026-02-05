@@ -142,17 +142,13 @@ class TrustRegistry:
         """
         try:
             with get_cursor() as cur:
-                cur.execute(
-                    "SELECT * FROM user_node_trust WHERE node_id = %s", (node_id,)
-                )
+                cur.execute("SELECT * FROM user_node_trust WHERE node_id = %s", (node_id,))
                 row = cur.fetchone()
                 if row:
                     return UserNodeTrust.from_row(row)
                 return None
         except Exception as e:
-            logger.warning(
-                f"Error getting user trust preference for node {node_id}: {e}"
-            )
+            logger.warning(f"Error getting user trust preference for node {node_id}: {e}")
             return None
 
     def set_user_preference(

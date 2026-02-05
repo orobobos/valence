@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from valence.cli.main import (
     app,
     cmd_add,
@@ -307,11 +306,7 @@ class TestAddCommand:
 
         assert result == 0
         # Verify INSERT was called
-        insert_calls = [
-            c
-            for c in mock_cur.execute.call_args_list
-            if "INSERT INTO beliefs" in str(c)
-        ]
+        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO beliefs" in str(c)]
         assert len(insert_calls) >= 1
 
     @patch("valence.cli.main.get_db_connection")
@@ -343,11 +338,7 @@ class TestAddCommand:
 
         assert result == 0
         # Check derivation insert
-        insert_calls = [
-            c
-            for c in mock_cur.execute.call_args_list
-            if "INSERT INTO belief_derivations" in str(c)
-        ]
+        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO belief_derivations" in str(c)]
         assert len(insert_calls) == 1
 
 
@@ -453,9 +444,7 @@ class TestConflictsCommand:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert (
-            "potential conflict" in captured.out.lower() or "Conflict" in captured.out
-        )
+        assert "potential conflict" in captured.out.lower() or "Conflict" in captured.out
 
     @patch("valence.cli.main.get_db_connection")
     def test_conflicts_no_conflicts(self, mock_get_conn, mock_db, capsys):
@@ -500,11 +489,7 @@ class TestConflictsCommand:
 
         assert result == 0
         # Verify tension was inserted
-        insert_calls = [
-            c
-            for c in mock_cur.execute.call_args_list
-            if "INSERT INTO tensions" in str(c)
-        ]
+        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO tensions" in str(c)]
         assert len(insert_calls) >= 1
 
 
@@ -932,11 +917,7 @@ class TestMultiSignalRank:
         assert "contribution" in bd["semantic"]
 
         # Contributions should sum to final
-        total = (
-            bd["semantic"]["contribution"]
-            + bd["confidence"]["contribution"]
-            + bd["recency"]["contribution"]
-        )
+        total = bd["semantic"]["contribution"] + bd["confidence"]["contribution"] + bd["recency"]["contribution"]
         assert abs(total - bd["final"]) < 0.001
 
     def test_weight_normalization(self):
@@ -1043,9 +1024,7 @@ class TestQueryMultiSignalArgs:
 
     @patch("valence.cli.main.get_db_connection")
     @patch("valence.cli.main.get_embedding")
-    def test_query_with_explain_output(
-        self, mock_embed, mock_get_conn, mock_db, capsys
-    ):
+    def test_query_with_explain_output(self, mock_embed, mock_get_conn, mock_db, capsys):
         """Query with --explain shows score breakdown."""
         mock_conn, mock_cur = mock_db
         mock_get_conn.return_value = mock_conn
@@ -1091,9 +1070,7 @@ class TestQueryMultiSignalArgs:
 
     @patch("valence.cli.main.get_db_connection")
     @patch("valence.cli.main.get_embedding")
-    def test_query_min_confidence_filters(
-        self, mock_embed, mock_get_conn, mock_db, capsys
-    ):
+    def test_query_min_confidence_filters(self, mock_embed, mock_get_conn, mock_db, capsys):
         """Query with --min-confidence filters low confidence beliefs."""
         mock_conn, mock_cur = mock_db
         mock_get_conn.return_value = mock_conn

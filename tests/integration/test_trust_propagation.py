@@ -197,9 +197,7 @@ class TestCorroborationTrust:
             # Corroboration formula: new_conf = old_conf + (peer_trust * peer_conf * (1 - old_conf)) * factor
             # Simplified: boost proportional to peer's trust-weighted confidence
             boost_factor = 0.3  # How much we weight external corroboration
-            boost = (
-                peer_trust * peer_confidence * (1 - initial_confidence) * boost_factor
-            )
+            boost = peer_trust * peer_confidence * (1 - initial_confidence) * boost_factor
             new_confidence = min(1.0, initial_confidence + boost)
 
             # Should increase confidence
@@ -226,12 +224,7 @@ class TestCorroborationTrust:
 
             # Contradiction formula: reduce confidence proportionally
             reduction_factor = 0.2
-            reduction = (
-                peer_trust
-                * (1 - peer_confidence)
-                * initial_confidence
-                * reduction_factor
-            )
+            reduction = peer_trust * (1 - peer_confidence) * initial_confidence * reduction_factor
             new_confidence = max(0.0, initial_confidence - reduction)
 
             assert new_confidence < initial_confidence
@@ -366,11 +359,13 @@ class TestTrustBoundaries:
                 )
 
             # Query only active nodes
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT did, status
                 FROM federation_nodes
                 WHERE status = 'active'
-            """)
+            """
+            )
 
             active_nodes = cur.fetchall()
             statuses = [n["status"] for n in active_nodes]
@@ -386,11 +381,13 @@ class TestTrustMetrics:
         """Test tracking sync success rate per peer."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create peer with sync stats
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO peer_nodes (node_id, endpoint, trust_level, status)
                 VALUES ('metrics-peer', 'http://metrics.example.com', 0.7, 'active')
                 RETURNING id
-            """)
+            """
+            )
             cur.fetchone()["id"]
 
             # Simulate sync attempts (would be in separate table in real impl)
@@ -422,21 +419,21 @@ class TestTrustMetrics:
 
     def test_corroboration_tracking(self, db_conn_committed, seed_beliefs):
         """Test tracking corroboration statistics for beliefs."""
-        with db_conn_committed.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Get a belief
             cur.execute("SELECT id FROM beliefs LIMIT 1")
             belief_id = cur.fetchone()["id"]
 
             # Check if corroboration tracking exists
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT FROM information_schema.columns
                     WHERE table_name = 'beliefs'
                     AND column_name = 'corroboration_count'
                 )
-            """)
+            """
+            )
 
             # If corroboration tracking exists, verify it
             if cur.fetchone()["exists"]:

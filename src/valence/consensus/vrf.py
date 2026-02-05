@@ -85,11 +85,7 @@ class VRFProof:
             gamma=bytes.fromhex(data["gamma"]),
             c=bytes.fromhex(data["c"]),
             s=bytes.fromhex(data["s"]),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if data.get("created_at")
-                else datetime.now()
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
         )
 
 
@@ -174,9 +170,7 @@ class VRF:
             self._private_key = private_key
         elif private_key_bytes is not None:
             if len(private_key_bytes) != 32:
-                raise ValueError(
-                    f"Private key must be 32 bytes, got {len(private_key_bytes)}"
-                )
+                raise ValueError(f"Private key must be 32 bytes, got {len(private_key_bytes)}")
             self._private_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
         else:
             raise ValueError("Either private_key or private_key_bytes must be provided")
@@ -224,9 +218,7 @@ class VRF:
 
         # Derive the VRF output (ticket) from the signature
         # Hash again with different domain separator for output derivation
-        ticket = hashlib.sha512(
-            DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash
-        ).digest()[:VRF_OUTPUT_SIZE]
+        ticket = hashlib.sha512(DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash).digest()[:VRF_OUTPUT_SIZE]
 
         # Create proof (using signature components)
         # In a full ECVRF implementation, gamma/c/s would be curve points/scalars
@@ -280,9 +272,7 @@ class VRF:
             public_key.verify(signature, input_hash)
 
             # Verify the ticket derivation
-            expected_ticket = hashlib.sha512(
-                DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash
-            ).digest()[:VRF_OUTPUT_SIZE]
+            expected_ticket = hashlib.sha512(DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash).digest()[:VRF_OUTPUT_SIZE]
 
             if output.ticket != expected_ticket:
                 return False
@@ -313,12 +303,7 @@ class VRF:
         Returns:
             New epoch seed (32 bytes)
         """
-        data = (
-            DOMAIN_SEPARATOR_EPOCH_SEED
-            + previous_seed
-            + block_hash
-            + epoch_number.to_bytes(8, "big")
-        )
+        data = DOMAIN_SEPARATOR_EPOCH_SEED + previous_seed + block_hash + epoch_number.to_bytes(8, "big")
         return hashlib.sha256(data).digest()
 
     @staticmethod

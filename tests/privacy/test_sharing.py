@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 
 import pytest
-
 from valence.privacy.encryption import EncryptionEnvelope, generate_keypair
 from valence.privacy.sharing import (
     ConsentChainEntry,
@@ -510,9 +509,7 @@ class TestSharingService:
             policy=policy,
         )
 
-        with pytest.raises(
-            ValueError, match="Only DIRECT and BOUNDED sharing supported"
-        ):
+        with pytest.raises(ValueError, match="Only DIRECT and BOUNDED sharing supported"):
             await service.share(request, identity.get_did())
 
     @pytest.mark.asyncio
@@ -581,9 +578,7 @@ class TestEncryptionVerification:
         assert decrypted.decode("utf-8") == original_content
 
     @pytest.mark.asyncio
-    async def test_encrypted_content_different_per_recipient(
-        self, service, db, identity
-    ):
+    async def test_encrypted_content_different_per_recipient(self, service, db, identity):
         """Test that encryption produces different ciphertext for same content."""
         belief_id = "belief-enc-002"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Same content")
@@ -602,10 +597,7 @@ class TestEncryptionVerification:
         share2 = db.shares[result2.share_id]
 
         # Different encrypted content (due to different ephemeral keys and recipients)
-        assert (
-            share1["encrypted_envelope"]["encrypted_content"]
-            != share2["encrypted_envelope"]["encrypted_content"]
-        )
+        assert share1["encrypted_envelope"]["encrypted_content"] != share2["encrypted_envelope"]["encrypted_content"]
 
 
 class TestConsentChain:
@@ -842,9 +834,7 @@ class TestRevocation:
     async def test_revoke_without_reason(self, service, db, identity):
         """Test revocation without providing a reason."""
         # Create a share
-        share_result = await self._create_share(
-            service, db, identity, "belief-no-reason"
-        )
+        share_result = await self._create_share(service, db, identity, "belief-no-reason")
 
         # Revoke without reason
         revoke_request = RevokeRequest(share_id=share_result.share_id)
@@ -898,9 +888,7 @@ class TestRevocationFiltering:
         assert shares[0].recipient_did == "did:key:filter-r-1"
 
     @pytest.mark.asyncio
-    async def test_list_shares_includes_revoked_when_requested(
-        self, service, db, identity
-    ):
+    async def test_list_shares_includes_revoked_when_requested(self, service, db, identity):
         """Test that revoked shares are included when explicitly requested."""
         # Create two shares
         share_ids = []
@@ -926,18 +914,14 @@ class TestRevocationFiltering:
         assert len(shares) == 2
 
     @pytest.mark.asyncio
-    async def test_get_consent_chain_shows_revocation_details(
-        self, service, db, identity
-    ):
+    async def test_get_consent_chain_shows_revocation_details(self, service, db, identity):
         """Test that consent chain includes revocation details after revocation."""
         # Create and revoke a share
         belief_id = "belief-chain-details"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Content")
         identity.add_identity("did:key:chain-recipient")
 
-        request = ShareRequest(
-            belief_id=belief_id, recipient_did="did:key:chain-recipient"
-        )
+        request = ShareRequest(belief_id=belief_id, recipient_did="did:key:chain-recipient")
         share_result = await service.share(request, identity.get_did())
 
         revoke_request = RevokeRequest(
@@ -991,9 +975,7 @@ class TestReceive:
     async def test_receive_success(self, service, db, identity):
         """Test successful receive and decryption of a share."""
         original_content = "This is the secret shared content."
-        share_result, recipient_did = await self._create_share(
-            service, db, identity, content=original_content
-        )
+        share_result, recipient_did = await self._create_share(service, db, identity, content=original_content)
 
         # Receive the share
         receive_request = ReceiveRequest(share_id=share_result.share_id)
@@ -1301,9 +1283,7 @@ class TestRevocationPropagation:
         notification = list(db.notifications.values())[0]
         assert notification["recipient_did"] == recipient_did
         assert notification["notification_type"] == "revocation"
-        assert (
-            notification["payload"]["consent_chain_id"] == share_result.consent_chain_id
-        )
+        assert notification["payload"]["consent_chain_id"] == share_result.consent_chain_id
         assert notification["payload"]["belief_id"] == "belief-prop-001"
         assert notification["payload"]["revoked_by"] == identity.get_did()
         assert notification["payload"]["reason"] == "Testing notification creation"
@@ -1420,9 +1400,7 @@ class TestRevocationPropagation:
         assert len(db.notifications) >= 2  # At least recipient + downstream
 
         # Verify downstream got notification
-        downstream_notifications = [
-            n for n in db.notifications.values() if n["recipient_did"] == downstream_did
-        ]
+        downstream_notifications = [n for n in db.notifications.values() if n["recipient_did"] == downstream_did]
         assert len(downstream_notifications) == 1
 
     @pytest.mark.asyncio
@@ -1447,9 +1425,7 @@ class TestRevocationPropagation:
         await service.revoke_share(revoke_request, identity.get_did())
 
         # Should only have 1 notification despite appearing in shares and hops
-        notifications_for_recipient = [
-            n for n in db.notifications.values() if n["recipient_did"] == recipient_did
-        ]
+        notifications_for_recipient = [n for n in db.notifications.values() if n["recipient_did"] == recipient_did]
         assert len(notifications_for_recipient) == 1
 
 
@@ -1491,9 +1467,7 @@ class TestNotificationHandling:
     @pytest.mark.asyncio
     async def test_get_pending_notifications(self, service, db, identity):
         """Test retrieving pending notifications for a recipient."""
-        share_result, recipient_did = await self._create_and_revoke_share(
-            service, db, identity
-        )
+        share_result, recipient_did = await self._create_and_revoke_share(service, db, identity)
 
         # Get pending notifications
         notifications = await service.get_pending_notifications(recipient_did)
@@ -1529,15 +1503,11 @@ class TestNotificationHandling:
     @pytest.mark.asyncio
     async def test_acknowledge_notification_not_found(self, service, db, identity):
         """Test acknowledging a non-existent notification."""
-        success = await service.acknowledge_notification(
-            "nonexistent-notification-id", "did:key:anyone"
-        )
+        success = await service.acknowledge_notification("nonexistent-notification-id", "did:key:anyone")
         assert success is False
 
     @pytest.mark.asyncio
-    async def test_acknowledge_notification_wrong_recipient(
-        self, service, db, identity
-    ):
+    async def test_acknowledge_notification_wrong_recipient(self, service, db, identity):
         """Test that wrong recipient cannot acknowledge notification."""
         share_result, recipient_did = await self._create_and_revoke_share(
             service,
@@ -1571,12 +1541,8 @@ class TestNotificationHandling:
         notification_id = notifications[0].id
 
         # Acknowledge twice
-        success1 = await service.acknowledge_notification(
-            notification_id, recipient_did
-        )
-        success2 = await service.acknowledge_notification(
-            notification_id, recipient_did
-        )
+        success1 = await service.acknowledge_notification(notification_id, recipient_did)
+        success2 = await service.acknowledge_notification(notification_id, recipient_did)
 
         assert success1 is True
         assert success2 is True  # Idempotent
@@ -1612,9 +1578,7 @@ class TestNotificationHandling:
         assert len(pending) == 2
 
     @pytest.mark.asyncio
-    async def test_notifications_for_different_recipients_isolated(
-        self, service, db, identity
-    ):
+    async def test_notifications_for_different_recipients_isolated(self, service, db, identity):
         """Test that notifications are isolated per recipient."""
         identity.add_identity("did:key:alice-notify")
         identity.add_identity("did:key:bob-notify")
@@ -1631,12 +1595,8 @@ class TestNotificationHandling:
             await service.revoke_share(revoke_request, identity.get_did())
 
         # Each should only see their own notifications
-        alice_notifications = await service.get_pending_notifications(
-            "did:key:alice-notify"
-        )
-        bob_notifications = await service.get_pending_notifications(
-            "did:key:bob-notify"
-        )
+        alice_notifications = await service.get_pending_notifications("did:key:alice-notify")
+        bob_notifications = await service.get_pending_notifications("did:key:bob-notify")
 
         assert len(alice_notifications) == 1
         assert len(bob_notifications) == 1
@@ -1661,9 +1621,7 @@ class TestOfflineRecipientHandling:
         return SharingService(db, identity)
 
     @pytest.mark.asyncio
-    async def test_notifications_persist_for_offline_recipients(
-        self, service, db, identity
-    ):
+    async def test_notifications_persist_for_offline_recipients(self, service, db, identity):
         """Test that notifications are stored in DB for later retrieval."""
         recipient_did = "did:key:offline-recipient"
         identity.add_identity(recipient_did)
@@ -1695,9 +1653,7 @@ class TestOfflineRecipientHandling:
         # Create multiple revocations while "offline"
         for i in range(3):
             belief_id = f"belief-poll-{i}"
-            db.beliefs[belief_id] = MockBelief(
-                id=belief_id, content=f"Poll content {i}"
-            )
+            db.beliefs[belief_id] = MockBelief(id=belief_id, content=f"Poll content {i}")
 
             request = ShareRequest(belief_id=belief_id, recipient_did=recipient_did)
             share_result = await service.share(request, identity.get_did())
@@ -1771,9 +1727,7 @@ class TestMaxHopsPropagation:
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Content")
         identity.add_identity("did:key:hop-recipient")
 
-        request = ShareRequest(
-            belief_id=belief_id, recipient_did="did:key:hop-recipient"
-        )
+        request = ShareRequest(belief_id=belief_id, recipient_did="did:key:hop-recipient")
         result = await service.share(request, identity.get_did())
 
         chain = await service.get_consent_chain(result.consent_chain_id)
@@ -1831,9 +1785,7 @@ class TestMaxHopsPropagation:
         assert chain.can_reshare() is True
 
     @pytest.mark.asyncio
-    async def test_consent_chain_cannot_reshare_when_revoked(
-        self, service, db, identity
-    ):
+    async def test_consent_chain_cannot_reshare_when_revoked(self, service, db, identity):
         """Test that revoked consent chain cannot be reshared."""
         belief_id = "belief-revoked-reshare"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Content")
@@ -1855,9 +1807,7 @@ class TestMaxHopsPropagation:
         """Test that resharing increments the current_hop counter."""
         # Create original share with BOUNDED policy
         belief_id = "belief-inc-hop"
-        db.beliefs[belief_id] = MockBelief(
-            id=belief_id, content="Hop increment content"
-        )
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Hop increment content")
         first_recipient = "did:key:first-recipient"
         second_recipient = "did:key:second-recipient"
         identity.add_identity(first_recipient)
@@ -2073,9 +2023,7 @@ class TestMaxHopsPropagation:
     async def test_reshare_chain_of_three(self, service, db, identity):
         """Test a chain of reshares: A -> B -> C -> D with max_hops=3."""
         belief_id = "belief-chain-three"
-        db.beliefs[belief_id] = MockBelief(
-            id=belief_id, content="Chain of three content"
-        )
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Chain of three content")
 
         # Create identities
         alice = "did:key:alice"
@@ -2100,9 +2048,7 @@ class TestMaxHopsPropagation:
 
         # Alice receives and reshares to Bob
         await service.receive(ReceiveRequest(share_id=share1.share_id), alice)
-        reshare1 = await service.reshare(
-            ReshareRequest(original_share_id=share1.share_id, recipient_did=bob), alice
-        )
+        reshare1 = await service.reshare(ReshareRequest(original_share_id=share1.share_id, recipient_did=bob), alice)
         assert reshare1.current_hop == 1
         assert reshare1.hops_remaining == 2
 
@@ -2157,13 +2103,9 @@ class TestMaxHopsPropagation:
         share_result = await service.share(request, identity.get_did())
 
         # Receive and reshare
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
         reshare_result = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
@@ -2196,13 +2138,9 @@ class TestMaxHopsPropagation:
         share_result = await service.share(request, identity.get_did())
 
         # Receive and reshare
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
         await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
@@ -2285,9 +2223,7 @@ class TestBoundedSharing:
         assert chain["origin_policy"]["propagation"]["allowed_domains"] == ["acme-corp"]
 
     @pytest.mark.asyncio
-    async def test_bounded_share_multiple_domains(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_multiple_domains(self, service, db, identity, domain_service):
         """Test BOUNDED share with multiple allowed domains."""
         belief_id = "belief-bounded-multi"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Multi-domain content")
@@ -2319,9 +2255,7 @@ class TestBoundedSharing:
         # Recipient was in team-beta which is in allowed_domains
 
     @pytest.mark.asyncio
-    async def test_bounded_share_recipient_not_in_domain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_recipient_not_in_domain(self, service, db, identity, domain_service):
         """Test that BOUNDED share fails if recipient is not in any allowed domain."""
         belief_id = "belief-bounded-fail"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Should fail")
@@ -2350,9 +2284,7 @@ class TestBoundedSharing:
             await service.share(request, identity.get_did())
 
     @pytest.mark.asyncio
-    async def test_bounded_share_without_domains_allowed(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_without_domains_allowed(self, service, db, identity, domain_service):
         """Test that BOUNDED share without allowed_domains works (no restriction)."""
         belief_id = "belief-bounded-no-domains"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="No domains")
@@ -2498,9 +2430,7 @@ class TestBoundedResharing:
     async def test_reshare_bounded_success(self, service, db, identity, domain_service):
         """Test successful resharing of a BOUNDED belief."""
         # Create and receive original share
-        share_result, first_recipient = await self._create_and_receive_bounded_share(
-            service, db, identity, domain_service
-        )
+        share_result, first_recipient = await self._create_and_receive_bounded_share(service, db, identity, domain_service)
 
         # Add second recipient to same domain
         second_recipient = "did:key:second-recipient"
@@ -2521,9 +2451,7 @@ class TestBoundedResharing:
         assert reshare_result.current_hop == 1  # First reshare is hop 1
 
     @pytest.mark.asyncio
-    async def test_reshare_content_decryptable(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_content_decryptable(self, service, db, identity, domain_service):
         """Test that reshared content can be decrypted by new recipient."""
         original_content = "Super secret content for resharing"
 
@@ -2555,14 +2483,10 @@ class TestBoundedResharing:
         assert receive_result.content.decode("utf-8") == original_content
 
     @pytest.mark.asyncio
-    async def test_reshare_recipient_not_in_domain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_recipient_not_in_domain(self, service, db, identity, domain_service):
         """Test that resharing fails if new recipient is not in allowed domain."""
         # Create and receive original share
-        share_result, first_recipient = await self._create_and_receive_bounded_share(
-            service, db, identity, domain_service
-        )
+        share_result, first_recipient = await self._create_and_receive_bounded_share(service, db, identity, domain_service)
 
         # Add second recipient but NOT to allowed domain
         second_recipient = "did:key:outsider"
@@ -2578,9 +2502,7 @@ class TestBoundedResharing:
             await service.reshare(reshare_request, first_recipient)
 
     @pytest.mark.asyncio
-    async def test_reshare_max_hops_exceeded(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_max_hops_exceeded(self, service, db, identity, domain_service):
         """Test that resharing fails when max_hops is exceeded."""
         # Create share with max_hops=1 (allows 1 reshare)
         share_result, first_recipient = await self._create_and_receive_bounded_share(
@@ -2625,9 +2547,7 @@ class TestBoundedResharing:
             await service.reshare(reshare_request2, second_recipient)
 
     @pytest.mark.asyncio
-    async def test_reshare_direct_not_allowed(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_direct_not_allowed(self, service, db, identity, domain_service):
         """Test that DIRECT shares cannot be reshared."""
         belief_id = "belief-direct-no-reshare"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Direct content")
@@ -2661,9 +2581,7 @@ class TestBoundedResharing:
             await service.reshare(reshare_request, recipient_did)
 
     @pytest.mark.asyncio
-    async def test_reshare_not_received_fails(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_not_received_fails(self, service, db, identity, domain_service):
         """Test that share must be received before resharing."""
         belief_id = "belief-not-received"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Not received yet")
@@ -2782,9 +2700,7 @@ class TestBoundedConsentChain:
         return SharingService(db, identity, domain_service)
 
     @pytest.mark.asyncio
-    async def test_reshare_creates_hop_entry(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_creates_hop_entry(self, service, db, identity, domain_service):
         """Test that resharing creates proper hop entry in consent chain."""
         belief_id = "belief-chain-hop"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Chain content")
@@ -2919,9 +2835,7 @@ class TestBoundedRevocationPropagation:
         return SharingService(db, identity, domain_service)
 
     @pytest.mark.asyncio
-    async def test_revocation_notifies_all_in_chain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_revocation_notifies_all_in_chain(self, service, db, identity, domain_service):
         """Test that revoking a BOUNDED share notifies all downstream recipients."""
         belief_id = "belief-revoke-chain"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Revoke chain content")
@@ -3012,9 +2926,7 @@ class MockDomainServiceV2:
 
     async def get_domains_for_did(self, did: str) -> list[str]:
         """Get all domains a DID is a member of."""
-        return [
-            domain_id for domain_id, members in self.domains.items() if did in members
-        ]
+        return [domain_id for domain_id, members in self.domains.items() if did in members]
 
 
 class TestAllowedDomains:
@@ -3037,14 +2949,10 @@ class TestAllowedDomains:
         return SharingService(db, identity, domain_service)
 
     @pytest.mark.asyncio
-    async def test_bounded_share_validates_recipient_domain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_validates_recipient_domain(self, service, db, identity, domain_service):
         """Test that BOUNDED share validates recipient is in allowed domain."""
         belief_id = "belief-domain-001"
-        db.beliefs[belief_id] = MockBelief(
-            id=belief_id, content="Domain restricted content"
-        )
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Domain restricted content")
 
         # Setup: create domains and add members
         domain_service.add_domain("acme-corp", ["did:key:alice-acme"])
@@ -3074,14 +2982,10 @@ class TestAllowedDomains:
         assert result.encrypted_for == recipient_did
 
     @pytest.mark.asyncio
-    async def test_bounded_share_rejects_recipient_not_in_domain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_rejects_recipient_not_in_domain(self, service, db, identity, domain_service):
         """Test that BOUNDED share fails if recipient is not in allowed domain."""
         belief_id = "belief-domain-002"
-        db.beliefs[belief_id] = MockBelief(
-            id=belief_id, content="Domain restricted content"
-        )
+        db.beliefs[belief_id] = MockBelief(id=belief_id, content="Domain restricted content")
 
         # Setup: create domain but recipient is NOT a member
         domain_service.add_domain("acme-corp", ["did:key:insider"])
@@ -3108,9 +3012,7 @@ class TestAllowedDomains:
             await service.share(request, identity.get_did())
 
     @pytest.mark.asyncio
-    async def test_bounded_share_with_multiple_allowed_domains(
-        self, service, db, identity, domain_service
-    ):
+    async def test_bounded_share_with_multiple_allowed_domains(self, service, db, identity, domain_service):
         """Test BOUNDED share succeeds if recipient is in ANY allowed domain."""
         belief_id = "belief-domain-003"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Multi-domain content")
@@ -3142,9 +3044,7 @@ class TestAllowedDomains:
         assert result.share_id is not None
 
     @pytest.mark.asyncio
-    async def test_empty_allowed_domains_no_restriction(
-        self, service, db, identity, domain_service
-    ):
+    async def test_empty_allowed_domains_no_restriction(self, service, db, identity, domain_service):
         """Test that empty allowed_domains means no domain restriction."""
         belief_id = "belief-domain-004"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Unrestricted content")
@@ -3171,9 +3071,7 @@ class TestAllowedDomains:
         assert result.share_id is not None
 
     @pytest.mark.asyncio
-    async def test_none_allowed_domains_no_restriction(
-        self, service, db, identity, domain_service
-    ):
+    async def test_none_allowed_domains_no_restriction(self, service, db, identity, domain_service):
         """Test that None allowed_domains means no domain restriction."""
         belief_id = "belief-domain-005"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Unrestricted content")
@@ -3295,9 +3193,7 @@ class TestReshareWithDomains:
         return share_result, recipient_did
 
     @pytest.mark.asyncio
-    async def test_reshare_validates_domain_membership(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_validates_domain_membership(self, service, db, identity, domain_service):
         """Test that resharing validates new recipient is in allowed domain."""
         # Create initial share with domain restriction
         domain_service.add_domain("acme-corp", [])
@@ -3326,9 +3222,7 @@ class TestReshareWithDomains:
         assert reshare_result.current_hop == 1
 
     @pytest.mark.asyncio
-    async def test_reshare_rejects_recipient_not_in_domain(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_rejects_recipient_not_in_domain(self, service, db, identity, domain_service):
         """Test that resharing fails if new recipient is not in allowed domain."""
         # Create initial share with domain restriction
         domain_service.add_domain("acme-corp", [])
@@ -3357,9 +3251,7 @@ class TestReshareWithDomains:
             await service.reshare(reshare_request, resharer_did)
 
     @pytest.mark.asyncio
-    async def test_reshare_inherits_domain_restrictions(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_inherits_domain_restrictions(self, service, db, identity, domain_service):
         """Test that reshares inherit the original domain restrictions."""
         # Create initial share with domain restriction
         domain_service.add_domain("restricted-domain", [])
@@ -3404,9 +3296,7 @@ class TestReshareWithDomains:
             await service.reshare(reshare2_request, second_recipient)
 
     @pytest.mark.asyncio
-    async def test_reshare_without_domain_restriction(
-        self, service, db, identity, domain_service
-    ):
+    async def test_reshare_without_domain_restriction(self, service, db, identity, domain_service):
         """Test that resharing works without domain restrictions."""
         # Create initial share without domain restriction (empty allowed_domains)
         share_result, resharer_did = await self._create_bounded_share(
@@ -3433,9 +3323,7 @@ class TestReshareWithDomains:
         assert reshare_result.share_id is not None
 
     @pytest.mark.asyncio
-    async def test_reshare_no_domain_service_with_restrictions_fails(
-        self, db, identity, domain_service
-    ):
+    async def test_reshare_no_domain_service_with_restrictions_fails(self, db, identity, domain_service):
         """Test that resharing with domain restrictions requires domain service."""
         # Create service with domain_service for initial share
         service_with_domains = SharingService(db, identity, domain_service)
@@ -3488,9 +3376,7 @@ class TestStripOnForward:
         return SharingService(db, identity, domain_service)
 
     @pytest.mark.asyncio
-    async def test_strip_flat_field_on_reshare(
-        self, service, db, identity, domain_service
-    ):
+    async def test_strip_flat_field_on_reshare(self, service, db, identity, domain_service):
         """Test stripping a top-level field on reshare."""
         # Content with a field to strip
         original_content = json.dumps(
@@ -3556,9 +3442,7 @@ class TestStripOnForward:
         assert reshared_content["public_data"] == "visible"
 
     @pytest.mark.asyncio
-    async def test_strip_nested_field_on_reshare(
-        self, service, db, identity, domain_service
-    ):
+    async def test_strip_nested_field_on_reshare(self, service, db, identity, domain_service):
         """Test stripping a nested field using dot notation."""
         # Content with nested structure
         original_content = json.dumps(
@@ -3631,9 +3515,7 @@ class TestStripOnForward:
         assert reshared_content["public"] is True
 
     @pytest.mark.asyncio
-    async def test_strip_deeply_nested_field(
-        self, service, db, identity, domain_service
-    ):
+    async def test_strip_deeply_nested_field(self, service, db, identity, domain_service):
         """Test stripping a deeply nested field (3+ levels)."""
         original_content = json.dumps(
             {
@@ -3679,21 +3561,15 @@ class TestStripOnForward:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives and reshares
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         reshare_result = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=reshare_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=reshare_result.share_id), second_recipient)
 
         reshared_content = json.loads(receive_result.content.decode("utf-8"))
 
@@ -3748,21 +3624,15 @@ class TestStripOnForward:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives and reshares
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         reshare_result = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=reshare_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=reshare_result.share_id), second_recipient)
 
         reshared_content = json.loads(receive_result.content.decode("utf-8"))
 
@@ -3777,9 +3647,7 @@ class TestStripOnForward:
         assert reshared_content["nested"]["public"] == "keep"
 
     @pytest.mark.asyncio
-    async def test_strip_nonexistent_field_no_error(
-        self, service, db, identity, domain_service
-    ):
+    async def test_strip_nonexistent_field_no_error(self, service, db, identity, domain_service):
         """Test that stripping a nonexistent field doesn't cause an error."""
         original_content = json.dumps(
             {
@@ -3817,21 +3685,15 @@ class TestStripOnForward:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives and reshares - should not error
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         reshare_result = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=reshare_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=reshare_result.share_id), second_recipient)
 
         # Content should be unchanged (except formatted as JSON)
         reshared_content = json.loads(receive_result.content.decode("utf-8"))
@@ -3839,9 +3701,7 @@ class TestStripOnForward:
         assert reshared_content["data"]["key"] == "value"
 
     @pytest.mark.asyncio
-    async def test_strip_with_non_json_content_no_error(
-        self, service, db, identity, domain_service
-    ):
+    async def test_strip_with_non_json_content_no_error(self, service, db, identity, domain_service):
         """Test that stripping on non-JSON content doesn't cause an error."""
         # Plain text content (not JSON)
         original_content = "This is plain text, not JSON"
@@ -3875,29 +3735,21 @@ class TestStripOnForward:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives and reshares - should not error
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         reshare_result = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=reshare_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=reshare_result.share_id), second_recipient)
 
         # Content should be unchanged
         assert receive_result.content.decode("utf-8") == original_content
 
     @pytest.mark.asyncio
-    async def test_original_content_not_modified(
-        self, service, db, identity, domain_service
-    ):
+    async def test_original_content_not_modified(self, service, db, identity, domain_service):
         """Test that the original share's content is not modified by stripping."""
         original_content = json.dumps(
             {
@@ -3937,15 +3789,11 @@ class TestStripOnForward:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives
-        receive1 = await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        receive1 = await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         # First recipient reshares to second
         reshare1 = await service.reshare(
-            ReshareRequest(
-                original_share_id=share_result.share_id, recipient_did=second_recipient
-            ),
+            ReshareRequest(original_share_id=share_result.share_id, recipient_did=second_recipient),
             first_recipient,
         )
 
@@ -3956,9 +3804,7 @@ class TestStripOnForward:
         assert content1["secret"] == "should be stripped on forward"
 
         # Second recipient receives - should NOT have secret
-        receive2 = await service.receive(
-            ReceiveRequest(share_id=reshare1.share_id), second_recipient
-        )
+        receive2 = await service.receive(ReceiveRequest(share_id=reshare1.share_id), second_recipient)
         content2 = json.loads(receive2.content.decode("utf-8"))
         assert "secret" not in content2
 
@@ -3983,9 +3829,7 @@ class TestStripOnForwardWithPropagate:
         return SharingService(db, identity, domain_service)
 
     @pytest.mark.asyncio
-    async def test_propagate_strips_original_fields(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_strips_original_fields(self, service, db, identity, domain_service):
         """Test that propagate() strips fields from original policy."""
         from valence.privacy.sharing import PropagateRequest
 
@@ -4026,9 +3870,7 @@ class TestStripOnForwardWithPropagate:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         # First recipient propagates with no additional restrictions
         propagate_result = await service.propagate(
@@ -4040,9 +3882,7 @@ class TestStripOnForwardWithPropagate:
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=propagate_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=propagate_result.share_id), second_recipient)
 
         content = json.loads(receive_result.content.decode("utf-8"))
 
@@ -4052,9 +3892,7 @@ class TestStripOnForwardWithPropagate:
         assert content["metadata"]["source"] == "internal"
 
     @pytest.mark.asyncio
-    async def test_propagate_composes_strip_fields(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_composes_strip_fields(self, service, db, identity, domain_service):
         """Test that propagate() unions strip fields from original and additional restrictions."""
         from valence.privacy.sharing import PropagateRequest
 
@@ -4096,9 +3934,7 @@ class TestStripOnForwardWithPropagate:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         # First recipient propagates with additional strip_on_forward for field_b
         propagate_result = await service.propagate(
@@ -4117,9 +3953,7 @@ class TestStripOnForwardWithPropagate:
         assert "field_b" in propagate_result.composed_restrictions["strip_on_forward"]
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=propagate_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=propagate_result.share_id), second_recipient)
 
         content = json.loads(receive_result.content.decode("utf-8"))
 
@@ -4130,9 +3964,7 @@ class TestStripOnForwardWithPropagate:
         assert content["field_c"] == "keep this"
 
     @pytest.mark.asyncio
-    async def test_propagate_nested_field_stripping(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_nested_field_stripping(self, service, db, identity, domain_service):
         """Test propagate() with nested field stripping."""
         from valence.privacy.sharing import PropagateRequest
 
@@ -4177,9 +4009,7 @@ class TestStripOnForwardWithPropagate:
         share_result = await service.share(request, identity.get_did())
 
         # First recipient receives
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), first_recipient)
 
         # Propagate
         propagate_result = await service.propagate(
@@ -4191,9 +4021,7 @@ class TestStripOnForwardWithPropagate:
         )
 
         # Second recipient receives
-        receive_result = await service.receive(
-            ReceiveRequest(share_id=propagate_result.share_id), second_recipient
-        )
+        receive_result = await service.receive(ReceiveRequest(share_id=propagate_result.share_id), second_recipient)
 
         content = json.loads(receive_result.content.decode("utf-8"))
 
@@ -4356,9 +4184,7 @@ class TestPropagateAPI:
     @pytest.mark.asyncio
     async def test_propagate_basic_success(self, service, db, identity, domain_service):
         """Test basic propagate operation without additional restrictions."""
-        share_result, propagator_did = await self._create_and_receive_bounded_share(
-            service, db, identity, domain_service
-        )
+        share_result, propagator_did = await self._create_and_receive_bounded_share(service, db, identity, domain_service)
 
         # Add second recipient to domain
         new_recipient = "did:key:new-recipient"
@@ -4381,9 +4207,7 @@ class TestPropagateAPI:
         assert result.hops_remaining == 4  # 5 - 1 = 4
 
     @pytest.mark.asyncio
-    async def test_propagate_composes_max_hops_minimum(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_composes_max_hops_minimum(self, service, db, identity, domain_service):
         """Test that propagate takes minimum of max_hops."""
         # Original share has max_hops=5, so 5 hops remaining at start
         share_result, propagator_did = await self._create_and_receive_bounded_share(
@@ -4413,9 +4237,7 @@ class TestPropagateAPI:
         assert result.composed_restrictions["max_hops"] == 2
 
     @pytest.mark.asyncio
-    async def test_propagate_composes_allowed_domains_intersection(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_composes_allowed_domains_intersection(self, service, db, identity, domain_service):
         """Test that propagate takes intersection of allowed_domains."""
         # Original share allows ["team-alpha", "team-beta"]
         share_result, propagator_did = await self._create_and_receive_bounded_share(
@@ -4435,9 +4257,7 @@ class TestPropagateAPI:
         propagate_request = PropagateRequest(
             share_id=share_result.share_id,
             recipient_did=new_recipient,
-            additional_restrictions=PropagationRules(
-                allowed_domains=["team-alpha", "team-delta"]
-            ),
+            additional_restrictions=PropagationRules(allowed_domains=["team-alpha", "team-delta"]),
         )
 
         result = await service.propagate(propagate_request, propagator_did)
@@ -4447,9 +4267,7 @@ class TestPropagateAPI:
         assert result.composed_restrictions["allowed_domains"] == ["team-alpha"]
 
     @pytest.mark.asyncio
-    async def test_propagate_fails_with_no_common_domains(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_fails_with_no_common_domains(self, service, db, identity, domain_service):
         """Test that propagate fails when domain intersection is empty."""
         share_result, propagator_did = await self._create_and_receive_bounded_share(
             service,
@@ -4473,15 +4291,11 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, propagator_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_composes_strip_on_forward_union(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_composes_strip_on_forward_union(self, service, db, identity, domain_service):
         """Test that strip_on_forward fields are unioned."""
         # Create share with strip_on_forward
         belief_id = "belief-strip"
-        content = json.dumps(
-            {"public": "data", "field_a": "secret_a", "field_b": "secret_b"}
-        )
+        content = json.dumps({"public": "data", "field_a": "secret_a", "field_b": "secret_b"})
         db.beliefs[belief_id] = MockBelief(id=belief_id, content=content)
 
         propagator_did = "did:key:strip-propagator"
@@ -4506,9 +4320,7 @@ class TestPropagateAPI:
         share_result = await service.share(request, identity.get_did())
 
         # Receive
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), propagator_did
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), propagator_did)
 
         # Add new recipient
         new_recipient = "did:key:strip-recipient"
@@ -4531,9 +4343,7 @@ class TestPropagateAPI:
         }
 
     @pytest.mark.asyncio
-    async def test_propagate_composes_min_trust_maximum(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_composes_min_trust_maximum(self, service, db, identity, domain_service):
         """Test that min_trust_to_receive takes maximum (most restrictive)."""
         # Create share with min_trust_to_receive
         belief_id = "belief-trust"
@@ -4561,9 +4371,7 @@ class TestPropagateAPI:
         share_result = await service.share(request, identity.get_did())
 
         # Receive
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), propagator_did
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), propagator_did)
 
         # Add new recipient
         new_recipient = "did:key:trust-recipient"
@@ -4583,9 +4391,7 @@ class TestPropagateAPI:
         assert result.composed_restrictions["min_trust_to_receive"] == 0.8
 
     @pytest.mark.asyncio
-    async def test_propagate_fails_for_direct_policy(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_fails_for_direct_policy(self, service, db, identity, domain_service):
         """Test that propagate fails for DIRECT policy shares."""
         belief_id = "belief-direct"
         db.beliefs[belief_id] = MockBelief(id=belief_id, content="Direct content")
@@ -4601,9 +4407,7 @@ class TestPropagateAPI:
         share_result = await service.share(request, identity.get_did())
 
         # Receive
-        await service.receive(
-            ReceiveRequest(share_id=share_result.share_id), recipient_did
-        )
+        await service.receive(ReceiveRequest(share_id=share_result.share_id), recipient_did)
 
         # Add new recipient
         new_recipient = "did:key:direct-new"
@@ -4619,9 +4423,7 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, recipient_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_fails_for_revoked_share(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_fails_for_revoked_share(self, service, db, identity, domain_service):
         """Test that propagate fails for revoked shares."""
         share_result, propagator_did = await self._create_and_receive_bounded_share(
             service,
@@ -4649,9 +4451,7 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, propagator_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_fails_when_max_hops_exceeded(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_fails_when_max_hops_exceeded(self, service, db, identity, domain_service):
         """Test that propagate fails when max_hops is exceeded."""
         # Create with max_hops=1
         share_result, propagator_did = await self._create_and_receive_bounded_share(
@@ -4669,16 +4469,12 @@ class TestPropagateAPI:
         domain_service.add_member(first_recipient, "team-alpha")
 
         result1 = await service.propagate(
-            PropagateRequest(
-                share_id=share_result.share_id, recipient_did=first_recipient
-            ),
+            PropagateRequest(share_id=share_result.share_id, recipient_did=first_recipient),
             propagator_did,
         )
 
         # Receive
-        await service.receive(
-            ReceiveRequest(share_id=result1.share_id), first_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=result1.share_id), first_recipient)
 
         # Second propagation should fail (max_hops=1 already used)
         second_recipient = "did:key:second-prop"
@@ -4687,16 +4483,12 @@ class TestPropagateAPI:
 
         with pytest.raises(ValueError, match="max_hops.*exceeded"):
             await service.propagate(
-                PropagateRequest(
-                    share_id=result1.share_id, recipient_did=second_recipient
-                ),
+                PropagateRequest(share_id=result1.share_id, recipient_did=second_recipient),
                 first_recipient,
             )
 
     @pytest.mark.asyncio
-    async def test_propagate_only_by_recipient(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_only_by_recipient(self, service, db, identity, domain_service):
         """Test that only the recipient can propagate."""
         share_result, actual_recipient = await self._create_and_receive_bounded_share(
             service,
@@ -4720,9 +4512,7 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, imposter_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_requires_receiving_first(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_requires_receiving_first(self, service, db, identity, domain_service):
         """Test that propagate requires receiving the share first."""
         # Create share but don't receive
         belief_id = "belief-not-received"
@@ -4759,9 +4549,7 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, recipient_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_recipient_must_be_in_composed_domains(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_recipient_must_be_in_composed_domains(self, service, db, identity, domain_service):
         """Test that recipient must be in the composed (intersected) domains."""
         share_result, propagator_did = await self._create_and_receive_bounded_share(
             service,
@@ -4787,9 +4575,7 @@ class TestPropagateAPI:
             await service.propagate(propagate_request, propagator_did)
 
     @pytest.mark.asyncio
-    async def test_propagate_updates_consent_chain_hop(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_updates_consent_chain_hop(self, service, db, identity, domain_service):
         """Test that propagate adds a hop to the consent chain."""
         share_result, propagator_did = await self._create_and_receive_bounded_share(
             service,
@@ -4825,9 +4611,7 @@ class TestPropagateAPI:
         assert "signature" in hop
 
     @pytest.mark.asyncio
-    async def test_propagate_decrypts_and_reencrypts_content(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_decrypts_and_reencrypts_content(self, service, db, identity, domain_service):
         """Test that propagated content is properly encrypted for new recipient."""
         original_content = "Secret propagated content"
         share_result, propagator_did = await self._create_and_receive_bounded_share(
@@ -4858,9 +4642,7 @@ class TestPropagateAPI:
         assert receive_result.content.decode("utf-8") == original_content
 
     @pytest.mark.asyncio
-    async def test_propagate_chain_of_restrictions(
-        self, service, db, identity, domain_service
-    ):
+    async def test_propagate_chain_of_restrictions(self, service, db, identity, domain_service):
         """Test a chain of propagations with progressively tighter restrictions."""
         # Start with generous restrictions
         original_domains = ["alpha", "beta", "gamma", "delta"]
@@ -4910,9 +4692,7 @@ class TestPropagateAPI:
             ),
             first_recipient,
         )
-        await service.receive(
-            ReceiveRequest(share_id=prop1_result.share_id), second_recipient
-        )
+        await service.receive(ReceiveRequest(share_id=prop1_result.share_id), second_recipient)
 
         # Check first propagation results
         assert set(prop1_result.composed_restrictions["allowed_domains"]) == {

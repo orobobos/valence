@@ -100,9 +100,7 @@ class TestPIITypes:
         for text, expected in test_cases:
             result = scanner.scan(text)
             assert result.contains_pii, f"Failed to detect CC in: {text}"
-            cc_matches = [
-                m for m in result.matches if m.pii_type == PIIType.CREDIT_CARD
-            ]
+            cc_matches = [m for m in result.matches if m.pii_type == PIIType.CREDIT_CARD]
             assert len(cc_matches) >= 1, f"No CC match for: {text}"
             assert result.max_classification == ClassificationLevel.L4_PROHIBITED
 
@@ -195,9 +193,7 @@ class TestFederationBlocking:
 
     def test_allows_l3_with_force(self):
         """Should allow L3 content with force flag (explicit confirmation)."""
-        allowed, result = check_federation_allowed(
-            "Email: test@example.com", force=True
-        )
+        allowed, result = check_federation_allowed("Email: test@example.com", force=True)
 
         assert allowed  # Force overrides soft block
         assert result.max_classification == ClassificationLevel.L3_PERSONAL

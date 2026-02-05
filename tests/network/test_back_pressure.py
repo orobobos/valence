@@ -16,7 +16,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.network.messages import BackPressureMessage
 from valence.network.router import Connection, QueuedMessage, RouterNode
 
@@ -121,10 +120,7 @@ class TestRouterLoadTracking:
 
         # Add 500 queued messages across multiple nodes
         for i in range(50):
-            router.offline_queues[f"node-{i}"] = [
-                QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5)
-                for j in range(10)
-            ]
+            router.offline_queues[f"node-{i}"] = [QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5) for j in range(10)]
 
         load = router.get_load_pct()
         # 500/1000 = 50% queue load * 0.3 weight = 15%
@@ -147,10 +143,7 @@ class TestRouterLoadTracking:
 
         # 600 queued messages (60% of max)
         for i in range(60):
-            router.offline_queues[f"offline-{i}"] = [
-                QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5)
-                for j in range(10)
-            ]
+            router.offline_queues[f"offline-{i}"] = [QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5) for j in range(10)]
 
         load = router.get_load_pct()
         # (80% * 0.7) + (60% * 0.3) = 56 + 18 = 74%
@@ -390,9 +383,7 @@ class TestRouterEndpointsBackPressure:
         router._back_pressure_nodes = {"node-1", "node-2"}
 
         # Mock circuit stats to avoid unrelated initialization issues
-        with patch.object(
-            router, "get_circuit_stats", return_value={"circuits_active": 0}
-        ):
+        with patch.object(router, "get_circuit_stats", return_value={"circuits_active": 0}):
             request = MagicMock()
             response = await router.handle_status(request)
 

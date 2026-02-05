@@ -154,17 +154,13 @@ def compute_diversity_score(validator_set: ValidatorSet) -> dict[str, Any]:
     for v in validators:
         for fed in v.federation_membership:
             federation_counts[fed] += 1
-    federation_gini = (
-        _compute_gini(list(federation_counts.values())) if federation_counts else 1.0
-    )
+    federation_gini = _compute_gini(list(federation_counts.values())) if federation_counts else 1.0
 
     # Tier distribution (using entropy)
     tier_counts = Counter(v.tier for v in validators)
     tier_entropy = _compute_entropy(list(tier_counts.values()))
     max_tier_entropy = _compute_entropy([n // 3] * 3)  # Maximum entropy if evenly split
-    normalized_tier_entropy = (
-        tier_entropy / max_tier_entropy if max_tier_entropy > 0 else 0.0
-    )
+    normalized_tier_entropy = tier_entropy / max_tier_entropy if max_tier_entropy > 0 else 0.0
 
     # Tenure distribution
     tenures = [v.tenure_epochs for v in validators]
@@ -178,11 +174,7 @@ def compute_diversity_score(validator_set: ValidatorSet) -> dict[str, Any]:
     # Lower Gini = more equal distribution = better
     # Higher entropy = more variety = better
     # Higher new ratio = more turnover = better
-    overall_score = (
-        (1.0 - federation_gini) * 0.4
-        + normalized_tier_entropy * 0.3
-        + new_validator_ratio * 0.3
-    )
+    overall_score = (1.0 - federation_gini) * 0.4 + normalized_tier_entropy * 0.3 + new_validator_ratio * 0.3
 
     return {
         "overall_score": overall_score,
@@ -326,9 +318,7 @@ def detect_collusion_patterns(
     alerts: list[CollusionAlert] = []
 
     # 1. Voting correlation analysis
-    correlation_alerts = _analyze_voting_correlation(
-        voting_records, validator_set.epoch
-    )
+    correlation_alerts = _analyze_voting_correlation(voting_records, validator_set.epoch)
     alerts.extend(correlation_alerts)
 
     # 2. Stake timing analysis
@@ -387,11 +377,7 @@ def _analyze_voting_correlation(
                 correlation_matrix[(v1, v2)] = correlation
 
     # Find highly correlated groups
-    high_correlation_pairs = [
-        (v1, v2, corr)
-        for (v1, v2), corr in correlation_matrix.items()
-        if corr >= VOTING_CORRELATION_THRESHOLD
-    ]
+    high_correlation_pairs = [(v1, v2, corr) for (v1, v2), corr in correlation_matrix.items() if corr >= VOTING_CORRELATION_THRESHOLD]
 
     if len(high_correlation_pairs) >= MIN_CORRELATED_VALIDATORS - 1:
         # Found suspicious correlation
@@ -400,26 +386,17 @@ def _analyze_voting_correlation(
             involved.add(v1)
             involved.add(v2)
 
-        avg_correlation = sum(c for _, _, c in high_correlation_pairs) / len(
-            high_correlation_pairs
-        )
+        avg_correlation = sum(c for _, _, c in high_correlation_pairs) / len(high_correlation_pairs)
 
         alerts.append(
             CollusionAlert(
                 id=uuid4(),
                 indicator=CollusionIndicator.VOTING_CORRELATION,
-                severity=(
-                    SeverityLevel.HIGH
-                    if avg_correlation > 0.98
-                    else SeverityLevel.WARNING
-                ),
+                severity=(SeverityLevel.HIGH if avg_correlation > 0.98 else SeverityLevel.WARNING),
                 validators=list(involved),
                 description=f"High voting correlation ({avg_correlation:.2%}) detected among {len(involved)} validators",
                 evidence_data={
-                    "correlation_pairs": [
-                        {"v1": v1, "v2": v2, "correlation": corr}
-                        for v1, v2, corr in high_correlation_pairs
-                    ],
+                    "correlation_pairs": [{"v1": v1, "v2": v2, "correlation": corr} for v1, v2, corr in high_correlation_pairs],
                     "proposals_analyzed": len(proposals),
                 },
                 epoch=epoch,
@@ -504,23 +481,15 @@ def _analyze_federation_clustering(validator_set: ValidatorSet) -> list[Collusio
     for federation, count in federation_counts.items():
         if count > max_allowed:
             # Find validators from this federation
-            validators_from_fed = [
-                v.agent_id
-                for v in validator_set.validators
-                if federation in v.federation_membership
-            ]
+            validators_from_fed = [v.agent_id for v in validator_set.validators if federation in v.federation_membership]
 
             alerts.append(
                 CollusionAlert(
                     id=uuid4(),
                     indicator=CollusionIndicator.FEDERATION_CLUSTERING,
-                    severity=(
-                        SeverityLevel.WARNING
-                        if count <= max_allowed * 1.5
-                        else SeverityLevel.HIGH
-                    ),
+                    severity=(SeverityLevel.WARNING if count <= max_allowed * 1.5 else SeverityLevel.HIGH),
                     validators=validators_from_fed,
-                    description=f"Federation '{federation}' over-represented: {count}/{n} ({count/n:.1%})",
+                    description=f"Federation '{federation}' over-represented: {count}/{n} ({count / n:.1%})",
                     evidence_data={
                         "federation": federation,
                         "count": count,
@@ -622,20 +591,9 @@ class AntiGamingEngine:
 
         # Tenure analysis
         tenure_stats = {
-            "validators_at_penalty": sum(
-                1
-                for v in validator_set.validators
-                if v.tenure_epochs > MAX_CONSECUTIVE_EPOCHS_BEFORE_PENALTY
-            ),
-            "max_tenure": max(
-                (v.tenure_epochs for v in validator_set.validators), default=0
-            ),
-            "avg_tenure": (
-                sum(v.tenure_epochs for v in validator_set.validators)
-                / len(validator_set.validators)
-                if validator_set.validators
-                else 0
-            ),
+            "validators_at_penalty": sum(1 for v in validator_set.validators if v.tenure_epochs > MAX_CONSECUTIVE_EPOCHS_BEFORE_PENALTY),
+            "max_tenure": max((v.tenure_epochs for v in validator_set.validators), default=0),
+            "avg_tenure": (sum(v.tenure_epochs for v in validator_set.validators) / len(validator_set.validators) if validator_set.validators else 0),
         }
 
         # Overall health score

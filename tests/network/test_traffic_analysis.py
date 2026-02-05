@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
 from valence.network.config import (
     PRIVACY_HIGH,
     PRIVACY_LOW,
@@ -32,9 +31,7 @@ from valence.network.config import (
 from valence.network.messages import get_padded_size, pad_message, unpad_message
 from valence.network.node import NodeClient
 
-pytestmark = pytest.mark.skip(
-    reason="Needs update for NodeClient decomposition - see #167"
-)
+pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
 
 # =============================================================================
 # CONFIGURATION TESTS
@@ -82,9 +79,7 @@ class TestPrivacyLevelPresets:
 
     def test_paranoid_privacy_maximum(self):
         """PARANOID privacy should enable all mitigations including constant-rate."""
-        config = TrafficAnalysisMitigationConfig.from_privacy_level(
-            PrivacyLevel.PARANOID
-        )
+        config = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.PARANOID)
 
         assert config.privacy_level == PrivacyLevel.PARANOID
         assert config.batching.enabled
@@ -253,9 +248,7 @@ class TestConfigSerialization:
 
         assert restored.privacy_level == original.privacy_level
         assert restored.batching.enabled == original.batching.enabled
-        assert (
-            restored.batching.batch_interval_ms == original.batching.batch_interval_ms
-        )
+        assert restored.batching.batch_interval_ms == original.batching.batch_interval_ms
         assert restored.jitter.enabled == original.jitter.enabled
         assert restored.jitter.max_delay_ms == original.jitter.max_delay_ms
         assert restored.constant_rate.enabled == original.constant_rate.enabled
@@ -342,9 +335,7 @@ def mock_node_client():
         node_id=node_id,
         private_key=private_key,
         encryption_private_key=encryption_key,
-        traffic_analysis_mitigation=TrafficAnalysisMitigationConfig.from_privacy_level(
-            PrivacyLevel.MEDIUM
-        ),
+        traffic_analysis_mitigation=TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.MEDIUM),
     )
     return client
 
@@ -511,10 +502,7 @@ class TestConstantRateBehavior:
         await client._send_padding_message()
 
         # Verify padding was attempted
-        assert (
-            client._send_via_router.called
-            or client._stats["constant_rate_padding_sent"] >= 0
-        )
+        assert client._send_via_router.called or client._stats["constant_rate_padding_sent"] >= 0
 
 
 # =============================================================================

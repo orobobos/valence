@@ -66,9 +66,7 @@ class ProvenanceChain:
             "origin_node": self.origin_node,
             "origin_timestamp": self.origin_timestamp,
             "hops": self.hops,
-            "origin_signature": (
-                self.origin_signature.hex() if self.origin_signature else None
-            ),
+            "origin_signature": (self.origin_signature.hex() if self.origin_signature else None),
             "chain_signatures": [s.hex() for s in self.chain_signatures],
             "signature_verified": self.signature_verified,
             "federation_path": self.federation_path,

@@ -322,11 +322,7 @@ def aggregate_confidence(
         return DimensionalConfidence(
             overall=min(c.overall for c in confidences),
             source_reliability=min(
-                (
-                    c.source_reliability
-                    for c in confidences
-                    if c.source_reliability is not None
-                ),
+                (c.source_reliability for c in confidences if c.source_reliability is not None),
                 default=None,
             ),
             method_quality=min(
@@ -334,19 +330,11 @@ def aggregate_confidence(
                 default=None,
             ),
             internal_consistency=min(
-                (
-                    c.internal_consistency
-                    for c in confidences
-                    if c.internal_consistency is not None
-                ),
+                (c.internal_consistency for c in confidences if c.internal_consistency is not None),
                 default=None,
             ),
             temporal_freshness=min(
-                (
-                    c.temporal_freshness
-                    for c in confidences
-                    if c.temporal_freshness is not None
-                ),
+                (c.temporal_freshness for c in confidences if c.temporal_freshness is not None),
                 default=None,
             ),
             corroboration=min(
@@ -354,11 +342,7 @@ def aggregate_confidence(
                 default=None,
             ),
             domain_applicability=min(
-                (
-                    c.domain_applicability
-                    for c in confidences
-                    if c.domain_applicability is not None
-                ),
+                (c.domain_applicability for c in confidences if c.domain_applicability is not None),
                 default=None,
             ),
         )
@@ -367,11 +351,7 @@ def aggregate_confidence(
         return DimensionalConfidence(
             overall=max(c.overall for c in confidences),
             source_reliability=max(
-                (
-                    c.source_reliability
-                    for c in confidences
-                    if c.source_reliability is not None
-                ),
+                (c.source_reliability for c in confidences if c.source_reliability is not None),
                 default=None,
             ),
             method_quality=max(
@@ -379,19 +359,11 @@ def aggregate_confidence(
                 default=None,
             ),
             internal_consistency=max(
-                (
-                    c.internal_consistency
-                    for c in confidences
-                    if c.internal_consistency is not None
-                ),
+                (c.internal_consistency for c in confidences if c.internal_consistency is not None),
                 default=None,
             ),
             temporal_freshness=max(
-                (
-                    c.temporal_freshness
-                    for c in confidences
-                    if c.temporal_freshness is not None
-                ),
+                (c.temporal_freshness for c in confidences if c.temporal_freshness is not None),
                 default=None,
             ),
             corroboration=max(
@@ -399,11 +371,7 @@ def aggregate_confidence(
                 default=None,
             ),
             domain_applicability=max(
-                (
-                    c.domain_applicability
-                    for c in confidences
-                    if c.domain_applicability is not None
-                ),
+                (c.domain_applicability for c in confidences if c.domain_applicability is not None),
                 default=None,
             ),
         )
@@ -416,9 +384,7 @@ def aggregate_confidence(
 
         def weighted_geo(getter) -> float | None:
             """Compute weighted geometric mean for a dimension."""
-            values = [
-                (getter(c), c.overall) for c in confidences if getter(c) is not None
-            ]
+            values = [(getter(c), c.overall) for c in confidences if getter(c) is not None]
             if not values:
                 return None
             # Geometric mean in log space: exp(∑(w * log(v)) / ∑w)
@@ -433,10 +399,7 @@ def aggregate_confidence(
         overall_weights = [c.overall for c in confidences]  # Self-weighted
         if sum(overall_weights) == 0:
             overall_weights = [1.0] * len(confidences)
-        log_sum = sum(
-            w * math.log(max(EPSILON, v))
-            for v, w in zip(overall_values, overall_weights)
-        )
+        log_sum = sum(w * math.log(max(EPSILON, v)) for v, w in zip(overall_values, overall_weights))
         geo_overall = math.exp(log_sum / sum(overall_weights))
 
         return DimensionalConfidence(
@@ -455,9 +418,7 @@ def aggregate_confidence(
             total_weight = len(confidences)
 
         def weighted_avg(getter) -> float | None:
-            values = [
-                (getter(c), c.overall) for c in confidences if getter(c) is not None
-            ]
+            values = [(getter(c), c.overall) for c in confidences if getter(c) is not None]
             if not values:
                 return None
             return sum(v * w for v, w in values) / sum(w for _, w in values)

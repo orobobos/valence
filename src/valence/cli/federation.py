@@ -98,9 +98,7 @@ def sign_request(
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     except ImportError:
-        print(
-            "Error: cryptography library required for request signing", file=sys.stderr
-        )
+        print("Error: cryptography library required for request signing", file=sys.stderr)
         print("Install with: pip install cryptography", file=sys.stderr)
         sys.exit(1)
 
@@ -270,9 +268,7 @@ async def cmd_discover(args: argparse.Namespace) -> int:
                 print(f"   Status: {node.status.value}")
                 print(f"   Trust Phase: {node.trust_phase.value}")
             else:
-                print(
-                    "⚠️  Registration failed (node may already exist)", file=sys.stderr
-                )
+                print("⚠️  Registration failed (node may already exist)", file=sys.stderr)
         except Exception as e:
             print(f"❌ Registration error: {e}", file=sys.stderr)
             return 1
@@ -322,9 +318,7 @@ async def cmd_list(args: argparse.Namespace) -> int:
             trust_score = trust.get("trust", {}).get("overall", 0) if trust else 0
             phase = node.get("trust_phase", "?")
 
-            print(
-                f"{node_id}  {did:<40}  {status:<12}  {trust_score:>6.1%}  {phase:<12}"
-            )
+            print(f"{node_id}  {did:<40}  {status:<12}  {trust_score:>6.1%}  {phase:<12}")
 
         return 0
 
@@ -347,32 +341,38 @@ async def cmd_status(args: argparse.Namespace) -> int:
         # Get overall federation stats
         with get_cursor() as cur:
             # Node counts by status
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT status, COUNT(*) as count
                 FROM federation_nodes
                 GROUP BY status
-            """)
+            """
+            )
             nodes_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
 
             # Total sync stats
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) as total_peers,
                     SUM(beliefs_sent) as beliefs_sent,
                     SUM(beliefs_received) as beliefs_received,
                     MAX(last_sync_at) as last_sync
                 FROM sync_state
-            """)
+            """
+            )
             sync_stats = cur.fetchone()
 
             # Belief counts
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) FILTER (WHERE is_local = TRUE) as local_beliefs,
                     COUNT(*) FILTER (WHERE is_local = FALSE) as federated_beliefs
                 FROM beliefs
                 WHERE status = 'active'
-            """)
+            """
+            )
             belief_stats = cur.fetchone()
 
         if args.json:
@@ -385,11 +385,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
                     "peers": sync_stats["total_peers"] or 0,
                     "beliefs_sent": sync_stats["beliefs_sent"] or 0,
                     "beliefs_received": sync_stats["beliefs_received"] or 0,
-                    "last_sync": (
-                        sync_stats["last_sync"].isoformat()
-                        if sync_stats["last_sync"]
-                        else None
-                    ),
+                    "last_sync": (sync_stats["last_sync"].isoformat() if sync_stats["last_sync"] else None),
                 },
                 "beliefs": {
                     "local": belief_stats["local_beliefs"] or 0,
@@ -538,9 +534,7 @@ async def cmd_sync(args: argparse.Namespace) -> int:
             for _ in range(30):  # 30 second timeout
                 await asyncio.sleep(1)
                 status = federation_sync_status(node_id=node_id)
-                syncing = any(
-                    s.get("status") == "syncing" for s in status.get("sync_states", [])
-                )
+                syncing = any(s.get("status") == "syncing" for s in status.get("sync_states", []))
                 if not syncing:
                     print("✅ Sync completed")
                     break

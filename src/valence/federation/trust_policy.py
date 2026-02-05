@@ -130,9 +130,7 @@ class TrustPolicy:
             return 0.1  # Default for unknown nodes
 
         # Get base trust (domain-specific if applicable)
-        base_trust = (
-            node_trust.get_domain_trust(domain) if domain else node_trust.overall
-        )
+        base_trust = node_trust.get_domain_trust(domain) if domain else node_trust.overall
 
         # Apply decay based on last interaction
         if apply_decay and node_trust.last_interaction_at:
@@ -210,9 +208,7 @@ class TrustPolicy:
                     node_trust = NodeTrust.from_row(row)
                     if node_trust.last_interaction_at:
                         old_trust = node_trust.overall
-                        decayed = self._apply_decay(
-                            old_trust, node_trust.last_interaction_at
-                        )
+                        decayed = self._apply_decay(old_trust, node_trust.last_interaction_at)
                         if decayed != old_trust:
                             node_trust.overall = decayed
                             self.registry.save_node_trust(node_trust)
@@ -249,11 +245,7 @@ class TrustPolicy:
         days_in_phase = (datetime.now() - node.phase_started_at).days
 
         # Determine total interactions
-        total_interactions = (
-            node_trust.beliefs_received
-            + node_trust.sync_requests_served
-            + node_trust.aggregation_participations
-        )
+        total_interactions = node_trust.beliefs_received + node_trust.sync_requests_served + node_trust.aggregation_participations
 
         # Check for demotion first (trust fell too low)
         if current_phase != TrustPhase.OBSERVER:
@@ -262,21 +254,11 @@ class TrustPolicy:
                 TrustPhase.CONTRIBUTOR,
                 TrustPhase.PARTICIPANT,
             ]
-            current_idx = (
-                prev_phases.index(current_phase)
-                if current_phase in prev_phases
-                else len(prev_phases)
-            )
+            current_idx = prev_phases.index(current_phase) if current_phase in prev_phases else len(prev_phases)
 
             for i in range(current_idx - 1, -1, -1):
                 phase = prev_phases[i]
-                req = PHASE_TRANSITION[
-                    (
-                        prev_phases[i + 1]
-                        if i + 1 < len(prev_phases)
-                        else TrustPhase.ANCHOR
-                    )
-                ]
+                req = PHASE_TRANSITION[(prev_phases[i + 1] if i + 1 < len(prev_phases) else TrustPhase.ANCHOR)]
                 if node_trust.overall < req["min_trust"] * 0.8:  # 20% below threshold
                     return phase
 
@@ -300,10 +282,7 @@ class TrustPolicy:
             return None
         if total_interactions < req["min_interactions"]:
             return None
-        if (
-            "min_endorsements" in req
-            and node_trust.endorsements_received < req["min_endorsements"]
-        ):
+        if "min_endorsements" in req and node_trust.endorsements_received < req["min_endorsements"]:
             return None
 
         return next_phase
@@ -341,15 +320,11 @@ class TrustPolicy:
                     (new_phase.value, f'"{reason}"' if reason else "null", node_id),
                 )
 
-                logger.info(
-                    f"Node {node_id} transitioned to phase {new_phase.value}: {reason}"
-                )
+                logger.info(f"Node {node_id} transitioned to phase {new_phase.value}: {reason}")
                 return True
 
         except Exception:
-            logger.exception(
-                f"Error transitioning node {node_id} to phase {new_phase.value}"
-            )
+            logger.exception(f"Error transitioning node {node_id} to phase {new_phase.value}")
             return False
 
     def check_and_apply_transitions(self) -> list[tuple[UUID, TrustPhase, TrustPhase]]:
@@ -362,9 +337,7 @@ class TrustPolicy:
 
         try:
             with get_cursor() as cur:
-                cur.execute(
-                    "SELECT id, trust_phase FROM federation_nodes WHERE status != 'unreachable'"
-                )
+                cur.execute("SELECT id, trust_phase FROM federation_nodes WHERE status != 'unreachable'")
                 rows = cur.fetchall()
 
             for row in rows:
@@ -373,9 +346,7 @@ class TrustPolicy:
 
                 new_phase = self.check_phase_transition(node_id)
                 if new_phase and new_phase != old_phase:
-                    direction = (
-                        "promoted" if new_phase.value > old_phase.value else "demoted"
-                    )
+                    direction = "promoted" if new_phase.value > old_phase.value else "demoted"
                     reason = f"Automatically {direction} based on trust metrics"
 
                     if self.transition_phase(node_id, new_phase, reason):
@@ -416,7 +387,8 @@ class TrustPolicy:
         try:
             with get_cursor() as cur:
                 # Get all nodes with their trust data
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT
                         fn.id,
                         fn.name,
@@ -425,7 +397,8 @@ class TrustPolicy:
                     FROM federation_nodes fn
                     LEFT JOIN node_trust nt ON fn.id = nt.node_id
                     ORDER BY trust_score DESC
-                """)
+                """
+                )
                 rows = cur.fetchall()
 
                 for row in rows:
@@ -535,10 +508,7 @@ class TrustPolicy:
                         trust_share=top_3_share,
                         recommendation="Network trust is highly concentrated - add more diverse trusted sources",
                         details={
-                            "top_3_nodes": [
-                                {"node_id": str(nid), "name": name, "trust": t}
-                                for nid, name, t in node_trusts[:3]
-                            ],
+                            "top_3_nodes": [{"node_id": str(nid), "name": name, "trust": t} for nid, name, t in node_trusts[:3]],
                             "total_trust": total_trust,
                             "threshold": top_3_critical,
                         },
@@ -553,10 +523,7 @@ class TrustPolicy:
                         trust_share=top_3_share,
                         recommendation="Consider adding more trusted sources for better distribution",
                         details={
-                            "top_3_nodes": [
-                                {"node_id": str(nid), "name": name, "trust": t}
-                                for nid, name, t in node_trusts[:3]
-                            ],
+                            "top_3_nodes": [{"node_id": str(nid), "name": name, "trust": t} for nid, name, t in node_trusts[:3]],
                             "total_trust": total_trust,
                             "threshold": top_3_warning,
                         },
@@ -567,11 +534,7 @@ class TrustPolicy:
         min_sources = int(thresholds.get("min_trusted_sources", 3))
 
         if trusted_sources < min_sources:
-            severity = (
-                WarningSeverity.CRITICAL
-                if trusted_sources < 2
-                else WarningSeverity.WARNING
-            )
+            severity = WarningSeverity.CRITICAL if trusted_sources < 2 else WarningSeverity.WARNING
             warnings.append(
                 TrustConcentrationWarning(
                     warning_type="few_sources",

@@ -388,14 +388,10 @@ async def verify_dns_txt_record(
                     if match:
                         found_did = match.group(1)
                         if found_did == expected_did:
-                            logger.debug(
-                                f"DNS verification successful for {domain}: {txt_value}"
-                            )
+                            logger.debug(f"DNS verification successful for {domain}: {txt_value}")
                             return True, txt_value, None
                         else:
-                            logger.debug(
-                                f"DNS TXT found but DID mismatch: {found_did} != {expected_did}"
-                            )
+                            logger.debug(f"DNS TXT found but DID mismatch: {found_did} != {expected_did}")
 
             except dns.resolver.NXDOMAIN:
                 logger.debug(f"No DNS record found for {query_domain}")
@@ -410,9 +406,7 @@ async def verify_dns_txt_record(
                     logger.debug(f"DNS timeout for {query_domain}, retrying...")
                     await asyncio.sleep(0.5)
                     continue
-                logger.warning(
-                    f"DNS timeout for {query_domain} after {retries + 1} attempts"
-                )
+                logger.warning(f"DNS timeout for {query_domain} after {retries + 1} attempts")
 
             except Exception as e:
                 if attempt < retries:
@@ -431,9 +425,7 @@ def verify_dns_txt_record_sync(
 ) -> tuple[bool, str | None, str | None]:
     """Synchronous version of verify_dns_txt_record."""
     try:
-        return asyncio.run(
-            verify_dns_txt_record(domain, expected_did, timeout, retries)
-        )
+        return asyncio.run(verify_dns_txt_record(domain, expected_did, timeout, retries))
     except Exception as e:
         return False, None, f"DNS verification error: {str(e)}"
 
@@ -484,9 +476,7 @@ async def verify_did_document_claim(
 
                 # Check if it's a URL with the domain
                 if domain_lower in endpoint:
-                    logger.debug(
-                        f"DID document verification successful (URL match) for {domain}"
-                    )
+                    logger.debug(f"DID document verification successful (URL match) for {domain}")
                     return True, service.service_endpoint, None
 
         # Also check profile for domain claims
@@ -495,9 +485,7 @@ async def verify_did_document_claim(
             if isinstance(claimed_domains, list):
                 for claimed in claimed_domains:
                     if claimed.lower().rstrip(".") == domain_lower:
-                        logger.debug(
-                            f"DID document profile verification successful for {domain}"
-                        )
+                        logger.debug(f"DID document profile verification successful for {domain}")
                         return True, f"profile:domains:{claimed}", None
 
         return False, None, "No matching domain claim in DID document"
@@ -588,8 +576,8 @@ async def verify_cross_federation_domain(
         dns_task = verify_dns_txt_record(domain, remote_fed)
         did_task = verify_did_document_claim(remote_fed, domain)
 
-        (dns_verified, dns_txt, dns_error), (did_verified, did_endpoint, did_error) = (
-            await asyncio.gather(dns_task, did_task, return_exceptions=False)
+        (dns_verified, dns_txt, dns_error), (did_verified, did_endpoint, did_error) = await asyncio.gather(
+            dns_task, did_task, return_exceptions=False
         )
 
         result.dns_verified = dns_verified
@@ -714,12 +702,7 @@ async def verify_multiple_domains(
     Returns:
         List of VerificationResults in the same order as claims
     """
-    tasks = [
-        verify_cross_federation_domain(
-            local_fed, remote_fed, domain, use_cache=use_cache
-        )
-        for remote_fed, domain in claims
-    ]
+    tasks = [verify_cross_federation_domain(local_fed, remote_fed, domain, use_cache=use_cache) for remote_fed, domain in claims]
 
     return await asyncio.gather(*tasks)
 

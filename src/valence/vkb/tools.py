@@ -255,10 +255,7 @@ VKB_TOOLS = [
     ),
     Tool(
         name="pattern_reinforce",
-        description=(
-            "Strengthen an existing pattern with new evidence.\n\n"
-            "Call when you observe a pattern that matches one already recorded."
-        ),
+        description=("Strengthen an existing pattern with new evidence.\n\nCall when you observe a pattern that matches one already recorded."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -632,9 +629,7 @@ def pattern_record(
     """Record a new pattern."""
     with get_cursor() as cur:
         # Convert evidence strings to UUIDs if needed
-        evidence_uuids = [
-            UUID(e) if isinstance(e, str) else e for e in (evidence or [])
-        ]
+        evidence_uuids = [UUID(e) if isinstance(e, str) else e for e in (evidence or [])]
 
         cur.execute(
             """
@@ -769,9 +764,7 @@ def insight_extract(
 
     with get_cursor() as cur:
         # Get source for this session
-        cur.execute(
-            "SELECT id FROM sources WHERE session_id = %s LIMIT 1", (session_id,)
-        )
+        cur.execute("SELECT id FROM sources WHERE session_id = %s LIMIT 1", (session_id,))
         source_row = cur.fetchone()
         source_id = source_row["id"] if source_row else None
 

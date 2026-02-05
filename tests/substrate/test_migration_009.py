@@ -14,39 +14,23 @@ class TestMigration009LocalEmbeddings:
     @pytest.fixture
     def migration_sql(self) -> str:
         """Load the migration SQL file."""
-        migration_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings.sql"
-        )
+        migration_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings.sql"
         return migration_path.read_text()
 
     @pytest.fixture
     def rollback_sql(self) -> str:
         """Load the rollback SQL file."""
-        rollback_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings-rollback.sql"
-        )
+        rollback_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings-rollback.sql"
         return rollback_path.read_text()
 
     def test_migration_file_exists(self):
         """Migration file should exist."""
-        migration_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings.sql"
-        )
+        migration_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings.sql"
         assert migration_path.exists(), "Migration 009 file not found"
 
     def test_rollback_file_exists(self):
         """Rollback file should exist."""
-        rollback_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings-rollback.sql"
-        )
+        rollback_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings-rollback.sql"
         assert rollback_path.exists(), "Rollback 009 file not found"
 
     def test_migration_adds_embedding_384_columns(self, migration_sql: str):
@@ -84,10 +68,7 @@ class TestMigration009LocalEmbeddings:
         assert "'local'" in migration_sql
         assert "'BAAI/bge-small-en-v1.5'" in migration_sql
         assert "384" in migration_sql
-        assert (
-            "is_default = TRUE" in migration_sql
-            or "is_default, TRUE" in migration_sql.replace(" ", "")
-        )
+        assert "is_default = TRUE" in migration_sql or "is_default, TRUE" in migration_sql.replace(" ", "")
 
     def test_migration_preserves_old_columns(self, migration_sql: str):
         """Migration should preserve old embedding columns for rollback."""
@@ -123,10 +104,7 @@ class TestMigration009LocalEmbeddings:
         """Migration should include verification checks."""
         assert "RAISE EXCEPTION" in migration_sql or "RAISE NOTICE" in migration_sql
         # Should verify column and index counts
-        assert (
-            "new_cols" in migration_sql.lower()
-            or "new columns" in migration_sql.lower()
-        )
+        assert "new_cols" in migration_sql.lower() or "new columns" in migration_sql.lower()
 
     def test_rollback_has_verification(self, rollback_sql: str):
         """Rollback should include verification checks."""
@@ -139,11 +117,7 @@ class TestMigration009Stats:
     @pytest.fixture
     def migration_sql(self) -> str:
         """Load the migration SQL file."""
-        migration_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings.sql"
-        )
+        migration_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings.sql"
         return migration_path.read_text()
 
     def test_stats_function_tracks_384_embeddings(self, migration_sql: str):
@@ -165,11 +139,7 @@ class TestMigration009Integration:
 
     def test_migration_sql_is_valid_postgres(self, mock_cursor):
         """Migration SQL should be valid PostgreSQL syntax (basic check)."""
-        migration_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings.sql"
-        )
+        migration_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings.sql"
         sql = migration_path.read_text()
 
         # Basic syntax checks
@@ -178,19 +148,13 @@ class TestMigration009Integration:
         assert ";" in sql, "Should have statement terminators"
 
         # Check for common SQL errors
-        assert (
-            "ALTER TABLES" not in sql
-        ), "Invalid: ALTER TABLES (should be ALTER TABLE)"
+        assert "ALTER TABLES" not in sql, "Invalid: ALTER TABLES (should be ALTER TABLE)"
         assert "CREAT INDEX" not in sql, "Typo: CREAT INDEX"
         assert "DROB" not in sql, "Typo: DROB"
 
     def test_rollback_sql_is_valid_postgres(self, mock_cursor):
         """Rollback SQL should be valid PostgreSQL syntax (basic check)."""
-        rollback_path = (
-            Path(__file__).parent.parent.parent
-            / "migrations"
-            / "009-local-embeddings-rollback.sql"
-        )
+        rollback_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings-rollback.sql"
         sql = rollback_path.read_text()
 
         # Basic syntax checks

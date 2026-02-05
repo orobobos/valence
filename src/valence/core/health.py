@@ -130,11 +130,13 @@ def check_pgvector() -> tuple[bool, str | None]:
         params = get_connection_params()
         conn = psycopg2.connect(**params)
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT 1 FROM pg_extension WHERE extname = 'vector'
                 )
-            """)
+            """
+            )
             result = cur.fetchone()
             if result and result[0]:
                 conn.close()
@@ -182,9 +184,7 @@ def run_health_check() -> HealthStatus:
         warnings.append(f"Optional env vars not set: {', '.join(missing_optional)}")
 
     if not env_ok:
-        status.error = (
-            f"Missing required environment variables: {', '.join(missing_required)}"
-        )
+        status.error = f"Missing required environment variables: {', '.join(missing_required)}"
         status.warnings = warnings
         return status
 
@@ -264,9 +264,7 @@ def validate_environment() -> None:
     """
     env_ok, missing_required, _ = check_env_vars()
     if not env_ok:
-        raise ConfigException(
-            f"Missing required environment variables: {', '.join(missing_required)}"
-        )
+        raise ConfigException(f"Missing required environment variables: {', '.join(missing_required)}")
 
 
 def validate_database() -> None:
@@ -283,9 +281,7 @@ def validate_database() -> None:
     # Check schema
     schema_ok, missing_tables = check_schema()
     if not schema_ok:
-        raise DatabaseException(
-            f"Database schema invalid. Missing tables: {', '.join(missing_tables)}"
-        )
+        raise DatabaseException(f"Database schema invalid. Missing tables: {', '.join(missing_tables)}")
 
 
 def startup_checks(fail_fast: bool = True) -> HealthStatus:
@@ -307,9 +303,7 @@ def startup_checks(fail_fast: bool = True) -> HealthStatus:
         logger.info("All startup checks passed")
         logger.info("  Database: connected")
         logger.info(f"  Schema: valid ({len(REQUIRED_TABLES)} tables)")
-        logger.info(
-            f"  pgvector: {'available' if status.pgvector_available else 'not available'}"
-        )
+        logger.info(f"  pgvector: {'available' if status.pgvector_available else 'not available'}")
 
         if status.stats:
             logger.info(f"  Beliefs: {status.stats.get('beliefs', 0)}")

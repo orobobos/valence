@@ -85,11 +85,9 @@ class TestBeliefSchemaFields:
         - Integrity verification for federated beliefs
         """
         columns = mock_db_connection.get_belief_columns()
-        assert "content_hash" in columns, (
-            "content_hash column required for deduplication. "
-            "SHA-256 hash of content enables efficient federation sync "
-            "and integrity verification."
-        )
+        assert (
+            "content_hash" in columns
+        ), "content_hash column required for deduplication. SHA-256 hash of content enables efficient federation sync and integrity verification."
 
     @pytest.mark.xfail(
         reason="visibility enum not in base schema - requires migration 001 or 002",
@@ -105,10 +103,7 @@ class TestBeliefSchemaFields:
         - public: Visible to anyone
         """
         columns = mock_db_connection.get_belief_columns()
-        assert "visibility" in columns, (
-            "visibility column required for federation privacy. "
-            "Enum with values: private, federated, public."
-        )
+        assert "visibility" in columns, "visibility column required for federation privacy. Enum with values: private, federated, public."
 
 
 # ============================================================================
@@ -126,9 +121,7 @@ class TestBeliefSchemaConstraints:
     def test_version_positive_constraint(self, mock_db_connection):
         """Version must be > 0."""
         constraints = mock_db_connection.get_belief_constraints()
-        assert any(
-            "version" in c and "> 0" in c for c in constraints
-        ), "version_positive constraint required: version > 0"
+        assert any("version" in c and "> 0" in c for c in constraints), "version_positive constraint required: version > 0"
 
     @pytest.mark.xfail(
         reason="content_hash format not validated in base schema",
@@ -137,9 +130,7 @@ class TestBeliefSchemaConstraints:
     def test_content_hash_format(self, mock_db_connection):
         """Content hash should be CHAR(64) for SHA-256 hex."""
         columns = mock_db_connection.get_belief_column_types()
-        assert (
-            columns.get("content_hash") == "character(64)"
-        ), "content_hash should be CHAR(64) for SHA-256 hex encoding"
+        assert columns.get("content_hash") == "character(64)", "content_hash should be CHAR(64) for SHA-256 hex encoding"
 
     @pytest.mark.xfail(
         reason="visibility enum not in base schema",
@@ -149,9 +140,7 @@ class TestBeliefSchemaConstraints:
         """Visibility enum should have correct values."""
         enum_values = mock_db_connection.get_enum_values("visibility_level")
         expected = {"private", "federated", "public"}
-        assert (
-            set(enum_values) == expected
-        ), f"visibility_level enum should have {expected}, got {enum_values}"
+        assert set(enum_values) == expected, f"visibility_level enum should have {expected}, got {enum_values}"
 
 
 # ============================================================================
@@ -169,9 +158,7 @@ class TestBeliefSchemaIndexes:
     def test_holder_id_index_exists(self, mock_db_connection):
         """Index on holder_id for efficient per-holder queries."""
         indexes = mock_db_connection.get_belief_indexes()
-        assert any(
-            "holder" in idx for idx in indexes
-        ), "idx_beliefs_holder index required for holder_id lookups"
+        assert any("holder" in idx for idx in indexes), "idx_beliefs_holder index required for holder_id lookups"
 
     @pytest.mark.xfail(
         reason="content_hash index not in base schema",
@@ -180,9 +167,7 @@ class TestBeliefSchemaIndexes:
     def test_content_hash_index_exists(self, mock_db_connection):
         """Index on content_hash for deduplication lookups."""
         indexes = mock_db_connection.get_belief_indexes()
-        assert any(
-            "content_hash" in idx for idx in indexes
-        ), "idx_beliefs_content_hash index required for dedup lookups"
+        assert any("content_hash" in idx for idx in indexes), "idx_beliefs_content_hash index required for dedup lookups"
 
 
 # ============================================================================

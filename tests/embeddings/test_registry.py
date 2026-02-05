@@ -412,9 +412,7 @@ class TestEnsureDefaultType:
         with patch("valence.embeddings.registry.get_embedding_type") as mock_get:
             mock_get.return_value = None
 
-            with patch(
-                "valence.embeddings.registry.register_embedding_type"
-            ) as mock_register:
+            with patch("valence.embeddings.registry.register_embedding_type") as mock_register:
                 from valence.embeddings.registry import EmbeddingType
 
                 mock_register.return_value = EmbeddingType(

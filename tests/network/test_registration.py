@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from valence.network.router import RouterNode
 from valence.network.seed import RouterRecord, SeedConfig, SeedNode
 
@@ -118,9 +117,7 @@ class TestSignatureVerification:
             "router_id": router_id,
             "endpoints": ["127.0.0.1:8471"],
         }
-        message = json.dumps(
-            original_data, sort_keys=True, separators=(",", ":")
-        ).encode()
+        message = json.dumps(original_data, sort_keys=True, separators=(",", ":")).encode()
         signature = private_key.sign(message).hex()
 
         # Tamper with data

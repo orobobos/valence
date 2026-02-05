@@ -16,7 +16,6 @@ from uuid import uuid4
 
 import pytest
 from starlette.requests import Request
-
 from valence.compliance.deletion import (
     DeletionReason,
     DeletionResult,
@@ -102,9 +101,7 @@ class TestDeleteUserDataEndpoint:
             query_params={"reason": "user_request"},
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.return_value = mock_deletion_result
 
             response = await delete_user_data_endpoint(request)
@@ -153,9 +150,7 @@ class TestDeleteUserDataEndpoint:
             query_params={},  # No reason specified
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.return_value = mock_deletion_result
 
             response = await delete_user_data_endpoint(request)
@@ -177,9 +172,7 @@ class TestDeleteUserDataEndpoint:
             },
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.return_value = mock_deletion_result
 
             response = await delete_user_data_endpoint(request)
@@ -208,9 +201,7 @@ class TestDeleteUserDataEndpoint:
                 query_params={"reason": reason},
             )
 
-            with patch(
-                "valence.server.compliance_endpoints.delete_user_data"
-            ) as mock_delete:
+            with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
                 mock_delete.return_value = mock_deletion_result
 
                 response = await delete_user_data_endpoint(request)
@@ -230,9 +221,7 @@ class TestDeleteUserDataEndpoint:
             error="Database connection failed",
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.return_value = failed_result
 
             response = await delete_user_data_endpoint(request)
@@ -250,9 +239,7 @@ class TestDeleteUserDataEndpoint:
             query_params={"reason": "user_request"},
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.side_effect = Exception("Unexpected database error")
 
             response = await delete_user_data_endpoint(request)
@@ -291,9 +278,7 @@ class TestGetDeletionVerificationEndpoint:
             "reason": "user_request",
         }
 
-        with patch(
-            "valence.server.compliance_endpoints.get_deletion_verification"
-        ) as mock_get:
+        with patch("valence.server.compliance_endpoints.get_deletion_verification") as mock_get:
             mock_get.return_value = mock_report
 
             response = await get_deletion_verification_endpoint(request)
@@ -310,9 +295,7 @@ class TestGetDeletionVerificationEndpoint:
         tombstone_id = uuid4()
         request = mock_request(path_params={"id": str(tombstone_id)})
 
-        with patch(
-            "valence.server.compliance_endpoints.get_deletion_verification"
-        ) as mock_get:
+        with patch("valence.server.compliance_endpoints.get_deletion_verification") as mock_get:
             mock_get.return_value = None
 
             response = await get_deletion_verification_endpoint(request)
@@ -374,9 +357,7 @@ class TestGetDeletionVerificationEndpoint:
             "reason": "user_request",
         }
 
-        with patch(
-            "valence.server.compliance_endpoints.get_deletion_verification"
-        ) as mock_get:
+        with patch("valence.server.compliance_endpoints.get_deletion_verification") as mock_get:
             mock_get.return_value = mock_report
 
             response = await get_deletion_verification_endpoint(request)
@@ -588,9 +569,7 @@ class TestEndpointIntegration:
             sessions_deleted=1,
         )
 
-        with patch(
-            "valence.server.compliance_endpoints.delete_user_data"
-        ) as mock_delete:
+        with patch("valence.server.compliance_endpoints.delete_user_data") as mock_delete:
             mock_delete.return_value = deletion_result
             delete_response = await delete_user_data_endpoint(delete_request)
 
@@ -617,9 +596,7 @@ class TestEndpointIntegration:
             "reason": "user_request",
         }
 
-        with patch(
-            "valence.server.compliance_endpoints.get_deletion_verification"
-        ) as mock_verify:
+        with patch("valence.server.compliance_endpoints.get_deletion_verification") as mock_verify:
             mock_verify.return_value = verification_report
             verify_response = await get_deletion_verification_endpoint(verify_request)
 

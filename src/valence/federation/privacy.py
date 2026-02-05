@@ -182,11 +182,7 @@ SENSITIVE_DOMAIN_CATEGORIES: dict[str, frozenset[str]] = {
 }
 
 # Flattened set for quick membership testing (exact match only)
-SENSITIVE_DOMAINS: frozenset[str] = frozenset(
-    domain
-    for category_domains in SENSITIVE_DOMAIN_CATEGORIES.values()
-    for domain in category_domains
-)
+SENSITIVE_DOMAINS: frozenset[str] = frozenset(domain for category_domains in SENSITIVE_DOMAIN_CATEGORIES.values() for domain in category_domains)
 
 
 # =============================================================================
@@ -257,15 +253,11 @@ class PrivacyConfig:
     def __post_init__(self) -> None:
         """Validate configuration."""
         if not MIN_EPSILON <= self.epsilon <= MAX_EPSILON:
-            raise ValueError(
-                f"epsilon must be in [{MIN_EPSILON}, {MAX_EPSILON}], got {self.epsilon}"
-            )
+            raise ValueError(f"epsilon must be in [{MIN_EPSILON}, {MAX_EPSILON}], got {self.epsilon}")
         if self.delta >= 1e-4:
             raise ValueError(f"delta must be < 10⁻⁴, got {self.delta}")
         if self.min_contributors < 5:
-            raise ValueError(
-                f"min_contributors must be >= 5, got {self.min_contributors}"
-            )
+            raise ValueError(f"min_contributors must be >= 5, got {self.min_contributors}")
 
     @classmethod
     def from_level(cls, level: PrivacyLevel) -> PrivacyConfig:
@@ -340,11 +332,7 @@ class TopicBudget:
             topic_hash=data["topic_hash"],
             query_count=data.get("query_count", 0),
             epsilon_spent=data.get("epsilon_spent", 0.0),
-            last_query=(
-                datetime.fromisoformat(data["last_query"])
-                if "last_query" in data
-                else datetime.now(UTC)
-            ),
+            last_query=(datetime.fromisoformat(data["last_query"]) if "last_query" in data else datetime.now(UTC)),
         )
 
 
@@ -387,11 +375,7 @@ class RequesterBudget:
         return cls(
             requester_id=data["requester_id"],
             queries_this_hour=data.get("queries_this_hour", 0),
-            hour_start=(
-                datetime.fromisoformat(data["hour_start"])
-                if "hour_start" in data
-                else datetime.now(UTC)
-            ),
+            hour_start=(datetime.fromisoformat(data["hour_start"]) if "hour_start" in data else datetime.now(UTC)),
         )
 
 
@@ -539,11 +523,7 @@ class FileBudgetStore:
 
     def list_federations(self) -> list[str]:
         """List all federation IDs with stored budgets."""
-        return [
-            f.stem
-            for f in self._base_path.glob("*.json")
-            if not f.name.endswith(".tmp")
-        ]
+        return [f.stem for f in self._base_path.glob("*.json") if not f.name.endswith(".tmp")]
 
 
 class DatabaseBudgetStore:
@@ -645,11 +625,7 @@ class DatabaseBudgetStore:
                 data.get("spent_epsilon", 0.0),
                 data.get("spent_delta", 0.0),
                 data.get("queries_today", 0),
-                (
-                    datetime.fromisoformat(data["period_start"])
-                    if "period_start" in data
-                    else datetime.now(UTC)
-                ),
+                (datetime.fromisoformat(data["period_start"]) if "period_start" in data else datetime.now(UTC)),
                 json.dumps(data.get("topic_budgets", {})),
                 json.dumps(data.get("requester_budgets", {})),
                 data.get("_version", 1),
@@ -694,11 +670,7 @@ class DatabaseBudgetStore:
                     data.get("spent_epsilon", 0.0),
                     data.get("spent_delta", 0.0),
                     data.get("queries_today", 0),
-                    (
-                        datetime.fromisoformat(data["period_start"])
-                        if "period_start" in data
-                        else datetime.now(UTC)
-                    ),
+                    (datetime.fromisoformat(data["period_start"]) if "period_start" in data else datetime.now(UTC)),
                     json.dumps(data.get("topic_budgets", {})),
                     json.dumps(data.get("requester_budgets", {})),
                     data.get("_version", 1),
@@ -828,12 +800,8 @@ class DatabaseBudgetStore:
 
         return {
             "federation_id": get("federation_id"),
-            "daily_epsilon_budget": float(
-                get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET)
-            ),
-            "daily_delta_budget": float(
-                get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET)
-            ),
+            "daily_epsilon_budget": float(get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET)),
+            "daily_delta_budget": float(get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET)),
             "budget_period_hours": int(get("budget_period_hours", 24)),
             "spent_epsilon": float(get("spent_epsilon", 0.0)),
             "spent_delta": float(get("spent_delta", 0.0)),
@@ -904,18 +872,14 @@ class DatabaseBudgetStore:
     async def list_federations_async(self) -> list[str]:
         """List all federation IDs (async version)."""
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
-            )
+            rows = await conn.fetch("SELECT federation_id FROM privacy_budgets ORDER BY federation_id")
             return [row["federation_id"] for row in rows]
 
     def _list_federations_sync(self) -> list[str]:
         """List all federation IDs synchronously (for psycopg2)."""
         cursor = self._pool.cursor()
         try:
-            cursor.execute(
-                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
-            )
+            cursor.execute("SELECT federation_id FROM privacy_budgets ORDER BY federation_id")
             return [row[0] for row in cursor.fetchall()]
         finally:
             cursor.close()
@@ -1044,9 +1008,7 @@ class PrivacyBudget:
         # Requester spend
         if requester_id:
             if requester_id not in self.requester_budgets:
-                self.requester_budgets[requester_id] = RequesterBudget(
-                    requester_id=requester_id
-                )
+                self.requester_budgets[requester_id] = RequesterBudget(requester_id=requester_id)
             self.requester_budgets[requester_id].record_query()
 
         # Auto-persist if store is attached (Issue #144)
@@ -1115,16 +1077,12 @@ class PrivacyBudget:
             "period_start": self.period_start.isoformat(),
             "budget_period_hours": self.budget_period_hours,
             "topic_budgets": {k: v.to_dict() for k, v in self.topic_budgets.items()},
-            "requester_budgets": {
-                k: v.to_dict() for k, v in self.requester_budgets.items()
-            },
+            "requester_budgets": {k: v.to_dict() for k, v in self.requester_budgets.items()},
             "_version": 1,  # Schema version for future migrations
         }
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, Any], store: BudgetStore | None = None
-    ) -> PrivacyBudget:
+    def from_dict(cls, data: dict[str, Any], store: BudgetStore | None = None) -> PrivacyBudget:
         """Deserialize from dictionary.
 
         Args:
@@ -1153,12 +1111,8 @@ class PrivacyBudget:
 
         budget = cls(
             federation_id=UUID(data["federation_id"]),
-            daily_epsilon_budget=data.get(
-                "daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET
-            ),
-            daily_delta_budget=data.get(
-                "daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET
-            ),
+            daily_epsilon_budget=data.get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET),
+            daily_delta_budget=data.get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET),
             spent_epsilon=data.get("spent_epsilon", 0.0),
             spent_delta=data.get("spent_delta", 0.0),
             queries_today=data.get("queries_today", 0),
@@ -1357,9 +1311,7 @@ class TemporalSmoother:
             )
         )
 
-    def record_departure(
-        self, member_id: str, timestamp: datetime | None = None
-    ) -> None:
+    def record_departure(self, member_id: str, timestamp: datetime | None = None) -> None:
         """Record a member departing."""
         self.events.append(
             MembershipEvent(
@@ -1436,9 +1388,7 @@ class TemporalSmoother:
         Returns:
             True if member should be included
         """
-        weight = self.get_contribution_weight(
-            member_id, joined_at, departed_at, query_time
-        )
+        weight = self.get_contribution_weight(member_id, joined_at, departed_at, query_time)
         return weight > 0.0
 
 
@@ -1491,14 +1441,10 @@ def build_noisy_histogram(
     # Add Laplace noise to each bin
     # Split epsilon budget across bins
     per_bin_epsilon = epsilon / bins
-    noisy_counts = [
-        max(0, round(c + np.random.laplace(0, 1.0 / per_bin_epsilon))) for c in counts
-    ]
+    noisy_counts = [max(0, round(c + np.random.laplace(0, 1.0 / per_bin_epsilon))) for c in counts]
 
     # Build result
-    return {
-        f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}": noisy_counts[i] for i in range(bins)
-    }
+    return {f"{bin_edges[i]:.1f}-{bin_edges[i + 1]:.1f}": noisy_counts[i] for i in range(bins)}
 
 
 # =============================================================================
@@ -1683,9 +1629,7 @@ def compute_private_aggregate(
     # Histogram
     histogram = None
     histogram_suppressed = True
-    if include_histogram and should_include_histogram(
-        true_count, config.histogram_suppression_threshold
-    ):
+    if include_histogram and should_include_histogram(true_count, config.histogram_suppression_threshold):
         histogram = build_noisy_histogram(confidences, config.epsilon / 5)
         histogram_suppressed = False
 
@@ -1747,9 +1691,7 @@ def execute_private_query(
         QueryResult with success status and optional aggregate result
     """
     # Check budget first
-    can_query, check_result = budget.check_budget(
-        config.epsilon, config.delta, topic_hash, requester_id
-    )
+    can_query, check_result = budget.check_budget(config.epsilon, config.delta, topic_hash, requester_id)
 
     if not can_query:
         return QueryResult(

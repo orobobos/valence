@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
 from valence.network.discovery import DiscoveryClient, RouterInfo
 from valence.network.node import (
     NodeClient,
@@ -104,9 +103,7 @@ def node_client(ed25519_keypair, x25519_keypair):
 class TestRouterConnection:
     """Tests for the RouterConnection dataclass."""
 
-    def test_router_connection_creation(
-        self, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_router_connection_creation(self, mock_router_info, mock_websocket, mock_session):
         """Test creating a RouterConnection instance."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -123,9 +120,7 @@ class TestRouterConnection:
         assert conn.messages_sent == 0
         assert conn.messages_received == 0
 
-    def test_ack_success_rate_no_data(
-        self, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_ack_success_rate_no_data(self, mock_router_info, mock_websocket, mock_session):
         """Test ACK success rate with no data (default to 1.0)."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -137,9 +132,7 @@ class TestRouterConnection:
 
         assert conn.ack_success_rate == 1.0
 
-    def test_ack_success_rate_with_data(
-        self, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_ack_success_rate_with_data(self, mock_router_info, mock_websocket, mock_session):
         """Test ACK success rate calculation."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -286,9 +279,7 @@ class TestRouterSelection:
         result = node_client._select_router()
         assert result is None
 
-    def test_select_router_single_connection(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_select_router_single_connection(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test router selection with single connection."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -302,9 +293,7 @@ class TestRouterSelection:
         result = node_client._select_router()
         assert result is mock_router_info
 
-    def test_select_router_excludes_closed(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_select_router_excludes_closed(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that closed connections are excluded from selection."""
         mock_websocket.closed = True
 
@@ -560,9 +549,7 @@ class TestMessageQueueing:
     """Tests for message queueing during failover."""
 
     @pytest.mark.asyncio
-    async def test_send_message_queues_when_no_routers(
-        self, node_client, x25519_keypair
-    ):
+    async def test_send_message_queues_when_no_routers(self, node_client, x25519_keypair):
         """Test that messages are queued when no routers available."""
         _, recipient_pub = x25519_keypair
 
@@ -613,9 +600,7 @@ class TestACKHandling:
     """Tests for ACK message handling."""
 
     @pytest.mark.asyncio
-    async def test_handle_ack_success(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_handle_ack_success(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test handling successful ACK."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -636,9 +621,7 @@ class TestACKHandling:
         assert conn.ack_failure == 0
 
     @pytest.mark.asyncio
-    async def test_handle_ack_failure(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_handle_ack_failure(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test handling failed ACK."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -668,9 +651,7 @@ class TestPongHandling:
     """Tests for pong message handling."""
 
     @pytest.mark.asyncio
-    async def test_handle_pong_updates_latency(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_handle_pong_updates_latency(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that pong updates ping latency."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -788,9 +769,7 @@ class TestNodeIntegration:
             await node_client.start()
             assert node_client._running is True
             # Tasks: maintenance, keepalive, queue, gossip
-            assert (
-                len(node_client._tasks) >= 3
-            )  # At least 3, may have more (gossip, etc.)
+            assert len(node_client._tasks) >= 3  # At least 3, may have more (gossip, etc.)
 
             await node_client.stop()
             assert node_client._running is False
@@ -831,9 +810,7 @@ class TestNodeIntegration:
             await node.stop()
 
     @pytest.mark.asyncio
-    async def test_get_connections_info(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_get_connections_info(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test getting connection information."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -870,9 +847,7 @@ class TestNodeIntegration:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_ack_success_rate_division_by_zero(
-        self, mock_router_info, mock_websocket, mock_session
-    ):
+    def test_ack_success_rate_division_by_zero(self, mock_router_info, mock_websocket, mock_session):
         """Test ACK success rate with no ACKs (should not divide by zero)."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -911,9 +886,7 @@ class TestEdgeCases:
         assert 0 <= score <= 1.0
 
     @pytest.mark.asyncio
-    async def test_close_connection_already_closed(
-        self, node_client, mock_router_info, mock_session
-    ):
+    async def test_close_connection_already_closed(self, node_client, mock_router_info, mock_session):
         """Test closing an already closed connection."""
         ws = AsyncMock()
         ws.closed = True
@@ -1023,9 +996,7 @@ class TestRouterFailover:
         assert state2.remaining_cooldown() == 0
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_creates_failover_state(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_handle_router_failure_creates_failover_state(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that router failure creates failover state."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -1053,9 +1024,7 @@ class TestRouterFailover:
         assert node_client._stats["failovers"] == 1
 
     @pytest.mark.asyncio
-    async def test_exponential_backoff_on_repeated_failures(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_exponential_backoff_on_repeated_failures(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test exponential backoff for flapping routers."""
         # Set short initial cooldown for testing
         node_client.initial_cooldown = 10.0
@@ -1115,9 +1084,7 @@ class TestRouterFailover:
             assert 39 <= third_cooldown <= 41  # ~40s (10 * 2^2)
 
     @pytest.mark.asyncio
-    async def test_max_cooldown_capped(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_max_cooldown_capped(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that cooldown is capped at max_cooldown."""
         node_client.initial_cooldown = 100.0
         node_client.max_cooldown = 200.0
@@ -1145,9 +1112,7 @@ class TestRouterFailover:
             assert cooldown <= 200.0  # Capped at max_cooldown
 
     @pytest.mark.asyncio
-    async def test_failover_queries_alternatives(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_failover_queries_alternatives(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that failover queries discovery for alternatives."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -1174,9 +1139,7 @@ class TestRouterFailover:
         assert call_kwargs.get("count") == 3
 
     @pytest.mark.asyncio
-    async def test_failover_connects_to_alternative(
-        self, node_client, mock_router_info, mock_session
-    ):
+    async def test_failover_connects_to_alternative(self, node_client, mock_router_info, mock_session):
         """Test successful failover to alternative router."""
         # Create a mock websocket for the original connection
         original_ws = AsyncMock()
@@ -1213,9 +1176,7 @@ class TestRouterFailover:
         connect_mock.assert_called_once_with(alt_router)
 
     @pytest.mark.asyncio
-    async def test_failover_enables_direct_mode_when_no_alternatives(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_failover_enables_direct_mode_when_no_alternatives(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that direct mode is enabled when no alternatives available."""
         node_client.reconnect_delay = 0.01  # Fast for testing
 
@@ -1372,9 +1333,7 @@ class TestSeedRedundancy:
             await node.stop()
 
     @pytest.mark.asyncio
-    async def test_seed_fallback_on_failure(
-        self, ed25519_keypair, x25519_keypair, mock_router_info
-    ):
+    async def test_seed_fallback_on_failure(self, ed25519_keypair, x25519_keypair, mock_router_info):
         """Test that discovery falls back to secondary seed on primary failure."""
         private_key, public_key = ed25519_keypair
         enc_private, _ = x25519_keypair
@@ -1434,9 +1393,7 @@ class TestSeedRedundancy:
         assert hasattr(node.discovery, "get_seed_health_report")
 
     @pytest.mark.asyncio
-    async def test_successful_seed_remembered(
-        self, ed25519_keypair, x25519_keypair, mock_router_info
-    ):
+    async def test_successful_seed_remembered(self, ed25519_keypair, x25519_keypair, mock_router_info):
         """Test that last successful seed is remembered for future queries."""
         private_key, public_key = ed25519_keypair
         enc_private, _ = x25519_keypair
@@ -1487,9 +1444,7 @@ class TestFastFailureDetection:
         # With 2s interval and 2 missed pings threshold = 4-6s detection
 
     @pytest.mark.asyncio
-    async def test_missed_pings_tracking(
-        self, node_client, mock_router_info, mock_websocket, mock_session
-    ):
+    async def test_missed_pings_tracking(self, node_client, mock_router_info, mock_websocket, mock_session):
         """Test that missed pings are tracked."""
         conn = RouterConnection(
             router=mock_router_info,
@@ -1520,18 +1475,13 @@ class TestFastFailureDetection:
         """Test that detection time is within requirements."""
         # Detection time = keepalive_interval * missed_pings_threshold + ping_timeout
         # With defaults: 2.0 * 2 + 3.0 = 7s worst case (first timeout) to 4s (immediate)
-        max_detection_time = (
-            node_client.keepalive_interval * node_client.missed_pings_threshold
-            + node_client.ping_timeout
-        )
+        max_detection_time = node_client.keepalive_interval * node_client.missed_pings_threshold + node_client.ping_timeout
 
         # Should detect within 2-5 seconds (allowing some margin)
         assert max_detection_time <= 8.0  # Reasonable upper bound
 
     @pytest.mark.asyncio
-    async def test_failure_triggered_after_threshold(
-        self, node_client, mock_router_info, mock_session
-    ):
+    async def test_failure_triggered_after_threshold(self, node_client, mock_router_info, mock_session):
         """Test that failure is triggered after missed_pings_threshold."""
         ws = AsyncMock()
         ws.closed = False
@@ -1570,10 +1520,7 @@ class TestFastFailureDetection:
 
             # Second missed ping - should trigger failure
             node_client._missed_pings[mock_router_info.router_id] = 2
-            if (
-                node_client._missed_pings[mock_router_info.router_id]
-                >= node_client.missed_pings_threshold
-            ):
+            if node_client._missed_pings[mock_router_info.router_id] >= node_client.missed_pings_threshold:
                 await node_client._handle_router_failure(mock_router_info.router_id)
 
             assert failure_called is True
@@ -1638,9 +1585,7 @@ class TestMessagePreservation:
             new_callable=AsyncMock,
             return_value=[alt_router],
         ):
-            with patch.object(
-                node_client, "_connect_to_router", new_callable=AsyncMock
-            ):
+            with patch.object(node_client, "_connect_to_router", new_callable=AsyncMock):
                 with patch.object(node_client, "_retry_message", mock_retry):
                     await node_client._handle_router_failure(mock_router_info.router_id)
 
@@ -1741,7 +1686,7 @@ class TestMultiRouterConnections:
         routers = []
         for i in range(3):
             router = RouterInfo(
-                router_id=f"{chr(97+i)}" * 64,  # a*64, b*64, c*64
+                router_id=f"{chr(97 + i)}" * 64,  # a*64, b*64, c*64
                 endpoints=[f"10.{i}.1.1:8471"],
                 capacity={"current_load_pct": 20 + i * 10},
                 health={"uptime_pct": 99 - i},
@@ -1873,9 +1818,7 @@ class TestMultiRouterConnections:
         selection_counts = {}
         for _ in range(1000):
             selected = node_client._select_router()
-            selection_counts[selected.router_id] = (
-                selection_counts.get(selected.router_id, 0) + 1
-            )
+            selection_counts[selected.router_id] = selection_counts.get(selected.router_id, 0) + 1
 
         # Excellent router should be selected most
         excellent_id = "excellent".ljust(64, "x")
@@ -1961,7 +1904,7 @@ class TestMultiRouterConnections:
             ]
         ):
             router = RouterInfo(
-                router_id=f"{chr(97+i)}" * 64,
+                router_id=f"{chr(97 + i)}" * 64,
                 endpoints=[f"10.{i}.1.1:8471"],
                 capacity={"current_load_pct": load},
                 health={},
@@ -2013,7 +1956,7 @@ class TestMultiRouterConnections:
         # Create mock routers for discovery
         mock_routers = [
             RouterInfo(
-                router_id=f"{chr(97+i)}" * 64,
+                router_id=f"{chr(97 + i)}" * 64,
                 endpoints=[f"10.{i}.1.1:8471"],
                 capacity={"current_load_pct": 20},
                 health={"uptime_pct": 99},

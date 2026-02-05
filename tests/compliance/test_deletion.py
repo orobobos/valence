@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from valence.compliance.deletion import (
     DeletionReason,
     DeletionResult,
@@ -254,12 +253,8 @@ class TestUserDataDeletion:
         with (
             patch("valence.compliance.deletion.get_cursor") as mock_cursor,
             patch("valence.compliance.deletion.create_tombstone") as mock_tombstone,
-            patch(
-                "valence.compliance.deletion.perform_cryptographic_erasure"
-            ) as mock_erasure,
-            patch(
-                "valence.compliance.deletion._start_tombstone_propagation"
-            ) as mock_propagate,
+            patch("valence.compliance.deletion.perform_cryptographic_erasure") as mock_erasure,
+            patch("valence.compliance.deletion._start_tombstone_propagation") as mock_propagate,
         ):
             cursor = MagicMock()
             mock_cursor.return_value.__enter__ = MagicMock(return_value=cursor)

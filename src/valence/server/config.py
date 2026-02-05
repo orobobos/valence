@@ -55,19 +55,13 @@ class ServerSettings(BaseSettings):
     )
 
     # OAuth 2.1 settings
-    oauth_enabled: bool = Field(
-        default=True, description="Enable OAuth 2.1 authentication"
-    )
+    oauth_enabled: bool = Field(default=True, description="Enable OAuth 2.1 authentication")
     oauth_jwt_secret: str | None = Field(
         default=None,
         description="Secret for signing JWTs (REQUIRED in production - set VALENCE_OAUTH_JWT_SECRET)",
     )
-    oauth_jwt_algorithm: str = Field(
-        default="HS256", description="JWT signing algorithm"
-    )
-    oauth_access_token_expiry: int = Field(
-        default=3600, description="Access token expiry in seconds (default: 1 hour)"
-    )
+    oauth_jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    oauth_access_token_expiry: int = Field(default=3600, description="Access token expiry in seconds (default: 1 hour)")
     oauth_refresh_token_expiry: int = Field(
         default=86400 * 30,
         description="Refresh token expiry in seconds (default: 30 days)",
@@ -116,9 +110,7 @@ class ServerSettings(BaseSettings):
 
     # Server name for MCP
     server_name: str = Field(default="valence", description="MCP server name")
-    server_version: str = Field(
-        default_factory=get_package_version, description="Server version"
-    )
+    server_version: str = Field(default_factory=get_package_version, description="Server version")
 
     # Production mode flag (explicit override)
     production: bool = Field(
@@ -224,8 +216,7 @@ class ServerSettings(BaseSettings):
         if is_production and self.oauth_enabled:
             if not self.oauth_jwt_secret:
                 raise ValueError(
-                    "VALENCE_OAUTH_JWT_SECRET is required in production. "
-                    "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
+                    "VALENCE_OAUTH_JWT_SECRET is required in production. Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
                 )
             # Warn if secret looks weak (too short)
             if len(self.oauth_jwt_secret) < 32:
@@ -236,9 +227,7 @@ class ServerSettings(BaseSettings):
 
         # For development, generate a random secret if not provided
         if not self.oauth_jwt_secret:
-            logger.warning(
-                "Auto-generating JWT secret - tokens will not persist across restarts"
-            )
+            logger.warning("Auto-generating JWT secret - tokens will not persist across restarts")
             object.__setattr__(self, "oauth_jwt_secret", secrets.token_hex(32))
 
         return self

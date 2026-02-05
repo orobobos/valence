@@ -49,9 +49,7 @@ class TrustedPeer:
             "name": self.name,
             "notes": self.notes,
             "added_at": self.added_at.isoformat(),
-            "last_sync_at": (
-                self.last_sync_at.isoformat() if self.last_sync_at else None
-            ),
+            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
             "beliefs_received": self.beliefs_received,
             "beliefs_sent": self.beliefs_sent,
         }
@@ -64,16 +62,8 @@ class TrustedPeer:
             trust_level=data["trust_level"],
             name=data.get("name"),
             notes=data.get("notes"),
-            added_at=(
-                datetime.fromisoformat(data["added_at"])
-                if "added_at" in data
-                else datetime.now()
-            ),
-            last_sync_at=(
-                datetime.fromisoformat(data["last_sync_at"])
-                if data.get("last_sync_at")
-                else None
-            ),
+            added_at=(datetime.fromisoformat(data["added_at"]) if "added_at" in data else datetime.now()),
+            last_sync_at=(datetime.fromisoformat(data["last_sync_at"]) if data.get("last_sync_at") else None),
             beliefs_received=data.get("beliefs_received", 0),
             beliefs_sent=data.get("beliefs_sent", 0),
         )
@@ -100,11 +90,7 @@ class TrustRegistry:
             from ..core.config import get_config
 
             config = get_config()
-            self._path = (
-                Path(config.trust_registry_path)
-                if config.trust_registry_path
-                else self.DEFAULT_PATH
-            )
+            self._path = Path(config.trust_registry_path) if config.trust_registry_path else self.DEFAULT_PATH
 
         self._peers: dict[str, TrustedPeer] = {}
         self._local_did: str | None = None
@@ -229,9 +215,7 @@ class TrustRegistry:
         peer = self._peers.get(did)
         return peer.trust_level if peer else 0.0
 
-    def record_sync(
-        self, did: str, beliefs_received: int = 0, beliefs_sent: int = 0
-    ) -> None:
+    def record_sync(self, did: str, beliefs_received: int = 0, beliefs_sent: int = 0) -> None:
         """Record a sync interaction with a peer."""
         peer = self._peers.get(did)
         if peer:
@@ -406,7 +390,7 @@ def export_beliefs(
             created_at, valid_from, valid_until,
             extraction_method, content_hash
         FROM beliefs
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
         ORDER BY created_at DESC
         LIMIT %s
     """
@@ -421,10 +405,7 @@ def export_beliefs(
         for row in rows:
             # Compute content hash if not present
             content = row["content"]
-            content_hash = (
-                row.get("content_hash")
-                or hashlib.sha256(content.encode()).hexdigest()[:16]
-            )
+            content_hash = row.get("content_hash") or hashlib.sha256(content.encode()).hexdigest()[:16]
 
             # Track domain stats
             for domain in row["domain_path"] or []:
@@ -444,14 +425,8 @@ def export_beliefs(
                     origin_did=local_did,
                     created_at=row["created_at"].isoformat(),
                     content_hash=content_hash,
-                    valid_from=(
-                        row["valid_from"].isoformat() if row.get("valid_from") else None
-                    ),
-                    valid_until=(
-                        row["valid_until"].isoformat()
-                        if row.get("valid_until")
-                        else None
-                    ),
+                    valid_from=(row["valid_from"].isoformat() if row.get("valid_from") else None),
+                    valid_until=(row["valid_until"].isoformat() if row.get("valid_until") else None),
                     source_type=row.get("extraction_method"),
                 )
             )
@@ -578,16 +553,8 @@ def import_beliefs(
                         belief.content,
                         json.dumps(weighted_conf),
                         belief.domain_path,
-                        (
-                            datetime.fromisoformat(belief.valid_from)
-                            if belief.valid_from
-                            else None
-                        ),
-                        (
-                            datetime.fromisoformat(belief.valid_until)
-                            if belief.valid_until
-                            else None
-                        ),
+                        (datetime.fromisoformat(belief.valid_from) if belief.valid_from else None),
+                        (datetime.fromisoformat(belief.valid_until) if belief.valid_until else None),
                         belief.federation_id,
                         belief.content_hash,
                         belief.source_type or "peer_import",
@@ -674,9 +641,7 @@ def query_federated(
 
         config = get_config()
         client = OpenAI(api_key=config.openai_api_key)
-        response = client.embeddings.create(
-            model="text-embedding-3-small", input=query_text
-        )
+        response = client.embeddings.create(model="text-embedding-3-small", input=query_text)
         embedding = response.data[0].embedding
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
     except Exception as e:
@@ -714,7 +679,7 @@ def query_federated(
                     1 - (embedding <=> %s::vector) as similarity
                 FROM beliefs
                 WHERE embedding IS NOT NULL
-                  AND {' AND '.join(conditions)}
+                  AND {" AND ".join(conditions)}
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
             """,
@@ -732,7 +697,7 @@ def query_federated(
                     ts_rank(content_tsv, websearch_to_tsquery('english', %s)) as similarity
                 FROM beliefs
                 WHERE content_tsv @@ websearch_to_tsquery('english', %s)
-                  AND {' AND '.join(conditions)}
+                  AND {" AND ".join(conditions)}
                 ORDER BY ts_rank(content_tsv, websearch_to_tsquery('english', %s)) DESC
                 LIMIT %s
             """,

@@ -99,9 +99,7 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
         try:
             policy = SharePolicy.from_dict(body["policy"])
         except (KeyError, ValueError) as e:
-            return validation_error(
-                f"Invalid policy: {e}", code=VALIDATION_INVALID_VALUE
-            )
+            return validation_error(f"Invalid policy: {e}", code=VALIDATION_INVALID_VALUE)
 
     # Create share request
     share_request = ShareRequest(

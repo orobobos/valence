@@ -48,9 +48,7 @@ def assert_no_sensitive_info(response_body: dict | str, context: str = "") -> No
         response_body: The response JSON or string to check
         context: Optional context for error messages
     """
-    body_str = (
-        json.dumps(response_body) if isinstance(response_body, dict) else response_body
-    )
+    body_str = json.dumps(response_body) if isinstance(response_body, dict) else response_body
     body_lower = body_str.lower()
 
     for pattern in SENSITIVE_PATTERNS:
@@ -100,8 +98,7 @@ class TestCorroborationEndpointsSecurity:
         with patch("valence.core.corroboration.get_corroboration") as mock_get:
             # Simulate a database error with sensitive details
             mock_get.side_effect = Exception(
-                'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), '
-                "port 5432 failed: Connection refused"
+                'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused'
             )
 
             response = client.get(f"/beliefs/{belief_id}/corroboration")
@@ -125,9 +122,7 @@ class TestCorroborationEndpointsSecurity:
         belief_id = uuid4()
 
         with patch("valence.core.corroboration.get_corroboration") as mock_get:
-            mock_get.side_effect = FileNotFoundError(
-                "[Errno 2] No such file or directory: '/home/user/app/data/config.json'"
-            )
+            mock_get.side_effect = FileNotFoundError("[Errno 2] No such file or directory: '/home/user/app/data/config.json'")
 
             response = client.get(f"/beliefs/{belief_id}/corroboration")
 
@@ -140,12 +135,8 @@ class TestCorroborationEndpointsSecurity:
 
     def test_most_corroborated_error_no_leakage(self, client):
         """Most corroborated endpoint errors should not leak details."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
-            mock_get.side_effect = RuntimeError(
-                "SQLAlchemy error: Table 'beliefs' doesn't exist in schema 'public'"
-            )
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
+            mock_get.side_effect = RuntimeError("SQLAlchemy error: Table 'beliefs' doesn't exist in schema 'public'")
 
             response = client.get("/beliefs/most-corroborated")
 
@@ -187,9 +178,7 @@ class TestComplianceEndpointsSecurity:
     def test_deletion_error_no_leakage(self, client):
         """User data deletion errors should not leak details."""
         with patch("valence.compliance.deletion.delete_user_data") as mock_delete:
-            mock_delete.side_effect = Exception(
-                "Failed to connect to PostgreSQL at 192.168.1.100:5432 with user 'valence_admin'"
-            )
+            mock_delete.side_effect = Exception("Failed to connect to PostgreSQL at 192.168.1.100:5432 with user 'valence_admin'")
 
             response = client.delete("/compliance/delete/user123?reason=gdpr_request")
 
@@ -246,9 +235,7 @@ class TestMCPEndpointsSecurity:
         """Internal MCP errors should not leak details."""
         # Valid JSON-RPC request that will cause an internal error
         with patch("valence.server.app._dispatch_method") as mock_dispatch:
-            mock_dispatch.side_effect = Exception(
-                "KeyError: 'embedding_model' not found in config at /etc/valence/secrets.yaml"
-            )
+            mock_dispatch.side_effect = Exception("KeyError: 'embedding_model' not found in config at /etc/valence/secrets.yaml")
 
             response = client.post(
                 "/mcp",
@@ -307,9 +294,7 @@ class TestFederationEndpointsSecurity:
         )
         monkeypatch.setenv("VALENCE_EXTERNAL_URL", "https://valence.example.com")
         monkeypatch.setenv("VALENCE_FEDERATION_ENABLED", "true")
-        monkeypatch.setenv(
-            "VALENCE_FEDERATION_NODE_DID", "did:vkb:web:valence.example.com"
-        )
+        monkeypatch.setenv("VALENCE_FEDERATION_NODE_DID", "did:vkb:web:valence.example.com")
         monkeypatch.setenv("VALENCE_FEDERATION_NODE_NAME", "TestNode")
         monkeypatch.setenv(
             "VALENCE_FEDERATION_PUBLIC_KEY",
@@ -324,9 +309,7 @@ class TestFederationEndpointsSecurity:
         client = TestClient(app, raise_server_exceptions=False)
 
         with patch("valence.federation.protocol.parse_message") as mock_parse:
-            mock_parse.side_effect = Exception(
-                "cryptography.hazmat.primitives: InvalidSignature at verification step 3"
-            )
+            mock_parse.side_effect = Exception("cryptography.hazmat.primitives: InvalidSignature at verification step 3")
 
             response = client.post(
                 "/federation/protocol/belief_share",

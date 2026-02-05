@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from valence.consensus.anti_gaming import (
     MAX_CONSECUTIVE_EPOCHS_BEFORE_PENALTY,
     TENURE_PENALTY_FACTOR,
@@ -314,9 +313,7 @@ class TestCollusionDetection:
         )
 
         # Should not have voting correlation alerts
-        correlation_alerts = [
-            a for a in alerts if a.indicator == CollusionIndicator.VOTING_CORRELATION
-        ]
+        correlation_alerts = [a for a in alerts if a.indicator == CollusionIndicator.VOTING_CORRELATION]
         assert len(correlation_alerts) == 0
 
     def test_detects_voting_correlation(self, diverse_validator_set):
@@ -358,9 +355,7 @@ class TestCollusionDetection:
             validator_set=diverse_validator_set,
         )
 
-        correlation_alerts = [
-            a for a in alerts if a.indicator == CollusionIndicator.VOTING_CORRELATION
-        ]
+        correlation_alerts = [a for a in alerts if a.indicator == CollusionIndicator.VOTING_CORRELATION]
 
         # Should detect the correlated group
         assert len(correlation_alerts) > 0
@@ -384,9 +379,7 @@ class TestCollusionDetection:
             validator_set=diverse_validator_set,
         )
 
-        timing_alerts = [
-            a for a in alerts if a.indicator == CollusionIndicator.STAKE_TIMING
-        ]
+        timing_alerts = [a for a in alerts if a.indicator == CollusionIndicator.STAKE_TIMING]
 
         assert len(timing_alerts) > 0
 
@@ -398,9 +391,7 @@ class TestCollusionDetection:
             validator_set=concentrated_validator_set,
         )
 
-        clustering_alerts = [
-            a for a in alerts if a.indicator == CollusionIndicator.FEDERATION_CLUSTERING
-        ]
+        clustering_alerts = [a for a in alerts if a.indicator == CollusionIndicator.FEDERATION_CLUSTERING]
 
         assert len(clustering_alerts) > 0
         assert "dominant_fed" in clustering_alerts[0].description
@@ -589,18 +580,13 @@ class TestAntiGamingIntegration:
                     VotingRecord(
                         validator_id=validator.agent_id,
                         proposal_id=proposal_id,
-                        vote=["approve", "reject"][
-                            hash(validator.agent_id + str(proposal_id)) % 2
-                        ],
+                        vote=["approve", "reject"][hash(validator.agent_id + str(proposal_id)) % 2],
                         voted_at=datetime.now() - timedelta(hours=1),
                     )
                 )
 
         # Create stake registrations
-        stake_registrations = [
-            (v.agent_id, datetime.now() - timedelta(days=30 + i))
-            for i, v in enumerate(diverse_validator_set.validators)
-        ]
+        stake_registrations = [(v.agent_id, datetime.now() - timedelta(days=30 + i)) for i, v in enumerate(diverse_validator_set.validators)]
 
         # Run full analysis
         analysis = engine.analyze_validator_set(
@@ -692,10 +678,7 @@ class TestAntiGamingIntegration:
 
         # Coordinated stake timing
         base_time = datetime.now() - timedelta(days=30)
-        stake_registrations = [
-            (v.agent_id, base_time + timedelta(hours=i % 2))
-            for i, v in enumerate(validators[:10])
-        ]
+        stake_registrations = [(v.agent_id, base_time + timedelta(hours=i % 2)) for i, v in enumerate(validators[:10])]
 
         engine = AntiGamingEngine()
         analysis = engine.analyze_validator_set(

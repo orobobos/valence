@@ -59,9 +59,7 @@ def list_embedding_types(status: str | None = None) -> list[EmbeddingType]:
     """List all embedding types."""
     with get_cursor() as cur:
         if status:
-            cur.execute(
-                "SELECT * FROM embedding_types WHERE status = %s ORDER BY id", (status,)
-            )
+            cur.execute("SELECT * FROM embedding_types WHERE status = %s ORDER BY id", (status,))
         else:
             cur.execute("SELECT * FROM embedding_types ORDER BY id")
 
@@ -80,9 +78,7 @@ def register_embedding_type(
     with get_cursor() as cur:
         # If setting as default, unset other defaults first
         if is_default:
-            cur.execute(
-                "UPDATE embedding_types SET is_default = FALSE WHERE is_default = TRUE"
-            )
+            cur.execute("UPDATE embedding_types SET is_default = FALSE WHERE is_default = TRUE")
 
         cur.execute(
             """

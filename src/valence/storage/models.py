@@ -107,20 +107,12 @@ class ShardMetadata:
     def from_dict(cls, data: dict[str, Any]) -> ShardMetadata:
         """Create from dictionary."""
         return cls(
-            shard_id=(
-                UUID(data["shard_id"])
-                if isinstance(data["shard_id"], str)
-                else data["shard_id"]
-            ),
+            shard_id=(UUID(data["shard_id"]) if isinstance(data["shard_id"], str) else data["shard_id"]),
             index=data["index"],
             is_parity=data.get("is_parity", False),
             size_bytes=data.get("size_bytes", 0),
             checksum=data.get("checksum", ""),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if isinstance(data["created_at"], str)
-                else data["created_at"]
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
             backend_id=data.get("backend_id"),
             location=data.get("location"),
         )
@@ -223,10 +215,7 @@ class ShardSet:
     def redundancy_level(self) -> RedundancyLevel | None:
         """Return matching RedundancyLevel if one exists."""
         for level in RedundancyLevel:
-            if (
-                level.data_shards == self.data_shards_k
-                and level.total_shards == self.total_shards_n
-            ):
+            if level.data_shards == self.data_shards_k and level.total_shards == self.total_shards_n:
                 return level
         return None
 
@@ -249,15 +238,9 @@ class ShardSet:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ShardSet:
         """Create from dictionary."""
-        shards = [
-            StorageShard.from_dict(s) if s else None for s in data.get("shards", [])
-        ]
+        shards = [StorageShard.from_dict(s) if s else None for s in data.get("shards", [])]
         return cls(
-            set_id=(
-                UUID(data["set_id"])
-                if isinstance(data["set_id"], str)
-                else data["set_id"]
-            ),
+            set_id=(UUID(data["set_id"]) if isinstance(data["set_id"], str) else data["set_id"]),
             shards=shards,
             data_shards_k=data["data_shards_k"],
             total_shards_n=data["total_shards_n"],
@@ -265,16 +248,8 @@ class ShardSet:
             original_checksum=data.get("original_checksum", ""),
             content_type=data.get("content_type", "application/octet-stream"),
             merkle_root=data.get("merkle_root", ""),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if isinstance(data["created_at"], str)
-                else data["created_at"]
-            ),
-            verified_at=(
-                datetime.fromisoformat(data["verified_at"])
-                if data.get("verified_at")
-                else None
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
+            verified_at=(datetime.fromisoformat(data["verified_at"]) if data.get("verified_at") else None),
             belief_id=UUID(data["belief_id"]) if data.get("belief_id") else None,
         )
 

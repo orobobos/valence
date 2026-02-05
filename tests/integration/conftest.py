@@ -15,9 +15,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "live_nodes: mark test to run only with --live-nodes"
-    )
+    config.addinivalue_line("markers", "live_nodes: mark test to run only with --live-nodes")
 
 
 def pytest_collection_modifyitems(config, items):

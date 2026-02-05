@@ -102,11 +102,7 @@ def generate_pkce_pair():
     import secrets
 
     verifier = secrets.token_urlsafe(32)
-    challenge = (
-        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
-        .rstrip(b"=")
-        .decode("ascii")
-    )
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
 
     return verifier, challenge
 
@@ -195,9 +191,7 @@ class TestRateLimitModule:
         # Different IPs but same client_id
         for i in range(5):
             request = MockRequest(f"192.168.1.{i}")
-            result = check_oauth_rate_limit(
-                request, client_id="same-client", rpm_limit=5
-            )
+            result = check_oauth_rate_limit(request, client_id="same-client", rpm_limit=5)
             assert result.allowed is True
 
         # 6th request with same client_id (different IP) should be blocked
@@ -404,7 +398,7 @@ class TestRegistrationRateLimit:
             response = client.post(
                 f"{API_V1}/oauth/register",
                 json={
-                    "redirect_uris": [f"http://localhost:{3000+i}/callback"],
+                    "redirect_uris": [f"http://localhost:{3000 + i}/callback"],
                     "client_name": f"Test App {i}",
                 },
             )

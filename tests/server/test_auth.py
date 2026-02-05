@@ -6,7 +6,6 @@ import time
 from unittest.mock import patch
 
 import pytest
-
 from valence.server.auth import (
     TOKEN_PREFIX,
     Token,
@@ -226,10 +225,7 @@ class TestTokenStore:
 
         assert "Token not found" in caplog.text
         # Verify it's at WARNING level, not DEBUG
-        assert any(
-            record.levelno == logging.WARNING and "Token not found" in record.message
-            for record in caplog.records
-        )
+        assert any(record.levelno == logging.WARNING and "Token not found" in record.message for record in caplog.records)
 
     def test_verify_with_bearer_prefix(self, temp_token_file):
         """Test verifying token with Bearer prefix."""

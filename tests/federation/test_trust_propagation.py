@@ -13,7 +13,6 @@ import time
 from uuid import UUID, uuid4
 
 import pytest
-
 from valence.federation.trust_propagation import (
     TransitiveTrustResult,
     TrustCache,
@@ -354,12 +353,8 @@ class TestTrustPropagation:
 
         # High decay should result in more trust
         assert result_high.transitive_trust > result_low.transitive_trust
-        assert result_high.transitive_trust == pytest.approx(
-            0.81, rel=0.01
-        )  # 1.0 * 1.0 * 0.9^2
-        assert result_low.transitive_trust == pytest.approx(
-            0.25, rel=0.01
-        )  # 1.0 * 1.0 * 0.5^2
+        assert result_high.transitive_trust == pytest.approx(0.81, rel=0.01)  # 1.0 * 1.0 * 0.9^2
+        assert result_low.transitive_trust == pytest.approx(0.25, rel=0.01)  # 1.0 * 1.0 * 0.5^2
 
     def test_caching(self, node_ids, simple_trust_graph):
         """Test that results are cached."""
@@ -540,9 +535,7 @@ class TestQueryWeighting:
         assert weighted[0]["trust_weight"] == pytest.approx(0.8, rel=0.01)
 
         # Unknown node should have 0 weight
-        frank_result = next(
-            r for r in weighted if r["origin_node_id"] == str(node_ids["frank"])
-        )
+        frank_result = next(r for r in weighted if r["origin_node_id"] == str(node_ids["frank"]))
         assert frank_result["trust_weight"] == 0.0
 
     def test_weight_empty_results(self, node_ids, simple_trust_graph):
@@ -641,19 +634,13 @@ class TestIntegration:
         results = engine.compute_trust_for_all_peers(nodes["node_0"])
 
         # Node 1 should have highest trust (direct, high)
-        assert (
-            results[nodes["node_1"]].transitive_trust
-            >= results[nodes["node_4"]].transitive_trust
-        )
+        assert results[nodes["node_1"]].transitive_trust >= results[nodes["node_4"]].transitive_trust
 
         # Node 8 should be reachable through multiple paths
         assert results[nodes["node_8"]].path_count >= 2
 
         # Node 9 should have lower trust (further away)
-        assert (
-            results[nodes["node_9"]].transitive_trust
-            < results[nodes["node_1"]].transitive_trust
-        )
+        assert results[nodes["node_9"]].transitive_trust < results[nodes["node_1"]].transitive_trust
 
         # Verify caching is working
         stats = engine.get_stats()

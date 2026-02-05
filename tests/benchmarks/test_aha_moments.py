@@ -50,9 +50,7 @@ class MockBelief:
 
     # Ground truth for benchmarking
     is_relevant: bool = False
-    relevance_grade: int = (
-        0  # 0=irrelevant, 1=marginally, 2=relevant, 3=highly relevant
-    )
+    relevance_grade: int = 0  # 0=irrelevant, 1=marginally, 2=relevant, 3=highly relevant
 
     @property
     def confidence_overall(self) -> float:
@@ -107,12 +105,8 @@ class BenchmarkMetrics:
         k5, k10 = k_values
 
         # Precision@K: fraction of top-K that are relevant
-        relevant_in_top_5 = sum(
-            1 for id in ranked_ids[:k5] if relevance_grades.get(id, 0) >= 2
-        )
-        relevant_in_top_10 = sum(
-            1 for id in ranked_ids[:k10] if relevance_grades.get(id, 0) >= 2
-        )
+        relevant_in_top_5 = sum(1 for id in ranked_ids[:k5] if relevance_grades.get(id, 0) >= 2)
+        relevant_in_top_10 = sum(1 for id in ranked_ids[:k10] if relevance_grades.get(id, 0) >= 2)
 
         precision_at_5 = relevant_in_top_5 / k5 if k5 else 0
         precision_at_10 = relevant_in_top_10 / k10 if k10 else 0
@@ -133,9 +127,7 @@ class BenchmarkMetrics:
 
         # Ideal DCG (perfect ranking)
         ideal_grades = sorted(relevance_grades.values(), reverse=True)[:k10]
-        idcg = sum(
-            (2**rel - 1) / math.log2(i + 2) for i, rel in enumerate(ideal_grades)
-        )
+        idcg = sum((2**rel - 1) / math.log2(i + 2) for i, rel in enumerate(ideal_grades))
 
         ndcg_at_10 = dcg / idcg if idcg > 0 else 0
 
@@ -158,9 +150,7 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def baseline_semantic_only(
-    query_embedding: np.ndarray, beliefs: list[MockBelief]
-) -> list[MockBelief]:
+def baseline_semantic_only(query_embedding: np.ndarray, beliefs: list[MockBelief]) -> list[MockBelief]:
     """Baseline: rank by pure semantic similarity only."""
     scored = []
     for belief in beliefs:
@@ -209,12 +199,7 @@ def valence_multi_signal(
         recency = belief.temporal_freshness * decay
 
         # Final score
-        final = (
-            weights.semantic * semantic
-            + weights.confidence * confidence
-            + weights.trust * trust
-            + weights.recency * recency
-        )
+        final = weights.semantic * semantic + weights.confidence * confidence + weights.trust * trust + weights.recency * recency
 
         scored.append(
             (
@@ -287,10 +272,7 @@ class ScenarioBuilder:
 
         # Create embedding as blend of query and random
         random_component = generate_embedding(f"random:{content}", self.dim)
-        embedding = (
-            topic_similarity * self.query_embedding
-            + (1 - topic_similarity) * random_component
-        )
+        embedding = topic_similarity * self.query_embedding + (1 - topic_similarity) * random_component
         embedding = embedding / np.linalg.norm(embedding)
 
         belief = MockBelief(
@@ -307,9 +289,7 @@ class ScenarioBuilder:
 
         return self
 
-    def add_similar_noise(
-        self, count: int, topic_similarity_range: tuple[float, float] = (0.6, 0.8)
-    ) -> ScenarioBuilder:
+    def add_similar_noise(self, count: int, topic_similarity_range: tuple[float, float] = (0.6, 0.8)) -> ScenarioBuilder:
         """Add noise beliefs that are semantically similar but not useful."""
         for i in range(count):
             sim = random.uniform(*topic_similarity_range)
@@ -348,9 +328,7 @@ class ScenarioBuilder:
 # ============================================================================
 
 
-def scenario_buried_high_confidence() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_buried_high_confidence() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 1: High-confidence belief buried by semantic similarity.
 
@@ -379,8 +357,7 @@ def scenario_buried_high_confidence() -> (
         builder.add_belief(
             content=f"Python async pattern variant {i}: maybe try using threads instead? "
             f"asyncio might have issues with {['blocking', 'memory', 'deadlocks', 'performance', 'debugging'][i]}",
-            topic_similarity=0.85
-            + random.uniform(0, 0.05),  # Higher semantic similarity
+            topic_similarity=0.85 + random.uniform(0, 0.05),  # Higher semantic similarity
             relevance_grade=1,  # Marginally relevant (misleading)
             source_reliability=0.25,  # Random forum post
             method_quality=0.20,
@@ -397,9 +374,7 @@ def scenario_buried_high_confidence() -> (
     return builder.build()
 
 
-def scenario_outdated_deprioritized() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_outdated_deprioritized() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 2: Outdated belief correctly deprioritized.
 
@@ -413,8 +388,7 @@ def scenario_outdated_deprioritized() -> (
 
     # Current best practice (2024)
     builder.add_belief(
-        content="Use Kubernetes Gateway API for ingress (replacing legacy Ingress). "
-        "Deploy with ArgoCD GitOps. Use Kyverno for policy enforcement.",
+        content="Use Kubernetes Gateway API for ingress (replacing legacy Ingress). Deploy with ArgoCD GitOps. Use Kyverno for policy enforcement.",
         topic_similarity=0.82,
         relevance_grade=3,
         source_reliability=0.90,
@@ -428,8 +402,7 @@ def scenario_outdated_deprioritized() -> (
 
     # Outdated but was once accurate (2018-era advice)
     builder.add_belief(
-        content="Use nginx-ingress with manual certificate management. "
-        "Deploy using kubectl apply directly. Avoid Helm - too complex.",
+        content="Use nginx-ingress with manual certificate management. Deploy using kubectl apply directly. Avoid Helm - too complex.",
         topic_similarity=0.88,  # Very semantically similar
         relevance_grade=1,  # Now misleading
         source_reliability=0.85,  # Was reliable when written
@@ -457,9 +430,7 @@ def scenario_outdated_deprioritized() -> (
     return builder.build()
 
 
-def scenario_speculation_below_facts() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_speculation_below_facts() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 3: Low-confidence speculation ranked below established facts.
 
@@ -512,9 +483,7 @@ def scenario_speculation_below_facts() -> (
     return builder.build()
 
 
-def scenario_corroboration_boost() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_corroboration_boost() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 4: Well-corroborated belief appropriately boosted.
 
@@ -566,9 +535,7 @@ def scenario_corroboration_boost() -> (
     return builder.build()
 
 
-def scenario_source_reliability_matters() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_source_reliability_matters() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 5: Source reliability makes the difference.
 
@@ -620,9 +587,7 @@ def scenario_source_reliability_matters() -> (
     return builder.build()
 
 
-def scenario_domain_applicability() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_domain_applicability() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 6: Domain applicability distinguishes general from specific.
 
@@ -675,9 +640,7 @@ def scenario_domain_applicability() -> (
     return builder.build()
 
 
-def scenario_internal_consistency() -> (
-    tuple[np.ndarray, list[MockBelief], dict[UUID, int]]
-):
+def scenario_internal_consistency() -> tuple[np.ndarray, list[MockBelief], dict[UUID, int]]:
     """
     Scenario 7: Internally consistent beliefs rank higher than contradictory ones.
 
@@ -743,8 +706,7 @@ def scenario_recency_for_news() -> tuple[np.ndarray, list[MockBelief], dict[UUID
 
     # Fresh announcement
     builder.add_belief(
-        content="Claude 3.5 Sonnet offers 2x speed improvement with enhanced reasoning. "
-        "200K context window. Computer use capability in beta.",
+        content="Claude 3.5 Sonnet offers 2x speed improvement with enhanced reasoning. 200K context window. Computer use capability in beta.",
         topic_similarity=0.82,
         relevance_grade=3,
         source_reliability=0.95,
@@ -925,9 +887,9 @@ class TestAhaMoments:
         valence_metrics = BenchmarkMetrics.compute(valence_ids, grades)
 
         # Debug output
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Scenario: {scenario_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(
             f"Baseline - P@5: {baseline_metrics.precision_at_5:.2f}, "
             f"P@10: {baseline_metrics.precision_at_10:.2f}, "
@@ -946,17 +908,13 @@ class TestAhaMoments:
         for i, b in enumerate(baseline_results[:5]):
             grade = grades[b.id]
             mark = "✓" if grade >= 2 else "✗"
-            print(
-                f"  {i+1}. [{mark}] grade={grade} conf={b.confidence_overall:.2f}: {b.content[:60]}..."
-            )
+            print(f"  {i + 1}. [{mark}] grade={grade} conf={b.confidence_overall:.2f}: {b.content[:60]}...")
 
         print("\nTop 5 Valence:")
         for i, b in enumerate(valence_results[:5]):
             grade = grades[b.id]
             mark = "✓" if grade >= 2 else "✗"
-            print(
-                f"  {i+1}. [{mark}] grade={grade} conf={b.confidence_overall:.2f}: {b.content[:60]}..."
-            )
+            print(f"  {i + 1}. [{mark}] grade={grade} conf={b.confidence_overall:.2f}: {b.content[:60]}...")
 
         # Assertions - Valence should improve or match baseline
         assert (
@@ -996,10 +954,7 @@ class TestAhaMoments:
             all_baseline_metrics.append(baseline_metrics)
             all_valence_metrics.append(valence_metrics)
 
-            improvement = (
-                (valence_metrics.mrr - baseline_metrics.mrr)
-                / max(baseline_metrics.mrr, 0.001)
-            ) * 100
+            improvement = ((valence_metrics.mrr - baseline_metrics.mrr) / max(baseline_metrics.mrr, 0.001)) * 100
 
             print(f"\n{name}:")
             print(
@@ -1008,83 +963,45 @@ class TestAhaMoments:
             )
 
         # Aggregate metrics
-        avg_baseline_mrr = sum(m.mrr for m in all_baseline_metrics) / len(
-            all_baseline_metrics
-        )
-        avg_valence_mrr = sum(m.mrr for m in all_valence_metrics) / len(
-            all_valence_metrics
-        )
-        avg_baseline_p5 = sum(m.precision_at_5 for m in all_baseline_metrics) / len(
-            all_baseline_metrics
-        )
-        avg_valence_p5 = sum(m.precision_at_5 for m in all_valence_metrics) / len(
-            all_valence_metrics
-        )
-        avg_baseline_ndcg = sum(m.ndcg_at_10 for m in all_baseline_metrics) / len(
-            all_baseline_metrics
-        )
-        avg_valence_ndcg = sum(m.ndcg_at_10 for m in all_valence_metrics) / len(
-            all_valence_metrics
-        )
+        avg_baseline_mrr = sum(m.mrr for m in all_baseline_metrics) / len(all_baseline_metrics)
+        avg_valence_mrr = sum(m.mrr for m in all_valence_metrics) / len(all_valence_metrics)
+        avg_baseline_p5 = sum(m.precision_at_5 for m in all_baseline_metrics) / len(all_baseline_metrics)
+        avg_valence_p5 = sum(m.precision_at_5 for m in all_valence_metrics) / len(all_valence_metrics)
+        avg_baseline_ndcg = sum(m.ndcg_at_10 for m in all_baseline_metrics) / len(all_baseline_metrics)
+        avg_valence_ndcg = sum(m.ndcg_at_10 for m in all_valence_metrics) / len(all_valence_metrics)
 
-        mrr_improvement = (
-            (avg_valence_mrr - avg_baseline_mrr) / avg_baseline_mrr
-        ) * 100
-        p5_improvement = (
-            (avg_valence_p5 - avg_baseline_p5) / max(avg_baseline_p5, 0.001)
-        ) * 100
-        ndcg_improvement = (
-            (avg_valence_ndcg - avg_baseline_ndcg) / avg_baseline_ndcg
-        ) * 100
+        mrr_improvement = ((avg_valence_mrr - avg_baseline_mrr) / avg_baseline_mrr) * 100
+        p5_improvement = ((avg_valence_p5 - avg_baseline_p5) / max(avg_baseline_p5, 0.001)) * 100
+        ndcg_improvement = ((avg_valence_ndcg - avg_baseline_ndcg) / avg_baseline_ndcg) * 100
 
         print("\n" + "=" * 70)
         print("AGGREGATE RESULTS")
         print("=" * 70)
         print(f"\n{'Metric':<20} {'Baseline':>12} {'Valence':>12} {'Improvement':>15}")
         print("-" * 60)
-        print(
-            f"{'Avg MRR':<20} {avg_baseline_mrr:>12.3f} {avg_valence_mrr:>12.3f} {mrr_improvement:>14.1f}%"
-        )
-        print(
-            f"{'Avg P@5':<20} {avg_baseline_p5:>12.3f} {avg_valence_p5:>12.3f} {p5_improvement:>14.1f}%"
-        )
-        print(
-            f"{'Avg NDCG@10':<20} {avg_baseline_ndcg:>12.3f} {avg_valence_ndcg:>12.3f} {ndcg_improvement:>14.1f}%"
-        )
+        print(f"{'Avg MRR':<20} {avg_baseline_mrr:>12.3f} {avg_valence_mrr:>12.3f} {mrr_improvement:>14.1f}%")
+        print(f"{'Avg P@5':<20} {avg_baseline_p5:>12.3f} {avg_valence_p5:>12.3f} {p5_improvement:>14.1f}%")
+        print(f"{'Avg NDCG@10':<20} {avg_baseline_ndcg:>12.3f} {avg_valence_ndcg:>12.3f} {ndcg_improvement:>14.1f}%")
         print("-" * 60)
 
         print("\n📊 HEADLINE RESULT:")
-        print(
-            f"   Valence improves retrieval precision by {mrr_improvement:.0f}% (MRR)"
-        )
+        print(f"   Valence improves retrieval precision by {mrr_improvement:.0f}% (MRR)")
         print(f"   Top-5 precision improved by {p5_improvement:.0f}%")
         print(f"   NDCG@10 improved by {ndcg_improvement:.0f}%")
 
         # Assert meaningful improvement
-        assert (
-            mrr_improvement > 10
-        ), f"Expected >10% MRR improvement, got {mrr_improvement:.1f}%"
-        assert (
-            avg_valence_mrr > avg_baseline_mrr
-        ), "Valence should have higher average MRR"
+        assert mrr_improvement > 10, f"Expected >10% MRR improvement, got {mrr_improvement:.1f}%"
+        assert avg_valence_mrr > avg_baseline_mrr, "Valence should have higher average MRR"
 
     def test_weight_sensitivity(self):
         """Test how different weight configurations affect results."""
         query_emb, beliefs, grades = scenario_combined_signals()
 
         weight_configs = {
-            "balanced": RankingWeights(
-                semantic=0.35, confidence=0.25, trust=0.30, recency=0.10
-            ),
-            "semantic_heavy": RankingWeights(
-                semantic=0.60, confidence=0.15, trust=0.15, recency=0.10
-            ),
-            "confidence_heavy": RankingWeights(
-                semantic=0.25, confidence=0.45, trust=0.20, recency=0.10
-            ),
-            "recency_heavy": RankingWeights(
-                semantic=0.30, confidence=0.20, trust=0.15, recency=0.35
-            ),
+            "balanced": RankingWeights(semantic=0.35, confidence=0.25, trust=0.30, recency=0.10),
+            "semantic_heavy": RankingWeights(semantic=0.60, confidence=0.15, trust=0.15, recency=0.10),
+            "confidence_heavy": RankingWeights(semantic=0.25, confidence=0.45, trust=0.20, recency=0.10),
+            "recency_heavy": RankingWeights(semantic=0.30, confidence=0.20, trust=0.15, recency=0.35),
         }
 
         print("\n" + "=" * 60)
@@ -1101,9 +1018,7 @@ class TestAhaMoments:
             print(f"\n{name}: MRR={metrics.mrr:.3f}, P@5={metrics.precision_at_5:.2f}")
 
         # Balanced should be competitive
-        assert (
-            results["balanced"].mrr >= 0.5
-        ), "Balanced weights should achieve reasonable MRR"
+        assert results["balanced"].mrr >= 0.5, "Balanced weights should achieve reasonable MRR"
 
 
 class TestScenarioDetails:
@@ -1124,27 +1039,17 @@ class TestScenarioDetails:
 
         # Check baseline ranking
         baseline = baseline_semantic_only(query_emb, beliefs)
-        baseline_rank = next(
-            i for i, b in enumerate(baseline) if b.id == high_conf_belief.id
-        )
+        baseline_rank = next(i for i, b in enumerate(baseline) if b.id == high_conf_belief.id)
 
         # Check Valence ranking
         valence = valence_multi_signal(query_emb, beliefs)
-        valence_rank = next(
-            i for i, b in enumerate(valence) if b.id == high_conf_belief.id
-        )
+        valence_rank = next(i for i, b in enumerate(valence) if b.id == high_conf_belief.id)
 
-        print(
-            f"\nHigh-confidence belief rank: Baseline={baseline_rank+1}, Valence={valence_rank+1}"
-        )
+        print(f"\nHigh-confidence belief rank: Baseline={baseline_rank + 1}, Valence={valence_rank + 1}")
 
         # Valence should rank it higher
-        assert (
-            valence_rank < baseline_rank
-        ), f"Valence should rank high-confidence belief higher ({valence_rank+1} vs {baseline_rank+1})"
-        assert (
-            valence_rank < 5
-        ), f"High-confidence belief should be in top 5, got rank {valence_rank+1}"
+        assert valence_rank < baseline_rank, f"Valence should rank high-confidence belief higher ({valence_rank + 1} vs {baseline_rank + 1})"
+        assert valence_rank < 5, f"High-confidence belief should be in top 5, got rank {valence_rank + 1}"
 
     def test_outdated_drops(self):
         """Verify that outdated content drops in ranking with Valence."""
@@ -1162,21 +1067,13 @@ class TestScenarioDetails:
         baseline = baseline_semantic_only(query_emb, beliefs)
         valence = valence_multi_signal(query_emb, beliefs)
 
-        baseline_rank = next(
-            i for i, b in enumerate(baseline) if b.id == outdated_belief.id
-        )
-        valence_rank = next(
-            i for i, b in enumerate(valence) if b.id == outdated_belief.id
-        )
+        baseline_rank = next(i for i, b in enumerate(baseline) if b.id == outdated_belief.id)
+        valence_rank = next(i for i, b in enumerate(valence) if b.id == outdated_belief.id)
 
-        print(
-            f"\nOutdated belief rank: Baseline={baseline_rank+1}, Valence={valence_rank+1}"
-        )
+        print(f"\nOutdated belief rank: Baseline={baseline_rank + 1}, Valence={valence_rank + 1}")
 
         # Valence should rank it lower
-        assert (
-            valence_rank > baseline_rank
-        ), f"Valence should rank outdated belief lower ({valence_rank+1} vs {baseline_rank+1})"
+        assert valence_rank > baseline_rank, f"Valence should rank outdated belief lower ({valence_rank + 1} vs {baseline_rank + 1})"
 
 
 # ============================================================================

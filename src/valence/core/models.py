@@ -218,17 +218,13 @@ class Belief:
             "source_id": str(self.source_id) if self.source_id else None,
             "extraction_method": self.extraction_method,
             "supersedes_id": str(self.supersedes_id) if self.supersedes_id else None,
-            "superseded_by_id": (
-                str(self.superseded_by_id) if self.superseded_by_id else None
-            ),
+            "superseded_by_id": (str(self.superseded_by_id) if self.superseded_by_id else None),
             "status": self.status.value,
         }
         if self.source:
             result["source"] = self.source.to_dict()
         if self.entities:
-            result["entities"] = [
-                {"entity": e.to_dict(), "role": r.value} for e, r in self.entities
-            ]
+            result["entities"] = [{"entity": e.to_dict(), "role": r.value} for e, r in self.entities]
         return result
 
     @classmethod
@@ -252,9 +248,7 @@ class Belief:
             source_id=row["source_id"] if row.get("source_id") else None,
             extraction_method=row.get("extraction_method"),
             supersedes_id=row["supersedes_id"] if row.get("supersedes_id") else None,
-            superseded_by_id=(
-                row["superseded_by_id"] if row.get("superseded_by_id") else None
-            ),
+            superseded_by_id=(row["superseded_by_id"] if row.get("superseded_by_id") else None),
             status=BeliefStatus(row.get("status", "active")),
         )
 
@@ -322,16 +316,8 @@ class Tension:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_a_id=(
-                row["belief_a_id"]
-                if isinstance(row["belief_a_id"], UUID)
-                else UUID(row["belief_a_id"])
-            ),
-            belief_b_id=(
-                row["belief_b_id"]
-                if isinstance(row["belief_b_id"], UUID)
-                else UUID(row["belief_b_id"])
-            ),
+            belief_a_id=(row["belief_a_id"] if isinstance(row["belief_a_id"], UUID) else UUID(row["belief_a_id"])),
+            belief_b_id=(row["belief_b_id"] if isinstance(row["belief_b_id"], UUID) else UUID(row["belief_b_id"])),
             type=TensionType(row.get("type", "contradiction")),
             description=row.get("description"),
             severity=TensionSeverity(row.get("severity", "medium")),
@@ -431,11 +417,7 @@ class Exchange:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            session_id=(
-                row["session_id"]
-                if isinstance(row["session_id"], UUID)
-                else UUID(row["session_id"])
-            ),
+            session_id=(row["session_id"] if isinstance(row["session_id"], UUID) else UUID(row["session_id"])),
             sequence=row["sequence"],
             role=ExchangeRole(row["role"]),
             content=row["content"],

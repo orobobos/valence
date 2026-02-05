@@ -396,9 +396,7 @@ class DiscoveryClient:
                 continue  # Try next seed
 
         # All seeds failed
-        raise NoSeedsAvailableError(
-            f"Could not reach any seed. Last error: {last_error}"
-        )
+        raise NoSeedsAvailableError(f"Could not reach any seed. Last error: {last_error}")
 
     def add_seed(self, seed_url: str) -> None:
         """
@@ -470,20 +468,14 @@ class DiscoveryClient:
                     async with session.post(url, json=report_data) as resp:
                         if resp.status == 200:
                             submitted = True
-                            logger.info(
-                                f"Submitted misbehavior report for router "
-                                f"{report.router_id[:16]}... to {seed_url}"
-                            )
+                            logger.info(f"Submitted misbehavior report for router {report.router_id[:16]}... to {seed_url}")
                             # Track seed success
                             health = self._get_seed_health(seed_url)
                             health.record_success(0)  # No latency tracking for reports
                             self._stats["seed_successes"] += 1
                             break  # One successful submission is enough
                         else:
-                            logger.warning(
-                                f"Seed {seed_url} rejected misbehavior report: "
-                                f"HTTP {resp.status}"
-                            )
+                            logger.warning(f"Seed {seed_url} rejected misbehavior report: HTTP {resp.status}")
             except Exception as e:
                 logger.debug(f"Failed to submit report to {seed_url}: {e}")
                 continue
@@ -641,9 +633,7 @@ class DiscoveryClient:
                 ) as resp:
                     if resp.status != 200:
                         health.record_failure()
-                        raise DiscoveryError(
-                            f"Seed returned HTTP {resp.status}: {await resp.text()}"
-                        )
+                        raise DiscoveryError(f"Seed returned HTTP {resp.status}: {await resp.text()}")
 
                     data = await resp.json()
 
@@ -667,9 +657,7 @@ class DiscoveryClient:
                 if self.verify_signatures:
                     if not self._verify_router_signature(router_data):
                         self._stats["signature_failures"] += 1
-                        logger.warning(
-                            f"Invalid signature for router {router_data.get('router_id', 'unknown')[:20]}..."
-                        )
+                        logger.warning(f"Invalid signature for router {router_data.get('router_id', 'unknown')[:20]}...")
                         continue
 
                 router = RouterInfo.from_dict(router_data)
@@ -838,9 +826,7 @@ class DiscoveryClient:
         score += (1 - load) * 0.3
 
         # Region match bonus with tiered scoring
-        preferred_region = preferences.get("preferred_region") or preferences.get(
-            "region"
-        )
+        preferred_region = preferences.get("preferred_region") or preferences.get("region")
         if preferred_region:
             region_score = self._compute_region_score(router.region, preferred_region)
             score += region_score * 0.2
@@ -853,9 +839,7 @@ class DiscoveryClient:
         required_features = set(preferences.get("features", []))
         if required_features:
             router_features = set(router.features)
-            match_ratio = len(required_features & router_features) / len(
-                required_features
-            )
+            match_ratio = len(required_features & router_features) / len(required_features)
             score += match_ratio * 0.1
 
         return score
@@ -888,11 +872,7 @@ class DiscoveryClient:
         router_continent = self._get_continent(router_region)
         preferred_continent = self._get_continent(preferred_region)
 
-        if (
-            router_continent
-            and preferred_continent
-            and router_continent == preferred_continent
-        ):
+        if router_continent and preferred_continent and router_continent == preferred_continent:
             return 0.5
 
         return 0.0
@@ -1021,11 +1001,7 @@ class DiscoveryClient:
             else:
                 health = self._get_seed_health(self.last_successful_seed)
                 # Only prefer if success rate > 50% and had success in last 24h
-                if health.success_rate > 0.5 and (
-                    time.time() - health.last_success < 86400
-                    if health.last_success > 0
-                    else True
-                ):
+                if health.success_rate > 0.5 and (time.time() - health.last_success < 86400 if health.last_success > 0 else True):
                     seeds.append(self.last_successful_seed)
                     seen.add(self.last_successful_seed)
 
@@ -1197,10 +1173,7 @@ class DiscoveryClient:
                 loaded_count += 1
 
         self._revocation_list_path = file_path
-        logger.info(
-            f"Loaded {loaded_count} seed revocations from {file_path} "
-            f"(version={revocation_list.version})"
-        )
+        logger.info(f"Loaded {loaded_count} seed revocations from {file_path} (version={revocation_list.version})")
 
         return loaded_count, errors
 

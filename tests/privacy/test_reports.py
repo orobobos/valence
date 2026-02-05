@@ -4,7 +4,6 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from valence.privacy.reports import (
     AuditRecord,
     BeliefRecord,
@@ -650,9 +649,7 @@ class TestInMemoryDataSource:
     async def test_get_beliefs_filtered_by_domain(self, data_source):
         """Test filtering beliefs by domain."""
         beliefs = []
-        async for b in data_source.get_beliefs_for_user(
-            "did:key:alice", domains=["health"]
-        ):
+        async for b in data_source.get_beliefs_for_user("did:key:alice", domains=["health"]):
             beliefs.append(b)
         assert len(beliefs) == 1
         assert beliefs[0].belief_id == "b1"

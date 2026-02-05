@@ -279,9 +279,7 @@ class KeyPackage:
                 "id": str(self.id),
                 "member_did": self.member_did,
                 "init_public_key": base64.b64encode(self.init_public_key).decode(),
-                "signature_public_key": base64.b64encode(
-                    self.signature_public_key
-                ).decode(),
+                "signature_public_key": base64.b64encode(self.signature_public_key).decode(),
                 "credential_type": self.credential_type,
                 "created_at": self.created_at.isoformat(),
                 "expires_at": self.expires_at.isoformat() if self.expires_at else None,
@@ -295,9 +293,7 @@ class KeyPackage:
             "id": str(self.id),
             "member_did": self.member_did,
             "init_public_key": base64.b64encode(self.init_public_key).decode(),
-            "signature_public_key": base64.b64encode(
-                self.signature_public_key
-            ).decode(),
+            "signature_public_key": base64.b64encode(self.signature_public_key).decode(),
             "credential_type": self.credential_type,
             "created_at": self.created_at.isoformat(),
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
@@ -314,11 +310,7 @@ class KeyPackage:
             signature_public_key=base64.b64decode(data["signature_public_key"]),
             credential_type=data.get("credential_type", "basic"),
             created_at=datetime.fromisoformat(data["created_at"]),
-            expires_at=(
-                datetime.fromisoformat(data["expires_at"])
-                if data.get("expires_at")
-                else None
-            ),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             signature=base64.b64decode(data["signature"]),
         )
 
@@ -356,16 +348,8 @@ class GroupMember:
             "did": self.did,
             "role": self.role.value,
             "status": self.status.value,
-            "init_public_key": (
-                base64.b64encode(self.init_public_key).decode()
-                if self.init_public_key
-                else ""
-            ),
-            "signature_public_key": (
-                base64.b64encode(self.signature_public_key).decode()
-                if self.signature_public_key
-                else ""
-            ),
+            "init_public_key": (base64.b64encode(self.init_public_key).decode() if self.init_public_key else ""),
+            "signature_public_key": (base64.b64encode(self.signature_public_key).decode() if self.signature_public_key else ""),
             "joined_at_epoch": self.joined_at_epoch,
             "joined_at": self.joined_at.isoformat(),
             "removed_at": self.removed_at.isoformat() if self.removed_at else None,
@@ -379,27 +363,11 @@ class GroupMember:
             did=data["did"],
             role=GroupRole(data.get("role", "member")),
             status=MemberStatus(data.get("status", "active")),
-            init_public_key=(
-                base64.b64decode(data["init_public_key"])
-                if data.get("init_public_key")
-                else b""
-            ),
-            signature_public_key=(
-                base64.b64decode(data["signature_public_key"])
-                if data.get("signature_public_key")
-                else b""
-            ),
+            init_public_key=(base64.b64decode(data["init_public_key"]) if data.get("init_public_key") else b""),
+            signature_public_key=(base64.b64decode(data["signature_public_key"]) if data.get("signature_public_key") else b""),
             joined_at_epoch=data.get("joined_at_epoch", 0),
-            joined_at=(
-                datetime.fromisoformat(data["joined_at"])
-                if data.get("joined_at")
-                else datetime.now()
-            ),
-            removed_at=(
-                datetime.fromisoformat(data["removed_at"])
-                if data.get("removed_at")
-                else None
-            ),
+            joined_at=(datetime.fromisoformat(data["joined_at"]) if data.get("joined_at") else datetime.now()),
+            removed_at=(datetime.fromisoformat(data["removed_at"]) if data.get("removed_at") else None),
             leaf_index=data.get("leaf_index", 0),
         )
 
@@ -432,9 +400,7 @@ class EpochSecrets:
     confirmation_key: bytes = b""
 
     @classmethod
-    def derive(
-        cls, epoch: int, init_secret: bytes, commit_secret: bytes | None = None
-    ) -> EpochSecrets:
+    def derive(cls, epoch: int, init_secret: bytes, commit_secret: bytes | None = None) -> EpochSecrets:
         """Derive epoch secrets from init secret and optional commit secret.
 
         Args:
@@ -676,26 +642,14 @@ class WelcomeMessage:
             "id": str(self.id),
             "group_id": str(self.group_id),
             "new_member_did": self.new_member_did,
-            "encrypted_group_secrets": base64.b64encode(
-                self.encrypted_group_secrets
-            ).decode(),
-            "encrypted_group_secrets_nonce": base64.b64encode(
-                self.encrypted_group_secrets_nonce
-            ).decode(),
-            "ephemeral_public_key": base64.b64encode(
-                self.ephemeral_public_key
-            ).decode(),
+            "encrypted_group_secrets": base64.b64encode(self.encrypted_group_secrets).decode(),
+            "encrypted_group_secrets_nonce": base64.b64encode(self.encrypted_group_secrets_nonce).decode(),
+            "ephemeral_public_key": base64.b64encode(self.ephemeral_public_key).decode(),
             "epoch": self.epoch,
-            "encrypted_group_info": base64.b64encode(
-                self.encrypted_group_info
-            ).decode(),
-            "encrypted_group_info_nonce": base64.b64encode(
-                self.encrypted_group_info_nonce
-            ).decode(),
+            "encrypted_group_info": base64.b64encode(self.encrypted_group_info).decode(),
+            "encrypted_group_info_nonce": base64.b64encode(self.encrypted_group_info_nonce).decode(),
             "encrypted_roster": base64.b64encode(self.encrypted_roster).decode(),
-            "encrypted_roster_nonce": base64.b64encode(
-                self.encrypted_roster_nonce
-            ).decode(),
+            "encrypted_roster_nonce": base64.b64encode(self.encrypted_roster_nonce).decode(),
             "adder_did": self.adder_did,
             "signature": base64.b64encode(self.signature).decode(),
             "created_at": self.created_at.isoformat(),
@@ -710,25 +664,17 @@ class WelcomeMessage:
             group_id=UUID(data["group_id"]),
             new_member_did=data["new_member_did"],
             encrypted_group_secrets=base64.b64decode(data["encrypted_group_secrets"]),
-            encrypted_group_secrets_nonce=base64.b64decode(
-                data["encrypted_group_secrets_nonce"]
-            ),
+            encrypted_group_secrets_nonce=base64.b64decode(data["encrypted_group_secrets_nonce"]),
             ephemeral_public_key=base64.b64decode(data["ephemeral_public_key"]),
             epoch=data["epoch"],
             encrypted_group_info=base64.b64decode(data["encrypted_group_info"]),
-            encrypted_group_info_nonce=base64.b64decode(
-                data["encrypted_group_info_nonce"]
-            ),
+            encrypted_group_info_nonce=base64.b64decode(data["encrypted_group_info_nonce"]),
             encrypted_roster=base64.b64decode(data["encrypted_roster"]),
             encrypted_roster_nonce=base64.b64decode(data["encrypted_roster_nonce"]),
             adder_did=data["adder_did"],
             signature=base64.b64decode(data["signature"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            expires_at=(
-                datetime.fromisoformat(data["expires_at"])
-                if data.get("expires_at")
-                else None
-            ),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
         )
 
 
@@ -805,9 +751,7 @@ class GroupState:
 
     # Membership
     members: dict[str, GroupMember] = field(default_factory=dict)  # DID -> GroupMember
-    pending_members: dict[str, KeyPackage] = field(
-        default_factory=dict
-    )  # DID -> KeyPackage
+    pending_members: dict[str, KeyPackage] = field(default_factory=dict)  # DID -> KeyPackage
 
     # Secrets (only populated locally for this member)
     current_secrets: EpochSecrets | None = None
@@ -867,22 +811,11 @@ class GroupState:
             name=data["name"],
             epoch=data.get("epoch", 0),
             status=GroupStatus(data.get("status", "active")),
-            members={
-                did: GroupMember.from_dict(m)
-                for did, m in data.get("members", {}).items()
-            },
+            members={did: GroupMember.from_dict(m) for did, m in data.get("members", {}).items()},
             config=data.get("config", {}),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if "created_at" in data
-                else datetime.now()
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now()),
             created_by=data.get("created_by", ""),
-            updated_at=(
-                datetime.fromisoformat(data["updated_at"])
-                if "updated_at" in data
-                else datetime.now()
-            ),
+            updated_at=(datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now()),
         )
 
     def get_group_info(self) -> dict:
@@ -999,9 +932,7 @@ def add_member(
     if adder is None:
         raise PermissionError(f"Adder {adder_did} is not a group member")
     if adder.role not in (GroupRole.ADMIN,):
-        raise PermissionError(
-            f"Adder {adder_did} does not have permission to add members"
-        )
+        raise PermissionError(f"Adder {adder_did} does not have permission to add members")
     if adder.status != MemberStatus.ACTIVE:
         raise PermissionError(f"Adder {adder_did} is not an active member")
 
@@ -1227,9 +1158,7 @@ def process_commit(
     """
     # Check this commit is for the next epoch
     if commit.from_epoch != current_secrets.epoch:
-        raise ValueError(
-            f"Commit is for wrong epoch (expected {current_secrets.epoch})"
-        )
+        raise ValueError(f"Commit is for wrong epoch (expected {current_secrets.epoch})")
 
     # Get encrypted commit secret for this member
     if member_did not in commit.encrypted_commit_secrets:
@@ -1239,9 +1168,7 @@ def process_commit(
 
     # Decrypt commit secret
     private_key = X25519PrivateKey.from_private_bytes(member_init_private_key)
-    ephemeral_public = X25519PublicKey.from_public_bytes(
-        base64.b64decode(encrypted_data["ephemeral_public_key"])
-    )
+    ephemeral_public = X25519PublicKey.from_public_bytes(base64.b64decode(encrypted_data["ephemeral_public_key"]))
 
     shared_secret = private_key.exchange(ephemeral_public)
 
@@ -1370,9 +1297,7 @@ class RemovalAuditEntry:
             "epoch_before": self.epoch_before,
             "epoch_after": self.epoch_after,
             "timestamp": self.timestamp.isoformat(),
-            "signature": (
-                base64.b64encode(self.signature).decode() if self.signature else ""
-            ),
+            "signature": (base64.b64encode(self.signature).decode() if self.signature else ""),
         }
 
     @classmethod
@@ -1386,14 +1311,8 @@ class RemovalAuditEntry:
             reason=data.get("reason"),
             epoch_before=data["epoch_before"],
             epoch_after=data["epoch_after"],
-            timestamp=(
-                datetime.fromisoformat(data["timestamp"])
-                if data.get("timestamp")
-                else datetime.now()
-            ),
-            signature=(
-                base64.b64decode(data["signature"]) if data.get("signature") else b""
-            ),
+            timestamp=(datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now()),
+            signature=(base64.b64decode(data["signature"]) if data.get("signature") else b""),
         )
 
 
@@ -1447,24 +1366,18 @@ def remove_member(
     is_admin = remover.role == GroupRole.ADMIN
 
     if not is_admin and not is_self_removal:
-        raise PermissionError(
-            f"Remover {remover_did} does not have permission to remove members"
-        )
+        raise PermissionError(f"Remover {remover_did} does not have permission to remove members")
 
     # Validate member to remove exists and is active
     member = group.get_member(member_did)
     if member is None:
         raise ValueError(f"Member {member_did} not found in group")
     if member.status != MemberStatus.ACTIVE:
-        raise ValueError(
-            f"Member {member_did} is not active (status: {member.status.value})"
-        )
+        raise ValueError(f"Member {member_did} is not active (status: {member.status.value})")
 
     # Prevent removing last admin (unless self-removal)
     if member.role == GroupRole.ADMIN and not is_self_removal:
-        admin_count = sum(
-            1 for m in group.get_active_members() if m.role == GroupRole.ADMIN
-        )
+        admin_count = sum(1 for m in group.get_active_members() if m.role == GroupRole.ADMIN)
         if admin_count <= 1:
             raise ValueError("Cannot remove the last admin")
 
@@ -1537,9 +1450,7 @@ def remove_member(
             ephemeral_public = ephemeral_private.public_key()
 
             # Derive shared secret
-            member_key = X25519PublicKey.from_public_bytes(
-                remaining_member.init_public_key
-            )
+            member_key = X25519PublicKey.from_public_bytes(remaining_member.init_public_key)
             shared_secret = ephemeral_private.exchange(member_key)
 
             # Derive encryption key
@@ -1707,9 +1618,7 @@ def get_removal_history(group: GroupState) -> list[dict[str, Any]]:
                     "role_at_removal": member.role.value,
                     "joined_at_epoch": member.joined_at_epoch,
                     "joined_at": member.joined_at.isoformat(),
-                    "removed_at": (
-                        member.removed_at.isoformat() if member.removed_at else None
-                    ),
+                    "removed_at": (member.removed_at.isoformat() if member.removed_at else None),
                     "status": member.status.value,
                 }
             )
@@ -1964,23 +1873,15 @@ class FederationGroup:
         """Create from dictionary."""
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            federation_id=(
-                UUID(data["federation_id"])
-                if isinstance(data["federation_id"], str)
-                else data["federation_id"]
-            ),
+            federation_id=(UUID(data["federation_id"]) if isinstance(data["federation_id"], str) else data["federation_id"]),
             group_state=GroupState.from_dict(data["group_state"]),
             allowed_domains=data.get("allowed_domains", []),
             metadata=data.get("metadata", {}),
             created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if isinstance(data.get("created_at"), str)
-                else data.get("created_at", datetime.now())
+                datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now())
             ),
             modified_at=(
-                datetime.fromisoformat(data["modified_at"])
-                if isinstance(data.get("modified_at"), str)
-                else data.get("modified_at", datetime.now())
+                datetime.fromisoformat(data["modified_at"]) if isinstance(data.get("modified_at"), str) else data.get("modified_at", datetime.now())
             ),
         )
 
@@ -2073,11 +1974,7 @@ def get_federation_group_info(group: FederationGroup) -> dict[str, Any]:
     - Member count
     - Admin list
     """
-    admins = [
-        m.did
-        for m in group.members
-        if m.role == GroupRole.ADMIN and m.status == MemberStatus.ACTIVE
-    ]
+    admins = [m.did for m in group.members if m.role == GroupRole.ADMIN and m.status == MemberStatus.ACTIVE]
 
     return {
         "id": str(group.id),
@@ -2118,9 +2015,7 @@ def verify_federation_membership(group: FederationGroup, member_did: str) -> boo
     return group.has_member(member_did)
 
 
-def get_federation_member_role(
-    group: FederationGroup, member_did: str
-) -> GroupRole | None:
+def get_federation_member_role(group: FederationGroup, member_did: str) -> GroupRole | None:
     """Get a member's role, or None if not an active member."""
     member = group.get_member(member_did)
     if member and member.status == MemberStatus.ACTIVE:

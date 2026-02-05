@@ -167,11 +167,7 @@ class PublicParameters:
             circuit_hash=bytes.fromhex(data["circuit_hash"]),
             verification_key=bytes.fromhex(data["verification_key"]),
             proving_key_hash=bytes.fromhex(data["proving_key_hash"]),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if data.get("created_at")
-                else datetime.now()
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             version=data.get("version", "1.0.0"),
         )
 
@@ -224,16 +220,8 @@ class ComplianceProof:
             proof_type=ComplianceProofType[data["proof_type"]],
             proof_data=bytes.fromhex(data["proof_data"]),
             public_inputs_hash=bytes.fromhex(data["public_inputs_hash"]),
-            created_at=(
-                datetime.fromisoformat(data["created_at"])
-                if data.get("created_at")
-                else datetime.now()
-            ),
-            expires_at=(
-                datetime.fromisoformat(data["expires_at"])
-                if data.get("expires_at")
-                else None
-            ),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             metadata=data.get("metadata", {}),
         )
 
@@ -420,9 +408,7 @@ class ZKPBackend(ABC):
         pass
 
     @abstractmethod
-    def get_public_parameters(
-        self, proof_type: ComplianceProofType
-    ) -> PublicParameters | None:
+    def get_public_parameters(self, proof_type: ComplianceProofType) -> PublicParameters | None:
         """Get public parameters for a proof type.
 
         Args:
@@ -744,9 +730,7 @@ class MockZKPBackend(ZKPBackend):
         """Create a mock prover."""
         params = self._parameters.get(proof_type)
         if params is None:
-            raise ZKPCircuitNotFoundError(
-                f"No setup found for {proof_type.name}. Call setup() first."
-            )
+            raise ZKPCircuitNotFoundError(f"No setup found for {proof_type.name}. Call setup() first.")
 
         return MockZKPProver(proof_type, params)
 
@@ -754,15 +738,11 @@ class MockZKPBackend(ZKPBackend):
         """Create a mock verifier."""
         params = self._parameters.get(proof_type)
         if params is None:
-            raise ZKPCircuitNotFoundError(
-                f"No setup found for {proof_type.name}. Call setup() first."
-            )
+            raise ZKPCircuitNotFoundError(f"No setup found for {proof_type.name}. Call setup() first.")
 
         return MockZKPVerifier(proof_type, params)
 
-    def get_public_parameters(
-        self, proof_type: ComplianceProofType
-    ) -> PublicParameters | None:
+    def get_public_parameters(self, proof_type: ComplianceProofType) -> PublicParameters | None:
         """Get public parameters for a proof type."""
         return self._parameters.get(proof_type)
 

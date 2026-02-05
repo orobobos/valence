@@ -14,14 +14,11 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.discovery import RouterInfo
 from valence.network.messages import HealthGossip, RouterHealthObservation
 from valence.network.node import NodeClient, RouterConnection
 
-pytestmark = pytest.mark.skip(
-    reason="Needs update for NodeClient decomposition - see #167"
-)
+pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
 
 
 # =============================================================================
@@ -428,9 +425,7 @@ class TestPeerObservations:
         node_client._prune_peer_observations()
 
         # Count total observations
-        total = sum(
-            len(peer_data) for peer_data in node_client._peer_observations.values()
-        )
+        total = sum(len(peer_data) for peer_data in node_client._peer_observations.values())
 
         assert total <= node_client.max_peer_observations
 
@@ -605,9 +600,7 @@ class TestGossipBroadcast:
         assert "payload" in sent_data
 
     @pytest.mark.asyncio
-    async def test_broadcast_skips_closed_connections(
-        self, node_client, mock_router_connection
-    ):
+    async def test_broadcast_skips_closed_connections(self, node_client, mock_router_connection):
         """Test that broadcast skips closed WebSocket connections."""
         mock_router_connection.websocket.closed = True
         router_id = mock_router_connection.router.router_id
@@ -635,9 +628,7 @@ class TestGossipPropagation:
     """Tests for gossip propagation between nodes."""
 
     @pytest.mark.asyncio
-    async def test_propagate_gossip_to_other_routers(
-        self, node_client, mock_router_connection
-    ):
+    async def test_propagate_gossip_to_other_routers(self, node_client, mock_router_connection):
         """Test propagating gossip to other routers (excluding source)."""
         # Add two router connections
         router1_id = "router1" + "a" * 58
@@ -673,17 +664,13 @@ class TestGossipPropagation:
         mock_conn2.websocket.send_json.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_handle_gossip_decrements_ttl(
-        self, node_client, mock_router_connection
-    ):
+    async def test_handle_gossip_decrements_ttl(self, node_client, mock_router_connection):
         """Test that gossip handling decrements TTL for propagation."""
         router_id = mock_router_connection.router.router_id
         node_client.connections[router_id] = mock_router_connection
 
         peer_id = "peer_node"
-        obs = RouterHealthObservation(
-            router_id="r1", latency_ms=50, last_seen=time.time()
-        )
+        obs = RouterHealthObservation(router_id="r1", latency_ms=50, last_seen=time.time())
 
         # Create gossip with TTL > 1
         gossip_data = {

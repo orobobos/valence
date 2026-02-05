@@ -235,9 +235,7 @@ class MessageHandler:
             # Queue message for later delivery
             if len(self.message_queue) >= self.config.max_queue_size:
                 self._stats["messages_dropped"] += 1
-                raise NoRoutersAvailableError(
-                    "No routers available and message queue full"
-                )
+                raise NoRoutersAvailableError("No routers available and message queue full")
 
             self.message_queue.append(
                 PendingMessage(
@@ -273,9 +271,7 @@ class MessageHandler:
                 router_id=router.router_id,
                 timeout_ms=timeout_ms,
             )
-            asyncio.create_task(
-                self._wait_for_ack(message_id, send_via_router, router_selector)
-            )
+            asyncio.create_task(self._wait_for_ack(message_id, send_via_router, router_selector))
 
         return message_id
 
@@ -307,11 +303,7 @@ class MessageHandler:
             self._stats["batched_messages"] += 1
 
             # Check if batch is full
-            if (
-                self.traffic_mitigation_config
-                and len(self._message_batch)
-                >= self.traffic_mitigation_config.batching.max_batch_size
-            ):
+            if self.traffic_mitigation_config and len(self._message_batch) >= self.traffic_mitigation_config.batching.max_batch_size:
                 self._pending_batch_event.set()
 
         return message_id
@@ -326,10 +318,7 @@ class MessageHandler:
             self._message_batch.clear()
 
         # Randomize order if configured
-        if (
-            self.traffic_mitigation_config
-            and self.traffic_mitigation_config.batching.randomize_order
-        ):
+        if self.traffic_mitigation_config and self.traffic_mitigation_config.batching.randomize_order:
             random.shuffle(batch)
 
         self._stats["batch_flushes"] += 1
@@ -340,13 +329,8 @@ class MessageHandler:
         for entry in batch:
             try:
                 # Apply inter-message jitter if enabled
-                if (
-                    self.traffic_mitigation_config
-                    and self.traffic_mitigation_config.jitter.enabled
-                ):
-                    jitter_delay = (
-                        self.traffic_mitigation_config.jitter.get_jitter_delay()
-                    )
+                if self.traffic_mitigation_config and self.traffic_mitigation_config.jitter.enabled:
+                    jitter_delay = self.traffic_mitigation_config.jitter.get_jitter_delay()
                     if jitter_delay > 0:
                         self._stats["jitter_delays_applied"] += 1
                         self._stats["total_jitter_ms"] += int(jitter_delay * 1000)
@@ -363,9 +347,7 @@ class MessageHandler:
                     send_via_router=entry["send_via_router"],
                 )
             except Exception as e:
-                logger.warning(
-                    f"Failed to send batched message {entry['message_id']}: {e}"
-                )
+                logger.warning(f"Failed to send batched message {entry['message_id']}: {e}")
 
     async def _wait_for_ack(
         self,
@@ -392,9 +374,7 @@ class MessageHandler:
             logger.debug(f"ACK timeout for {message_id}, retrying")
             await self._retry_message(message_id, send_via_router, router_selector)
         else:
-            await self._retry_via_different_router(
-                message_id, send_via_router, router_selector
-            )
+            await self._retry_via_different_router(message_id, send_via_router, router_selector)
 
     async def _retry_message(
         self,
@@ -419,18 +399,12 @@ class MessageHandler:
                     require_ack=True,
                 )
                 pending.sent_at = time.time()
-                asyncio.create_task(
-                    self._wait_for_ack(message_id, send_via_router, router_selector)
-                )
+                asyncio.create_task(self._wait_for_ack(message_id, send_via_router, router_selector))
             else:
-                await self._retry_via_different_router(
-                    message_id, send_via_router, router_selector
-                )
+                await self._retry_via_different_router(message_id, send_via_router, router_selector)
         except Exception as e:
             logger.warning(f"Retry failed for {message_id}: {e}")
-            await self._retry_via_different_router(
-                message_id, send_via_router, router_selector
-            )
+            await self._retry_via_different_router(message_id, send_via_router, router_selector)
 
     async def _retry_via_different_router(
         self,
@@ -461,9 +435,7 @@ class MessageHandler:
                 require_ack=True,
             )
             pending.sent_at = time.time()
-            asyncio.create_task(
-                self._wait_for_ack(message_id, send_via_router, router_selector)
-            )
+            asyncio.create_task(self._wait_for_ack(message_id, send_via_router, router_selector))
         except Exception as e:
             logger.warning(f"Retry via different router failed: {e}")
             self._handle_ack_failure(message_id, pending)
@@ -479,10 +451,7 @@ class MessageHandler:
             except Exception as e:
                 logger.warning(f"on_ack_timeout callback error: {e}")
 
-        logger.warning(
-            f"Message {message_id} to {pending.recipient_id[:16]}... "
-            f"failed after {pending.retries} retries"
-        )
+        logger.warning(f"Message {message_id} to {pending.recipient_id[:16]}... failed after {pending.retries} retries")
 
     def handle_ack(self, message_id: str, success: bool = True) -> None:
         """Handle acknowledgment for a sent message."""
@@ -566,9 +535,7 @@ class MessageHandler:
                 if msg.retries >= msg.max_retries:
                     processed.append(i)
                     self._stats["messages_dropped"] += 1
-                    logger.warning(
-                        f"Dropped message {msg.message_id} after retries: {e}"
-                    )
+                    logger.warning(f"Dropped message {msg.message_id} after retries: {e}")
 
         # Remove processed messages
         for i in reversed(processed):

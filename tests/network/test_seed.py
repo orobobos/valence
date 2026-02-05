@@ -17,7 +17,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.seed import (
     RouterRecord,
     SeedConfig,
@@ -790,17 +789,15 @@ class TestThunderingHerdPrevention:
         # Recovering router - simulate just-recovered state
         from valence.network.seed import HealthState, HealthStatus
 
-        seed_node.health_monitor.health_states[recovering_router.router_id] = (
-            HealthState(
-                status=HealthStatus.HEALTHY,
-                missed_heartbeats=0,
-                last_heartbeat=now,
-                last_probe=0,
-                probe_latency_ms=0,
-                warnings=[],
-                recovery_time=now,  # Just recovered
-                previous_status=HealthStatus.UNHEALTHY,
-            )
+        seed_node.health_monitor.health_states[recovering_router.router_id] = HealthState(
+            status=HealthStatus.HEALTHY,
+            missed_heartbeats=0,
+            last_heartbeat=now,
+            last_probe=0,
+            probe_latency_ms=0,
+            warnings=[],
+            recovery_time=now,  # Just recovered
+            previous_status=HealthStatus.UNHEALTHY,
         )
 
         score_healthy = seed_node._score_router(healthy_router, {})
@@ -1099,9 +1096,7 @@ class TestStatusEndpoint:
     """Tests for /status endpoint."""
 
     @pytest.mark.asyncio
-    async def test_status_returns_info(
-        self, seed_node, healthy_router, unhealthy_router
-    ):
+    async def test_status_returns_info(self, seed_node, healthy_router, unhealthy_router):
         """Status should return seed node info."""
         seed_node.router_registry[healthy_router.router_id] = healthy_router
         seed_node.router_registry[unhealthy_router.router_id] = unhealthy_router

@@ -73,16 +73,12 @@ async def _fetch_node_metadata(base_url: str) -> DIDDocument | None:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 if response.status == 200:
                     data = await response.json()
                     return DIDDocument.from_dict(data)
                 else:
-                    logger.warning(
-                        f"Failed to fetch node metadata from {url}: {response.status}"
-                    )
+                    logger.warning(f"Failed to fetch node metadata from {url}: {response.status}")
                     return None
     except aiohttp.ClientError as e:
         logger.warning(f"Network error fetching node metadata from {url}: {e}")
@@ -145,9 +141,7 @@ def register_node(did_document: DIDDocument) -> FederationNode | None:
     try:
         with get_cursor() as cur:
             # Check if node already exists
-            cur.execute(
-                "SELECT id, status FROM federation_nodes WHERE did = %s", (did,)
-            )
+            cur.execute("SELECT id, status FROM federation_nodes WHERE did = %s", (did,))
             existing = cur.fetchone()
 
             if existing:
@@ -456,10 +450,12 @@ async def check_all_nodes_health() -> dict[str, bool]:
 
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT * FROM federation_nodes
                 WHERE status IN ('active', 'connecting')
-            """)
+            """
+            )
             rows = cur.fetchall()
 
         nodes = [FederationNode.from_row(row) for row in rows]
@@ -551,14 +547,16 @@ def list_nodes_with_trust() -> list[tuple[FederationNode, NodeTrust | None]]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT fn.*, nt.id as trust_id, nt.trust, nt.beliefs_received,
                        nt.beliefs_corroborated, nt.beliefs_disputed,
                        nt.relationship_started_at, nt.last_interaction_at
                 FROM federation_nodes fn
                 LEFT JOIN node_trust nt ON fn.id = nt.node_id
                 ORDER BY (nt.trust->>'overall')::numeric DESC NULLS LAST
-            """)
+            """
+            )
             rows = cur.fetchall()
 
             results = []
@@ -573,9 +571,7 @@ def list_nodes_with_trust() -> list[tuple[FederationNode, NodeTrust | None]]:
                         beliefs_received=row.get("beliefs_received", 0),
                         beliefs_corroborated=row.get("beliefs_corroborated", 0),
                         beliefs_disputed=row.get("beliefs_disputed", 0),
-                        relationship_started_at=row.get(
-                            "relationship_started_at", datetime.now()
-                        ),
+                        relationship_started_at=row.get("relationship_started_at", datetime.now()),
                         last_interaction_at=row.get("last_interaction_at"),
                     )
                 else:
@@ -602,13 +598,15 @@ def get_known_peers() -> list[dict[str, Any]]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT did, federation_endpoint, domains, trust_phase
                 FROM federation_nodes
                 WHERE status = 'active'
                 ORDER BY last_seen_at DESC
                 LIMIT 50
-            """)
+            """
+            )
             rows = cur.fetchall()
 
             return [

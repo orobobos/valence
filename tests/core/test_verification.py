@@ -17,7 +17,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from valence.core.exceptions import NotFoundError, ValidationException
 from valence.core.verification import (
     BeliefReference,
@@ -748,9 +747,7 @@ class TestCalculateDisputeMinStake:
     def test_holder_gets_lower_multiplier(self):
         verification_stake = 0.05
         holder_min = calculate_dispute_min_stake(verification_stake, is_holder=True)
-        third_party_min = calculate_dispute_min_stake(
-            verification_stake, is_holder=False
-        )
+        third_party_min = calculate_dispute_min_stake(verification_stake, is_holder=False)
 
         assert holder_min == pytest.approx(0.05)  # 1.0x
         assert third_party_min == pytest.approx(0.075)  # 1.5x
@@ -957,9 +954,7 @@ class TestValidateEvidenceRequirements:
                 contribution=EvidenceContribution.SUPPORTS,
             )
         ]
-        errors = validate_evidence_requirements(
-            VerificationResult.CONTRADICTED, evidence
-        )
+        errors = validate_evidence_requirements(VerificationResult.CONTRADICTED, evidence)
         assert len(errors) > 0
         assert "contradicting evidence" in errors[0].lower()
 
@@ -1061,14 +1056,10 @@ class TestValidateVerificationSubmission:
         )
         sample_reputation.identity_id = "did:example:holder"
 
-        errors = validate_verification_submission(
-            verification, sample_belief, sample_reputation, []
-        )
+        errors = validate_verification_submission(verification, sample_belief, sample_reputation, [])
         assert any("own belief" in e.lower() for e in errors)
 
-    def test_duplicate_verification_rejected(
-        self, sample_verification, sample_belief, sample_reputation
-    ):
+    def test_duplicate_verification_rejected(self, sample_verification, sample_belief, sample_reputation):
         existing = [sample_verification]
         new_verification = Verification(
             id=uuid4(),
@@ -1087,9 +1078,7 @@ class TestValidateVerificationSubmission:
             stake=sample_verification.stake,
         )
 
-        errors = validate_verification_submission(
-            new_verification, sample_belief, sample_reputation, existing
-        )
+        errors = validate_verification_submission(new_verification, sample_belief, sample_reputation, existing)
         assert any("already verified" in e.lower() for e in errors)
 
     def test_insufficient_stake_rejected(self, sample_belief, sample_reputation):
@@ -1115,17 +1104,11 @@ class TestValidateVerificationSubmission:
             ),
         )
 
-        errors = validate_verification_submission(
-            verification, sample_belief, sample_reputation, []
-        )
+        errors = validate_verification_submission(verification, sample_belief, sample_reputation, [])
         assert any("below minimum" in e.lower() for e in errors)
 
-    def test_valid_submission_passes(
-        self, sample_verification, sample_belief, sample_reputation
-    ):
-        errors = validate_verification_submission(
-            sample_verification, sample_belief, sample_reputation, []
-        )
+    def test_valid_submission_passes(self, sample_verification, sample_belief, sample_reputation):
+        errors = validate_verification_submission(sample_verification, sample_belief, sample_reputation, [])
         assert len(errors) == 0
 
 
@@ -1194,21 +1177,15 @@ class TestValidateDisputeSubmission:
 
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
 
-        errors = validate_dispute_submission(
-            sample_dispute, verification, disputer_rep, is_holder=True
-        )
+        errors = validate_dispute_submission(sample_dispute, verification, disputer_rep, is_holder=True)
         assert any("pending" in e.lower() for e in errors)
 
     def test_expired_dispute_window(self, sample_verification, sample_dispute):
-        sample_verification.accepted_at = datetime.now() - timedelta(
-            days=10
-        )  # Past window
+        sample_verification.accepted_at = datetime.now() - timedelta(days=10)  # Past window
 
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
 
-        errors = validate_dispute_submission(
-            sample_dispute, sample_verification, disputer_rep, is_holder=True
-        )
+        errors = validate_dispute_submission(sample_dispute, sample_verification, disputer_rep, is_holder=True)
         assert any("expired" in e.lower() for e in errors)
 
     def test_no_counter_evidence_rejected(self, sample_verification):
@@ -1229,17 +1206,13 @@ class TestValidateDisputeSubmission:
 
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
 
-        errors = validate_dispute_submission(
-            dispute, sample_verification, disputer_rep, is_holder=True
-        )
+        errors = validate_dispute_submission(dispute, sample_verification, disputer_rep, is_holder=True)
         assert any("counter-evidence" in e.lower() for e in errors)
 
     def test_valid_dispute_passes(self, sample_verification, sample_dispute):
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
 
-        errors = validate_dispute_submission(
-            sample_dispute, sample_verification, disputer_rep, is_holder=True
-        )
+        errors = validate_dispute_submission(sample_dispute, sample_verification, disputer_rep, is_holder=True)
         assert len(errors) == 0
 
 
@@ -1287,9 +1260,7 @@ class TestVerificationService:
             )
         ]
 
-    def test_submit_verification_success(
-        self, service, sample_belief_info, supporting_evidence
-    ):
+    def test_submit_verification_success(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1306,9 +1277,7 @@ class TestVerificationService:
         assert verification.status == VerificationStatus.PENDING
         assert verification.result == VerificationResult.CONFIRMED
 
-    def test_submit_verification_self_verification_rejected(
-        self, service, sample_belief_info, supporting_evidence
-    ):
+    def test_submit_verification_self_verification_rejected(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
 
         with pytest.raises(ValidationException) as exc:
@@ -1323,9 +1292,7 @@ class TestVerificationService:
 
         assert "own belief" in str(exc.value).lower()
 
-    def test_accept_verification(
-        self, service, sample_belief_info, supporting_evidence
-    ):
+    def test_accept_verification(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1342,9 +1309,7 @@ class TestVerificationService:
         assert accepted.status == VerificationStatus.ACCEPTED
         assert accepted.accepted_at is not None
 
-    def test_accept_verification_updates_reputation(
-        self, service, sample_belief_info, supporting_evidence
-    ):
+    def test_accept_verification_updates_reputation(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1356,9 +1321,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
 
-        verifier_rep_before = service.get_or_create_reputation(
-            "did:example:verifier"
-        ).overall
+        verifier_rep_before = service.get_or_create_reputation("did:example:verifier").overall
 
         service.accept_verification(verification.id)
 
@@ -1367,9 +1330,7 @@ class TestVerificationService:
         # Verifier should gain reputation
         assert verifier_rep_after > verifier_rep_before
 
-    def test_contradiction_gives_higher_reward(
-        self, service, sample_belief_info, contradicting_evidence
-    ):
+    def test_contradiction_gives_higher_reward(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1381,9 +1342,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
 
-        verifier_rep_before = service.get_or_create_reputation(
-            "did:example:verifier"
-        ).overall
+        verifier_rep_before = service.get_or_create_reputation("did:example:verifier").overall
 
         service.accept_verification(verification.id)
 
@@ -1393,9 +1352,7 @@ class TestVerificationService:
         # Contradiction reward should be significant
         assert verifier_delta > 0
 
-    def test_contradiction_penalizes_holder(
-        self, service, sample_belief_info, contradicting_evidence
-    ):
+    def test_contradiction_penalizes_holder(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1407,9 +1364,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
 
-        holder_rep_before = service.get_or_create_reputation(
-            "did:example:holder"
-        ).overall
+        holder_rep_before = service.get_or_create_reputation("did:example:holder").overall
 
         service.accept_verification(verification.id)
 
@@ -1418,9 +1373,7 @@ class TestVerificationService:
         # Holder should lose reputation
         assert holder_rep_after < holder_rep_before
 
-    def test_dispute_verification(
-        self, service, sample_belief_info, contradicting_evidence, supporting_evidence
-    ):
+    def test_dispute_verification(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
 
         # Submit and accept verification
@@ -1452,9 +1405,7 @@ class TestVerificationService:
         updated_verification = service.get_verification(verification.id)
         assert updated_verification.status == VerificationStatus.DISPUTED
 
-    def test_dispute_nonexistent_verification_raises(
-        self, service, supporting_evidence
-    ):
+    def test_dispute_nonexistent_verification_raises(self, service, supporting_evidence):
         with pytest.raises(NotFoundError):
             service.dispute_verification(
                 verification_id=uuid4(),
@@ -1465,9 +1416,7 @@ class TestVerificationService:
                 reasoning="...",
             )
 
-    def test_resolve_dispute_upheld(
-        self, service, sample_belief_info, contradicting_evidence, supporting_evidence
-    ):
+    def test_resolve_dispute_upheld(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
 
         # Submit, accept, and dispute
@@ -1506,9 +1455,7 @@ class TestVerificationService:
         disputer_rep_after = service.get_reputation("did:example:holder").overall
         assert disputer_rep_after < disputer_rep_before
 
-    def test_resolve_dispute_overturned(
-        self, service, sample_belief_info, contradicting_evidence, supporting_evidence
-    ):
+    def test_resolve_dispute_overturned(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
 
         # Submit, accept, and dispute
@@ -1550,9 +1497,7 @@ class TestVerificationService:
         updated_verification = service.get_verification(verification.id)
         assert updated_verification.status == VerificationStatus.OVERTURNED
 
-    def test_resolve_dispute_dismissed(
-        self, service, sample_belief_info, contradicting_evidence, supporting_evidence
-    ):
+    def test_resolve_dispute_dismissed(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
 
         verification = service.submit_verification(
@@ -1591,9 +1536,7 @@ class TestVerificationService:
         # Penalty should include frivolous multiplier
         assert penalty > 0.02  # More than just stake
 
-    def test_get_verification_summary(
-        self, service, sample_belief_info, supporting_evidence, contradicting_evidence
-    ):
+    def test_get_verification_summary(self, service, sample_belief_info, supporting_evidence, contradicting_evidence):
         belief_id = uuid4()
 
         # Submit multiple verifications
@@ -1625,9 +1568,7 @@ class TestVerificationService:
         assert summary["total_stake"] == pytest.approx(0.05)
         assert summary["consensus_result"] == "confirmed"
 
-    def test_stake_locking_and_release(
-        self, service, sample_belief_info, supporting_evidence
-    ):
+    def test_stake_locking_and_release(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
 
         # Check initial state
@@ -1648,9 +1589,7 @@ class TestVerificationService:
         verifier_rep = service.get_reputation("did:example:verifier")
         assert verifier_rep.stake_at_risk == initial_stake_at_risk + 0.02
 
-    def test_discrepancy_find_increments(
-        self, service, sample_belief_info, contradicting_evidence
-    ):
+    def test_discrepancy_find_increments(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
 
         # Check initial state

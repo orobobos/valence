@@ -112,7 +112,6 @@ class TestCheckDatabaseConnection:
     def test_operational_error(self, env_with_db_vars):
         """Should return False on OperationalError."""
         import psycopg2
-
         from valence.core.health import check_database_connection
 
         with patch("psycopg2.connect") as mock_connect:
@@ -124,7 +123,6 @@ class TestCheckDatabaseConnection:
     def test_generic_error(self, env_with_db_vars):
         """Should return False on generic Error."""
         import psycopg2
-
         from valence.core.health import check_database_connection
 
         with patch("psycopg2.connect") as mock_connect:
@@ -150,9 +148,7 @@ class TestCheckPgvector:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
             mock_connect.return_value = mock_conn
-            mock_conn.cursor.return_value.__enter__ = MagicMock(
-                return_value=mock_cursor
-            )
+            mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
             mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
             mock_cursor.fetchone.return_value = (True,)
 
@@ -168,9 +164,7 @@ class TestCheckPgvector:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
             mock_connect.return_value = mock_conn
-            mock_conn.cursor.return_value.__enter__ = MagicMock(
-                return_value=mock_cursor
-            )
+            mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
             mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
             mock_cursor.fetchone.return_value = (False,)
 
@@ -181,7 +175,6 @@ class TestCheckPgvector:
     def test_database_error(self, env_with_db_vars):
         """Should return False on database error."""
         import psycopg2
-
         from valence.core.health import check_pgvector
 
         with patch("psycopg2.connect") as mock_connect:
@@ -296,15 +289,11 @@ class TestRunHealthCheck:
         monkeypatch.setenv("VKB_DB_USER", "valence")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-xxx")
 
-        with patch(
-            "valence.core.health.check_database_connection", return_value=(True, None)
-        ):
+        with patch("valence.core.health.check_database_connection", return_value=(True, None)):
             with patch("valence.core.health.check_pgvector", return_value=(True, None)):
                 with patch("valence.core.health.check_schema", return_value=(True, [])):
                     with patch("valence.core.health.DatabaseStats") as mock_stats:
-                        mock_stats.collect.return_value = MagicMock(
-                            to_dict=lambda: {"beliefs": 10}
-                        )
+                        mock_stats.collect.return_value = MagicMock(to_dict=lambda: {"beliefs": 10})
                         status = run_health_check()
                         assert status.healthy is True
                         assert status.database_connected is True
@@ -346,9 +335,7 @@ class TestRunHealthCheck:
         monkeypatch.setenv("VKB_DB_NAME", "valence")
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
-        with patch(
-            "valence.core.health.check_database_connection", return_value=(True, None)
-        ):
+        with patch("valence.core.health.check_database_connection", return_value=(True, None)):
             with patch("valence.core.health.check_pgvector", return_value=(True, None)):
                 with patch(
                     "valence.core.health.check_schema",
@@ -367,9 +354,7 @@ class TestRunHealthCheck:
         monkeypatch.setenv("VKB_DB_NAME", "valence")
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
-        with patch(
-            "valence.core.health.check_database_connection", return_value=(True, None)
-        ):
+        with patch("valence.core.health.check_database_connection", return_value=(True, None)):
             with patch(
                 "valence.core.health.check_pgvector",
                 return_value=(False, "Not installed"),
@@ -492,12 +477,8 @@ class TestValidateDatabase:
         monkeypatch.setenv("VKB_DB_NAME", "valence")
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
-        with patch(
-            "valence.core.health.check_database_connection", return_value=(True, None)
-        ):
-            with patch(
-                "valence.core.health.check_schema", return_value=(False, ["beliefs"])
-            ):
+        with patch("valence.core.health.check_database_connection", return_value=(True, None)):
+            with patch("valence.core.health.check_schema", return_value=(False, ["beliefs"])):
                 with pytest.raises(DatabaseException, match="schema invalid"):
                     validate_database()
 

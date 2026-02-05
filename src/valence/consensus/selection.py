@@ -124,13 +124,7 @@ def compute_selection_weight(candidate: ValidatorCandidate) -> float:
     else:
         performance_factor = 1.0  # New validators: neutral
 
-    return (
-        base
-        * reputation_factor
-        * attestation_factor
-        * tenure_penalty
-        * performance_factor
-    )
+    return base * reputation_factor * attestation_factor * tenure_penalty * performance_factor
 
 
 def compute_tenure_penalty(consecutive_epochs: int) -> float:
@@ -306,11 +300,7 @@ def _force_new_validators(
 
     # Find new candidates not yet selected
     selected_ids = {c.agent_id for c, _ in selected}
-    new_candidates = [
-        (c, v)
-        for c, v in all_candidates
-        if c.agent_id not in selected_ids and c.agent_id not in previous_validators
-    ]
+    new_candidates = [(c, v) for c, v in all_candidates if c.agent_id not in selected_ids and c.agent_id not in previous_validators]
 
     # Replace lowest-weight returning with new candidates
     result = list(selected)
@@ -585,9 +575,7 @@ class ValidatorSelector:
         # Get previous epoch hash
         prev_hash = b"\x00" * 32
         if previous_epoch:
-            prev_data = (
-                f"{previous_epoch.epoch}:{previous_epoch.selection_seed.hex()}".encode()
-            )
+            prev_data = f"{previous_epoch.epoch}:{previous_epoch.selection_seed.hex()}".encode()
             prev_hash = hashlib.sha256(prev_data).digest()
 
         return ValidatorSet(
@@ -621,9 +609,7 @@ class ValidatorSelector:
         expected_f = (len(validator_set.validators) - 1) // 3
         expected_count = 3 * expected_f + 1
         if len(validator_set.validators) != expected_count:
-            issues.append(
-                f"Invalid validator count: {len(validator_set.validators)} != 3f+1"
-            )
+            issues.append(f"Invalid validator count: {len(validator_set.validators)} != 3f+1")
 
         # Check diversity constraints
         federation_counts: dict[str, int] = {}
@@ -635,21 +621,15 @@ class ValidatorSelector:
             tier_counts[validator.tier] = tier_counts.get(validator.tier, 0) + 1
 
         # Check federation diversity
-        max_per_fed = int(
-            len(validator_set.validators) * self.constraints.max_from_same_federation
-        )
+        max_per_fed = int(len(validator_set.validators) * self.constraints.max_from_same_federation)
         for fed, count in federation_counts.items():
             if count > max_per_fed:
                 issues.append(f"Federation {fed} over limit: {count} > {max_per_fed}")
 
         # Check tier diversity
         standard_count = tier_counts.get(ValidatorTier.STANDARD, 0)
-        min_standard = int(
-            len(validator_set.validators) * self.constraints.min_standard_tier
-        )
+        min_standard = int(len(validator_set.validators) * self.constraints.min_standard_tier)
         if standard_count < min_standard:
-            issues.append(
-                f"Not enough standard tier: {standard_count} < {min_standard}"
-            )
+            issues.append(f"Not enough standard tier: {standard_count} < {min_standard}")
 
         return len(issues) == 0, issues

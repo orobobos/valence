@@ -665,9 +665,7 @@ class TestPatternRecord:
             "last_observed": now,
         }
 
-        result = pattern_record(
-            "topic_recurrence", "Discusses testing often", evidence=[str(session_id)]
-        )
+        result = pattern_record("topic_recurrence", "Discusses testing often", evidence=[str(session_id)])
 
         assert result["success"] is True
 
@@ -1019,9 +1017,7 @@ class TestInsightExtract:
             {"id": uuid4()},
         ]
 
-        result = insight_extract(
-            str(session_id), "Test", domain_path=["tech", "preferences"]
-        )
+        result = insight_extract(str(session_id), "Test", domain_path=["tech", "preferences"])
 
         assert result["success"] is True
 
@@ -1055,9 +1051,7 @@ class TestInsightExtract:
             {"id": uuid4()},  # Insight link
         ]
 
-        result = insight_extract(
-            str(session_id), "Test", entities=[{"name": "Python", "type": "tool"}]
-        )
+        result = insight_extract(str(session_id), "Test", entities=[{"name": "Python", "type": "tool"}])
 
         assert result["success"] is True
 

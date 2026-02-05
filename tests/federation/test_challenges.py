@@ -16,7 +16,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from valence.federation.challenges import (
     DEFAULT_REVIEWER_CONFIG,
     # Appeals
@@ -1184,9 +1183,7 @@ class TestChallengeIntegration:
         )
 
         # Create appeal
-        appeal = handler.create_appeal(
-            original, "New evidence has emerged that supports my challenge"
-        )
+        appeal = handler.create_appeal(original, "New evidence has emerged that supports my challenge")
 
         assert appeal.appeal_round == 1
         assert appeal.previous_challenge_id == original.id

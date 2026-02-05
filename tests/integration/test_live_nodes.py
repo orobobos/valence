@@ -78,9 +78,7 @@ class TestOAuth:
     @pytest.mark.parametrize("node_url", [NODE_1, NODE_2])
     def test_oauth_metadata(self, node_url: str):
         """OAuth metadata should be available."""
-        response = httpx.get(
-            f"{node_url}/.well-known/oauth-authorization-server", timeout=10
-        )
+        response = httpx.get(f"{node_url}/.well-known/oauth-authorization-server", timeout=10)
         assert response.status_code == 200
         data = response.json()
         assert "authorization_endpoint" in data
@@ -226,9 +224,7 @@ class TestSecurityHeaders:
     def test_no_sensitive_error_details(self, node_url: str):
         """Error responses should not leak sensitive details."""
         # Make an invalid request
-        response = httpx.post(
-            f"{node_url}/api/v1/mcp", json={"invalid": "request"}, timeout=10
-        )
+        response = httpx.post(f"{node_url}/api/v1/mcp", json={"invalid": "request"}, timeout=10)
         # Response should not contain stack traces or internal paths
         text = response.text.lower()
         assert "traceback" not in text
@@ -306,9 +302,7 @@ class TestPerformanceBaseline:
         latency_ms = (time.time() - start) * 1000
 
         assert response.status_code == 200
-        assert (
-            latency_ms < 500
-        ), f"Federation status too slow: {latency_ms:.0f}ms > 500ms"
+        assert latency_ms < 500, f"Federation status too slow: {latency_ms:.0f}ms > 500ms"
 
 
 class TestTrustEndpoints:

@@ -11,14 +11,12 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 import time
 from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
 from valence.network.config import (
     BatchingConfig,
     TimingJitterConfig,
@@ -305,10 +303,11 @@ class TestMessageSigning:
 class TestMessageBatching:
     """Tests for message batching."""
 
-    def test_flush_batch_empty(self, message_handler):
+    @pytest.mark.asyncio
+    async def test_flush_batch_empty(self, message_handler):
         """Test flushing empty batch."""
         # Should not raise
-        asyncio.get_event_loop().run_until_complete(message_handler.flush_batch())
+        await message_handler.flush_batch()
 
     @pytest.mark.asyncio
     async def test_add_to_batch(
@@ -356,9 +355,7 @@ class TestQueueProcessing:
     """Tests for message queue processing."""
 
     @pytest.mark.asyncio
-    async def test_process_queue_empty(
-        self, message_handler, mock_router_selector, mock_send_via_router
-    ):
+    async def test_process_queue_empty(self, message_handler, mock_router_selector, mock_send_via_router):
         """Test processing empty queue."""
         count = await message_handler.process_queue(
             router_selector=mock_router_selector,
@@ -407,9 +404,7 @@ class TestMessageHandlerIntegration:
     """Integration tests for MessageHandler."""
 
     @pytest.mark.asyncio
-    async def test_send_message_no_router(
-        self, message_handler, x25519_keypair, mock_send_via_router
-    ):
+    async def test_send_message_no_router(self, message_handler, x25519_keypair, mock_send_via_router):
         """Test sending message when no router available."""
         _, pub_key = x25519_keypair
 
@@ -430,9 +425,7 @@ class TestMessageHandlerIntegration:
         assert len(message_handler.message_queue) == 1
 
     @pytest.mark.asyncio
-    async def test_send_message_queue_full(
-        self, message_handler, x25519_keypair, mock_send_via_router
-    ):
+    async def test_send_message_queue_full(self, message_handler, x25519_keypair, mock_send_via_router):
         """Test sending message when queue is full."""
         from valence.network.node import NoRoutersAvailableError, PendingMessage
 

@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from valence.federation.discovery import (
     bootstrap_federation,
     bootstrap_federation_sync,
@@ -79,22 +78,16 @@ def sample_did_document():
     def _factory(**kwargs):
         doc = MagicMock(spec=DIDDocument)
         doc.id = kwargs.get("did", "did:vkb:web:test.example.com")
-        doc.public_key_multibase = kwargs.get(
-            "public_key", "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
-        )
+        doc.public_key_multibase = kwargs.get("public_key", "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK")
 
         # Mock services
         fed_service = MagicMock()
         fed_service.type = "ValenceFederationProtocol"
-        fed_service.service_endpoint = kwargs.get(
-            "federation_endpoint", "https://test.example.com/federation"
-        )
+        fed_service.service_endpoint = kwargs.get("federation_endpoint", "https://test.example.com/federation")
 
         mcp_service = MagicMock()
         mcp_service.type = "ModelContextProtocol"
-        mcp_service.service_endpoint = kwargs.get(
-            "mcp_endpoint", "https://test.example.com/mcp"
-        )
+        mcp_service.service_endpoint = kwargs.get("mcp_endpoint", "https://test.example.com/mcp")
 
         doc.services = kwargs.get("services", [fed_service, mcp_service])
         doc.capabilities = kwargs.get("capabilities", ["belief_sync"])
@@ -114,9 +107,7 @@ def sample_node_row():
         return {
             "id": kwargs.get("id", uuid4()),
             "did": kwargs.get("did", "did:vkb:web:test.example.com"),
-            "federation_endpoint": kwargs.get(
-                "federation_endpoint", "https://test.example.com/federation"
-            ),
+            "federation_endpoint": kwargs.get("federation_endpoint", "https://test.example.com/federation"),
             "mcp_endpoint": kwargs.get("mcp_endpoint", "https://test.example.com/mcp"),
             "public_key_multibase": kwargs.get(
                 "public_key_multibase",
@@ -130,9 +121,7 @@ def sample_node_row():
             "protocol_version": kwargs.get("protocol_version", "0.1.0"),
             "discovered_at": kwargs.get("discovered_at", now),
             "last_seen_at": kwargs.get("last_seen_at", now),
-            "phase_started_at": kwargs.get(
-                "phase_started_at", now - timedelta(days=30)
-            ),
+            "phase_started_at": kwargs.get("phase_started_at", now - timedelta(days=30)),
             "metadata": kwargs.get("metadata", {}),
             "created_at": kwargs.get("created_at", now),
             "modified_at": kwargs.get("modified_at", now),
@@ -220,9 +209,7 @@ class TestDiscoverNodeSync:
         """Test synchronous node discovery."""
         did_doc = sample_did_document()
 
-        with patch(
-            "valence.federation.discovery.discover_node", new_callable=AsyncMock
-        ) as mock_discover:
+        with patch("valence.federation.discovery.discover_node", new_callable=AsyncMock) as mock_discover:
             mock_discover.return_value = did_doc
 
             result = discover_node_sync("https://test.example.com")
@@ -231,9 +218,7 @@ class TestDiscoverNodeSync:
 
     def test_discover_node_sync_error(self):
         """Test synchronous discovery with error."""
-        with patch(
-            "valence.federation.discovery.discover_node", new_callable=AsyncMock
-        ) as mock_discover:
+        with patch("valence.federation.discovery.discover_node", new_callable=AsyncMock) as mock_discover:
             mock_discover.side_effect = Exception("Network error")
 
             result = discover_node_sync("https://test.example.com")
@@ -249,9 +234,7 @@ class TestDiscoverNodeSync:
 class TestRegisterNode:
     """Tests for register_node function."""
 
-    def test_register_new_node(
-        self, mock_get_cursor, sample_did_document, sample_node_row
-    ):
+    def test_register_new_node(self, mock_get_cursor, sample_did_document, sample_node_row):
         """Test registering a new node."""
         did_doc = sample_did_document()
         row = sample_node_row(did=did_doc.id)
@@ -263,13 +246,9 @@ class TestRegisterNode:
         result = register_node(did_doc)
 
         assert result is not None
-        assert (
-            mock_get_cursor.execute.call_count >= 2
-        )  # Select, Insert, trust init, sync init
+        assert mock_get_cursor.execute.call_count >= 2  # Select, Insert, trust init, sync init
 
-    def test_register_existing_node(
-        self, mock_get_cursor, sample_did_document, sample_node_row
-    ):
+    def test_register_existing_node(self, mock_get_cursor, sample_did_document, sample_node_row):
         """Test updating an existing node."""
         did_doc = sample_did_document()
         existing_row = {"id": uuid4(), "status": "active"}
@@ -451,15 +430,10 @@ class TestBootstrapFederation:
     @pytest.mark.asyncio
     async def test_bootstrap_success(self, sample_did_document):
         """Test successful bootstrap."""
-        did_docs = [
-            sample_did_document(did=f"did:vkb:web:node{i}.example.com")
-            for i in range(3)
-        ]
+        did_docs = [sample_did_document(did=f"did:vkb:web:node{i}.example.com") for i in range(3)]
 
         with (
-            patch(
-                "valence.federation.discovery.discover_node", new_callable=AsyncMock
-            ) as mock_discover,
+            patch("valence.federation.discovery.discover_node", new_callable=AsyncMock) as mock_discover,
             patch("valence.federation.discovery.register_node") as mock_register,
         ):
             # Return different docs for each call
@@ -482,9 +456,7 @@ class TestBootstrapFederation:
         did_doc = sample_did_document()
 
         with (
-            patch(
-                "valence.federation.discovery.discover_node", new_callable=AsyncMock
-            ) as mock_discover,
+            patch("valence.federation.discovery.discover_node", new_callable=AsyncMock) as mock_discover,
             patch("valence.federation.discovery.register_node") as mock_register,
         ):
             # First succeeds, second fails (returns None)
@@ -510,9 +482,7 @@ class TestBootstrapFederationSync:
         did_doc = sample_did_document()
         node = MagicMock(did=did_doc.id)
 
-        with patch(
-            "valence.federation.discovery.bootstrap_federation", new_callable=AsyncMock
-        ) as mock_bootstrap:
+        with patch("valence.federation.discovery.bootstrap_federation", new_callable=AsyncMock) as mock_bootstrap:
             mock_bootstrap.return_value = [node]
 
             result = bootstrap_federation_sync(["https://test.example.com"])
@@ -521,9 +491,7 @@ class TestBootstrapFederationSync:
 
     def test_bootstrap_sync_error(self):
         """Test synchronous bootstrap with error."""
-        with patch(
-            "valence.federation.discovery.bootstrap_federation", new_callable=AsyncMock
-        ) as mock_bootstrap:
+        with patch("valence.federation.discovery.bootstrap_federation", new_callable=AsyncMock) as mock_bootstrap:
             mock_bootstrap.side_effect = Exception("Network error")
 
             result = bootstrap_federation_sync(["https://test.example.com"])
@@ -596,10 +564,7 @@ class TestCheckAllNodesHealth:
     @pytest.mark.asyncio
     async def test_check_all_nodes(self, mock_get_cursor, sample_node_row):
         """Test checking all nodes health."""
-        rows = [
-            sample_node_row(id=uuid4(), did=f"did:vkb:web:node{i}.example.com")
-            for i in range(2)
-        ]
+        rows = [sample_node_row(id=uuid4(), did=f"did:vkb:web:node{i}.example.com") for i in range(2)]
         mock_get_cursor.fetchall.return_value = rows
 
         with patch("valence.federation.discovery.check_node_health") as mock_check:

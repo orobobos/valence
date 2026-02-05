@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from valence.privacy.anomaly import (
     AnomalyAlert,
     AnomalyDetector,
@@ -585,10 +584,7 @@ class TestSingleton:
         set_anomaly_detector(custom)
 
         assert get_anomaly_detector() is custom
-        assert (
-            get_anomaly_detector().get_rule_config(AnomalyType.RAPID_SHARING).threshold
-            == 999
-        )
+        assert get_anomaly_detector().get_rule_config(AnomalyType.RAPID_SHARING).threshold == 999
 
         # Restore original for other tests
         set_anomaly_detector(original)

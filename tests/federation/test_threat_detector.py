@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from valence.federation.models import NodeTrust, ThreatLevel
 from valence.federation.threat_detector import (
     THREAT_THRESHOLDS,
@@ -104,9 +103,7 @@ class TestAssessThreatLevel:
         assert "high_dispute_ratio" in signal_types
 
         # 50% dispute ratio should contribute 0.3 (capped)
-        dispute_signal = next(
-            s for s in assessment["signals"] if s["type"] == "high_dispute_ratio"
-        )
+        dispute_signal = next(s for s in assessment["signals"] if s["type"] == "high_dispute_ratio")
         assert dispute_signal["value"] == 0.5
         assert dispute_signal["contribution"] == 0.3
 
@@ -130,9 +127,7 @@ class TestAssessThreatLevel:
         signal_types = [s["type"] for s in assessment["signals"]]
         assert "persistently_low_trust" in signal_types
 
-        low_trust_signal = next(
-            s for s in assessment["signals"] if s["type"] == "persistently_low_trust"
-        )
+        low_trust_signal = next(s for s in assessment["signals"] if s["type"] == "persistently_low_trust")
         assert low_trust_signal["contribution"] == 0.2
 
     def test_low_corroboration_signal(self, detector):
@@ -155,9 +150,7 @@ class TestAssessThreatLevel:
         signal_types = [s["type"] for s in assessment["signals"]]
         assert "low_corroboration" in signal_types
 
-        corr_signal = next(
-            s for s in assessment["signals"] if s["type"] == "low_corroboration"
-        )
+        corr_signal = next(s for s in assessment["signals"] if s["type"] == "low_corroboration")
         assert corr_signal["contribution"] == 0.15
 
     def test_high_volume_signal(self, detector):
@@ -181,9 +174,7 @@ class TestAssessThreatLevel:
         signal_types = [s["type"] for s in assessment["signals"]]
         assert "high_volume" in signal_types
 
-        volume_signal = next(
-            s for s in assessment["signals"] if s["type"] == "high_volume"
-        )
+        volume_signal = next(s for s in assessment["signals"] if s["type"] == "high_volume")
         assert volume_signal["value"] > 50  # Daily rate above threshold
 
     def test_combined_signals_medium_threat(self, detector):
@@ -410,9 +401,7 @@ class TestApplyThreatResponse:
         detector.registry.get_node_trust.return_value = node_trust
 
         with patch("valence.federation.threat_detector.get_cursor") as mock_cursor:
-            mock_cursor.return_value.__enter__ = MagicMock(
-                side_effect=Exception("DB connection failed")
-            )
+            mock_cursor.return_value.__enter__ = MagicMock(side_effect=Exception("DB connection failed"))
             mock_cursor.return_value.__exit__ = MagicMock(return_value=False)
 
             with caplog.at_level(logging.ERROR):

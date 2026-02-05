@@ -185,9 +185,7 @@ class TestBeliefCreate:
             "status": "active",
         }
 
-        result = belief_create(
-            "Test", confidence={"overall": 0.9, "source_reliability": 0.95}
-        )
+        result = belief_create("Test", confidence={"overall": 0.9, "source_reliability": 0.95})
 
         assert result["success"] is True
 
@@ -219,9 +217,7 @@ class TestBeliefCreate:
             },
         ]
 
-        result = belief_create(
-            "Test", source_type="document", source_ref="https://example.com"
-        )
+        result = belief_create("Test", source_type="document", source_ref="https://example.com")
 
         assert result["success"] is True
 
@@ -372,9 +368,7 @@ class TestBeliefSupersede:
             },
         ]
 
-        result = belief_supersede(
-            str(old_id), "New", "Better source", confidence={"overall": 0.95}
-        )
+        result = belief_supersede(str(old_id), "New", "Better source", confidence={"overall": 0.95})
 
         assert result["success"] is True
 
@@ -807,9 +801,7 @@ class TestTensionResolve:
             },
         ]
 
-        result = tension_resolve(
-            str(tension_id), "Belief B is more accurate", "supersede_a"
-        )
+        result = tension_resolve(str(tension_id), "Belief B is more accurate", "supersede_a")
 
         assert result["success"] is True
         assert result["action"] == "supersede_a"
@@ -831,9 +823,7 @@ class TestTensionResolve:
             "detected_at": now,
         }
 
-        result = tension_resolve(
-            str(tension_id), "Both beliefs are valid in different contexts", "keep_both"
-        )
+        result = tension_resolve(str(tension_id), "Both beliefs are valid in different contexts", "keep_both")
 
         assert result["success"] is True
         assert result["action"] == "keep_both"

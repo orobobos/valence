@@ -235,9 +235,7 @@ class TestVFPTrustAnchors:
 
         assert response.status_code == 404
 
-    def test_404_when_trust_anchors_not_published(
-        self, federation_env, mock_db, monkeypatch
-    ):
+    def test_404_when_trust_anchors_not_published(self, federation_env, mock_db, monkeypatch):
         """Test 404 when trust anchors not published."""
         monkeypatch.setenv("VALENCE_FEDERATION_PUBLISH_TRUST_ANCHORS", "false")
 
@@ -255,9 +253,7 @@ class TestVFPTrustAnchors:
 
         assert response.status_code == 404
 
-    def test_returns_trust_anchors_when_published(
-        self, federation_env, mock_db, monkeypatch
-    ):
+    def test_returns_trust_anchors_when_published(self, federation_env, mock_db, monkeypatch):
         """Test returns trust anchors when published."""
         monkeypatch.setenv("VALENCE_FEDERATION_PUBLISH_TRUST_ANCHORS", "true")
 

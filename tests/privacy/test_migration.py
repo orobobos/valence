@@ -4,7 +4,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.privacy.migration import (
     get_share_policy_json,
     migrate_all_beliefs,
@@ -198,9 +197,7 @@ class TestMigrateAllBeliefs:
     async def test_no_beliefs_need_migration(self):
         """Test when all beliefs already have share_policy."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval = AsyncMock(
-            side_effect=[100, 0]
-        )  # total=100, needs_migration=0
+        mock_conn.fetchval = AsyncMock(side_effect=[100, 0])  # total=100, needs_migration=0
 
         result = await migrate_all_beliefs(mock_conn)
 
@@ -214,9 +211,7 @@ class TestMigrateAllBeliefs:
     async def test_migration_runs_update(self):
         """Test that migration runs UPDATE when beliefs need migration."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval = AsyncMock(
-            side_effect=[100, 50, 100]
-        )  # total, needs, migrated
+        mock_conn.fetchval = AsyncMock(side_effect=[100, 50, 100])  # total, needs, migrated
 
         result = await migrate_all_beliefs(mock_conn)
 

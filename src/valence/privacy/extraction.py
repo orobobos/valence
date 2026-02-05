@@ -151,11 +151,7 @@ class ExtractedInsight:
             level=ExtractionLevel(data["level"]),
             provenance=ExtractionProvenance.from_dict(data["provenance"]),
             status=ExtractionStatus(data["status"]),
-            reviewed_at=(
-                datetime.fromisoformat(data["reviewed_at"])
-                if data.get("reviewed_at")
-                else None
-            ),
+            reviewed_at=(datetime.fromisoformat(data["reviewed_at"]) if data.get("reviewed_at") else None),
             reviewed_by=data.get("reviewed_by"),
             review_notes=data.get("review_notes"),
             original_extraction=data.get("original_extraction"),
@@ -461,9 +457,7 @@ def approve_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -499,9 +493,7 @@ def reject_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -539,9 +531,7 @@ def modify_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -565,9 +555,7 @@ class RateLimitExceededError(ExtractionError):
         self.did = did
         self.limit = limit
         self.window_seconds = window_seconds
-        super().__init__(
-            f"Rate limit exceeded for {did}: {limit} extractions per {window_seconds}s"
-        )
+        super().__init__(f"Rate limit exceeded for {did}: {limit} extractions per {window_seconds}s")
 
 
 @dataclass
@@ -640,15 +628,10 @@ class ExtractionService:
             self._extraction_times[requester_did] = []
 
         # Clean up old entries outside the window
-        self._extraction_times[requester_did] = [
-            t for t in self._extraction_times[requester_did] if t > window_start
-        ]
+        self._extraction_times[requester_did] = [t for t in self._extraction_times[requester_did] if t > window_start]
 
         # Check if limit exceeded
-        if (
-            len(self._extraction_times[requester_did])
-            >= self._rate_limit.max_extractions_per_window
-        ):
+        if len(self._extraction_times[requester_did]) >= self._rate_limit.max_extractions_per_window:
             raise RateLimitExceededError(
                 requester_did,
                 self._rate_limit.max_extractions_per_window,
@@ -806,16 +789,12 @@ class ExtractionService:
     def get_for_source(self, source_id: str) -> list[ExtractedInsight]:
         """Get all extractions from a specific source."""
         extraction_ids = self._by_source.get(source_id, [])
-        return [
-            self._extractions[eid] for eid in extraction_ids if eid in self._extractions
-        ]
+        return [self._extractions[eid] for eid in extraction_ids if eid in self._extractions]
 
     def get_by_reviewer(self, reviewer: str) -> list[ExtractedInsight]:
         """Get all extractions reviewed by a specific reviewer."""
         extraction_ids = self._by_reviewer.get(reviewer, [])
-        return [
-            self._extractions[eid] for eid in extraction_ids if eid in self._extractions
-        ]
+        return [self._extractions[eid] for eid in extraction_ids if eid in self._extractions]
 
     def get_pending(self) -> list[ExtractedInsight]:
         """Get all extractions pending review."""

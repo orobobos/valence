@@ -536,8 +536,7 @@ def federation_node_list(
                     "trust": t.to_dict() if t else None,
                 }
                 for n, t in nodes_with_trust
-                if (node_status is None or n.status == node_status)
-                and (phase is None or n.trust_phase == phase)
+                if (node_status is None or n.status == node_status) and (phase is None or n.trust_phase == phase)
             ][:limit]
         else:
             node_list = list_nodes(status=node_status, trust_phase=phase, limit=limit)
@@ -1066,9 +1065,7 @@ def federation_corroboration_check(
             avg_trust = sum(trust_scores) / len(trust_scores) if trust_scores else 0.0
 
             # Corroboration increases with more independent sources and their trust
-            corroboration_level = min(
-                1.0, (len(unique_nodes) * 0.15) + (avg_trust * 0.5)
-            )
+            corroboration_level = min(1.0, (len(unique_nodes) * 0.15) + (avg_trust * 0.5))
 
             return {
                 "success": True,

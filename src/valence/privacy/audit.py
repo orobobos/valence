@@ -150,9 +150,7 @@ class MetadataSanitizer:
                 sanitized_metadata=metadata.copy() if metadata else {},
                 fields_redacted=[],
                 pii_scrubbed=[],
-                original_hash=(
-                    self._compute_hash(metadata) if preserve_original_hash else ""
-                ),
+                original_hash=(self._compute_hash(metadata) if preserve_original_hash else ""),
             )
 
         original_hash = self._compute_hash(metadata) if preserve_original_hash else ""
@@ -187,15 +185,11 @@ class MetadataSanitizer:
                 # Recursively sanitize nested dicts
                 nested_result = self.sanitize(value, preserve_original_hash=False)
                 sanitized[key] = nested_result.sanitized_metadata
-                fields_redacted.extend(
-                    f"{key}.{f}" for f in nested_result.fields_redacted
-                )
+                fields_redacted.extend(f"{key}.{f}" for f in nested_result.fields_redacted)
                 pii_scrubbed.extend(f"{key}.{f}" for f in nested_result.pii_scrubbed)
             elif isinstance(value, list):
                 # Sanitize list elements if they're strings
-                sanitized[key] = [
-                    self._scrub_pii(v)[0] if isinstance(v, str) else v for v in value
-                ]
+                sanitized[key] = [self._scrub_pii(v)[0] if isinstance(v, str) else v for v in value]
             else:
                 sanitized[key] = value
 
@@ -1268,9 +1262,7 @@ class EncryptedEnvelope:
         return cls.from_dict(json.loads(json_str))
 
 
-def _aes_gcm_encrypt(
-    key: bytes, plaintext: bytes, nonce: bytes | None = None
-) -> tuple[bytes, bytes, bytes]:
+def _aes_gcm_encrypt(key: bytes, plaintext: bytes, nonce: bytes | None = None) -> tuple[bytes, bytes, bytes]:
     """Encrypt data using AES-256-GCM.
 
     Args:
@@ -1285,9 +1277,7 @@ def _aes_gcm_encrypt(
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:
-        raise ImportError(
-            "cryptography package required for encryption. Install with: pip install cryptography"
-        )
+        raise ImportError("cryptography package required for encryption. Install with: pip install cryptography")
 
     if nonce is None:
         nonce = secrets.token_bytes(12)  # 96-bit nonce for GCM
@@ -1319,9 +1309,7 @@ def _aes_gcm_decrypt(key: bytes, ciphertext_with_tag: bytes, nonce: bytes) -> by
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:
-        raise ImportError(
-            "cryptography package required for encryption. Install with: pip install cryptography"
-        )
+        raise ImportError("cryptography package required for encryption. Install with: pip install cryptography")
 
     try:
         aesgcm = AESGCM(key)
@@ -1437,9 +1425,7 @@ class EncryptedAuditBackend:
         self._key_provider = key_provider
         self._lock = threading.Lock()
 
-    def _encrypt_event(
-        self, event: AuditEvent, previous_hash: str | None = None
-    ) -> AuditEvent:
+    def _encrypt_event(self, event: AuditEvent, previous_hash: str | None = None) -> AuditEvent:
         """Encrypt an event's sensitive data.
 
         Creates a new event with the same ID but encrypted content.
@@ -1604,12 +1590,7 @@ class EncryptedAuditBackend:
         if actor_did:
             # Need to decrypt to filter by actor
             events = self.query(event_type=event_type, limit=100000)
-            return sum(
-                1
-                for e in events
-                if e.actor_did == actor_did
-                and (success is None or e.success == success)
-            )
+            return sum(1 for e in events if e.actor_did == actor_did and (success is None or e.success == success))
 
         # Can use backend directly for other filters
         return self._backend.count(event_type=event_type, success=success)

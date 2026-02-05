@@ -150,9 +150,7 @@ class TestSignatureForgery:
         signature = sign_message(original_message, keypair.private_key_bytes)
 
         # Verify tampered message should fail
-        result = verify_signature(
-            tampered_message, signature, keypair.public_key_multibase
-        )
+        result = verify_signature(tampered_message, signature, keypair.public_key_multibase)
         assert result is False, "Tampered message must fail verification"
 
     def test_signature_algorithm_enforced(self):
@@ -268,12 +266,7 @@ class TestProtocolManipulation:
 
         for msg in malicious_messages:
             # Parser should reject these
-            assert (
-                not isinstance(msg["type"], str)
-                or ";" in msg["type"]
-                or "\x00" in msg["type"]
-                or isinstance(msg["type"], list)
-            )
+            assert not isinstance(msg["type"], str) or ";" in msg["type"] or "\x00" in msg["type"] or isinstance(msg["type"], list)
 
     def test_deeply_nested_json_rejected(self):
         """Deeply nested JSON should be rejected to prevent stack overflow."""
@@ -384,9 +377,7 @@ class TestBeliefIntegrity:
             "text": "This is a MODIFIED belief",
             "confidence": 0.9,
         }
-        assert not verify_belief_signature(
-            modified_content, signature, keypair.public_key_multibase
-        )
+        assert not verify_belief_signature(modified_content, signature, keypair.public_key_multibase)
 
     def test_federation_id_uniqueness(self):
         """Each federated belief must have a unique federation_id."""

@@ -201,9 +201,7 @@ class AdminSignatureVerifier:
         else:
             # Simple mode: verify signature format matches expected pattern
             # In production, would use proper cryptographic verification
-            expected_sig = hashlib.sha256(
-                f"{domain_id}:{member_did}:{admin_did}".encode()
-            ).hexdigest()
+            expected_sig = hashlib.sha256(f"{domain_id}:{member_did}:{admin_did}".encode()).hexdigest()
             verified = hmac.compare_digest(signature, expected_sig)
 
         return VerificationResult(
@@ -331,11 +329,7 @@ class Domain:
             "owner_did": self.owner_did,
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "verification_requirement": (
-                self.verification_requirement.to_dict()
-                if self.verification_requirement
-                else None
-            ),
+            "verification_requirement": (self.verification_requirement.to_dict() if self.verification_requirement else None),
         }
 
     @classmethod
@@ -556,9 +550,7 @@ class DomainService:
         # Check if domain already exists for this owner
         existing = await self.db.get_domain_by_name(name, owner_did)
         if existing:
-            raise DomainExistsError(
-                f"Domain '{name}' already exists for owner {owner_did}"
-            )
+            raise DomainExistsError(f"Domain '{name}' already exists for owner {owner_did}")
 
         domain_id = str(uuid.uuid4())
         await self.db.create_domain(
@@ -634,9 +626,7 @@ class DomainService:
         # Check if already a member
         existing = await self.db.get_membership(domain_id, member_did)
         if existing:
-            raise MembershipExistsError(
-                f"Member {member_did} is already in domain {domain_id}"
-            )
+            raise MembershipExistsError(f"Member {member_did} is already in domain {domain_id}")
 
         await self.db.add_membership(
             domain_id=domain_id,
@@ -644,9 +634,7 @@ class DomainService:
             role=role.value,
         )
 
-        logger.info(
-            f"Added member {member_did} to domain {domain_id} with role {role.value}"
-        )
+        logger.info(f"Added member {member_did} to domain {domain_id} with role {role.value}")
 
         return DomainMembership(
             domain_id=domain_id,
@@ -709,9 +697,7 @@ class DomainService:
         memberships = await self.db.list_memberships(domain_id)
         return [DomainMembership.from_dict(m) for m in memberships]
 
-    async def get_member_role(
-        self, domain_id: str, member_did: str
-    ) -> DomainRole | None:
+    async def get_member_role(self, domain_id: str, member_did: str) -> DomainRole | None:
         """Get a member's role in a domain.
 
         Args:
@@ -751,9 +737,7 @@ class DomainService:
         domains = await self.db.list_domains_for_member(member_did)
         return [Domain.from_dict(d) for d in domains]
 
-    async def _check_can_manage_members(
-        self, domain_id: str, requester_did: str
-    ) -> None:
+    async def _check_can_manage_members(self, domain_id: str, requester_did: str) -> None:
         """Check if requester can manage members.
 
         Only owners and admins can manage members.
@@ -763,9 +747,7 @@ class DomainService:
         """
         role = await self.get_member_role(domain_id, requester_did)
         if role not in (DomainRole.OWNER, DomainRole.ADMIN):
-            raise PermissionDeniedError(
-                f"User {requester_did} cannot manage members in domain {domain_id}"
-            )
+            raise PermissionDeniedError(f"User {requester_did} cannot manage members in domain {domain_id}")
 
     async def set_verification_requirement(
         self,
@@ -793,19 +775,14 @@ class DomainService:
 
         # Only owner can set verification requirements
         if requester_did and requester_did != domain.owner_did:
-            raise PermissionDeniedError(
-                "Only the domain owner can set verification requirements"
-            )
+            raise PermissionDeniedError("Only the domain owner can set verification requirements")
 
         await self.db.set_verification_requirement(
             domain_id=domain_id,
             requirement=requirement.to_dict() if requirement else None,
         )
 
-        logger.info(
-            f"Set verification requirement for domain {domain_id}: "
-            f"{requirement.method.value if requirement else 'none'}"
-        )
+        logger.info(f"Set verification requirement for domain {domain_id}: {requirement.method.value if requirement else 'none'}")
 
         # Return updated domain
         domain.verification_requirement = requirement
@@ -840,9 +817,7 @@ class DomainService:
 
         # Check if actually a member first
         if not await self.is_member(domain_id, member_did):
-            raise MembershipNotFoundError(
-                f"Member {member_did} is not in domain {domain_id}"
-            )
+            raise MembershipNotFoundError(f"Member {member_did} is not in domain {domain_id}")
 
         requirement = domain.verification_requirement
 
@@ -853,9 +828,7 @@ class DomainService:
                 method=VerificationMethod.NONE,
                 details="No verification required",
             )
-            await self.db.store_verification_result(
-                domain_id, member_did, result.to_dict()
-            )
+            await self.db.store_verification_result(domain_id, member_did, result.to_dict())
             return result
 
         # Get appropriate verifier
@@ -881,10 +854,7 @@ class DomainService:
         # Store result
         await self.db.store_verification_result(domain_id, member_did, result.to_dict())
 
-        logger.info(
-            f"Verification for {member_did} in domain {domain_id}: "
-            f"{'success' if result.verified else 'failed'}"
-        )
+        logger.info(f"Verification for {member_did} in domain {domain_id}: {'success' if result.verified else 'failed'}")
 
         return result
 

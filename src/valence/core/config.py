@@ -320,9 +320,7 @@ def get_federation_config() -> FederationConfigProtocol:
     """
     if _federation_config is None:
         raise RuntimeError(
-            "Federation config not initialized. "
-            "Call set_federation_config() at application startup, "
-            "or ensure server.config is imported first."
+            "Federation config not initialized. Call set_federation_config() at application startup, or ensure server.config is imported first."
         )
     return _federation_config
 

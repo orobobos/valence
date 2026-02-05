@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from valence.privacy.corroboration import (
     # Constants
     DEFAULT_CORROBORATION_THRESHOLD,
@@ -330,11 +329,7 @@ class TestCorroborationDetector:
             # Create a 3D vector based on content characteristics
             length = min(len(content), 100) / 100
             has_tech = 1.0 if "tech" in content.lower() else 0.0
-            has_ai = (
-                1.0
-                if "ai" in content.lower() or "machine learning" in content.lower()
-                else 0.0
-            )
+            has_ai = 1.0 if "ai" in content.lower() or "machine learning" in content.lower() else 0.0
             return [length, has_tech, has_ai]
 
         return embed
@@ -372,9 +367,7 @@ class TestCorroborationDetector:
         # Add 3 sources (threshold)
         detector.add_corroboration("belief-1", "did:owner", "did:a", "a1", 0.95)
         detector.add_corroboration("belief-1", "did:owner", "did:b", "b1", 0.92)
-        evidence = detector.add_corroboration(
-            "belief-1", "did:owner", "did:c", "c1", 0.90
-        )
+        evidence = detector.add_corroboration("belief-1", "did:owner", "did:c", "c1", 0.90)
 
         assert evidence.threshold_met
         assert evidence.threshold_met_at is not None
@@ -849,17 +842,13 @@ class TestEdgeCases:
         """Test detector with threshold of 1."""
         detector = CorroborationDetector(corroboration_threshold=1)
 
-        evidence = detector.add_corroboration(
-            "belief-1", "did:owner", "did:a", "a1", 0.95
-        )
+        evidence = detector.add_corroboration("belief-1", "did:owner", "did:a", "a1", 0.95)
 
         assert evidence.threshold_met
 
     def test_exact_similarity_threshold(self, detector):
         """Test belief at exact similarity threshold."""
-        evidence = detector.add_corroboration(
-            "belief-1", "did:owner", "did:a", "a1", 0.85
-        )
+        evidence = detector.add_corroboration("belief-1", "did:owner", "did:a", "a1", 0.85)
 
         assert evidence.source_count == 1
 
@@ -871,9 +860,7 @@ class TestEdgeCases:
     def test_many_sources(self, detector):
         """Test with many corroborating sources."""
         for i in range(10):
-            detector.add_corroboration(
-                "belief-1", "did:owner", f"did:source{i}", f"belief{i}", 0.90
-            )
+            detector.add_corroboration("belief-1", "did:owner", f"did:source{i}", f"belief{i}", 0.90)
 
         evidence = detector.get_evidence("belief-1")
         assert evidence.source_count == 10

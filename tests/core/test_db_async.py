@@ -6,7 +6,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
-
 from valence.core.exceptions import DatabaseException
 
 # ============================================================================
@@ -119,9 +118,7 @@ class TestAsyncConnectionPool:
         mock_asyncpg_pool["create_pool"].assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_ensure_pool_uses_correct_params(
-        self, env_with_db_vars, mock_asyncpg_pool, monkeypatch
-    ):
+    async def test_ensure_pool_uses_correct_params(self, env_with_db_vars, mock_asyncpg_pool, monkeypatch):
         """_ensure_pool should use connection and pool params from config."""
         from valence.core.config import clear_config_cache
         from valence.core.db import AsyncConnectionPool
@@ -160,7 +157,6 @@ class TestAsyncConnectionPool:
     async def test_ensure_pool_handles_postgres_error(self, env_with_db_vars):
         """_ensure_pool should raise DatabaseException on PostgresError."""
         import asyncpg
-
         from valence.core.db import AsyncConnectionPool
 
         with patch(
@@ -168,9 +164,7 @@ class TestAsyncConnectionPool:
             side_effect=asyncpg.PostgresError("Connection failed"),
         ):
             pool = AsyncConnectionPool.get_instance_sync()
-            with pytest.raises(
-                DatabaseException, match="Failed to create async connection pool"
-            ):
+            with pytest.raises(DatabaseException, match="Failed to create async connection pool"):
                 await pool._ensure_pool()
 
     @pytest.mark.asyncio
@@ -180,9 +174,7 @@ class TestAsyncConnectionPool:
 
         with patch("asyncpg.create_pool", side_effect=OSError("Network unreachable")):
             pool = AsyncConnectionPool.get_instance_sync()
-            with pytest.raises(
-                DatabaseException, match="Failed to connect to database"
-            ):
+            with pytest.raises(DatabaseException, match="Failed to connect to database"):
                 await pool._ensure_pool()
 
     @pytest.mark.asyncio
@@ -197,17 +189,12 @@ class TestAsyncConnectionPool:
         mock_asyncpg_pool["pool"].acquire.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_connection_raises_on_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_get_connection_raises_on_error(self, env_with_db_vars, mock_asyncpg_pool):
         """get_connection should raise DatabaseException on PostgresError."""
         import asyncpg
-
         from valence.core.db import AsyncConnectionPool
 
-        mock_asyncpg_pool["pool"].acquire.side_effect = asyncpg.PostgresError(
-            "Pool exhausted"
-        )
+        mock_asyncpg_pool["pool"].acquire.side_effect = asyncpg.PostgresError("Pool exhausted")
 
         pool = AsyncConnectionPool.get_instance_sync()
         await pool._ensure_pool()
@@ -215,9 +202,7 @@ class TestAsyncConnectionPool:
             await pool.get_connection()
 
     @pytest.mark.asyncio
-    async def test_put_connection_releases_to_pool(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_put_connection_releases_to_pool(self, env_with_db_vars, mock_asyncpg_pool):
         """put_connection should release the connection back to the pool."""
         from valence.core.db import AsyncConnectionPool
 
@@ -228,9 +213,7 @@ class TestAsyncConnectionPool:
         mock_asyncpg_pool["pool"].release.assert_called_once_with(conn)
 
     @pytest.mark.asyncio
-    async def test_put_connection_handles_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_put_connection_handles_error(self, env_with_db_vars, mock_asyncpg_pool):
         """put_connection should close connection if release fails."""
         from valence.core.db import AsyncConnectionPool
 
@@ -375,9 +358,7 @@ class TestAsyncCursor:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_cursor_yields_connection(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_yields_connection(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should yield a connection within a transaction."""
         from valence.core.db import async_cursor
 
@@ -385,9 +366,7 @@ class TestAsyncCursor:
             assert conn is mock_asyncpg_pool["connection"]
 
     @pytest.mark.asyncio
-    async def test_async_cursor_starts_transaction(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_starts_transaction(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should start a transaction."""
         from valence.core.db import async_cursor
 
@@ -397,9 +376,7 @@ class TestAsyncCursor:
         mock_asyncpg_pool["connection"].transaction.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_cursor_releases_connection(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_releases_connection(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should release connection after use."""
         from valence.core.db import async_cursor
 
@@ -409,51 +386,36 @@ class TestAsyncCursor:
         mock_asyncpg_pool["pool"].release.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_cursor_handles_unique_violation(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_handles_unique_violation(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert UniqueViolationError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_cursor
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = (
-            asyncpg.UniqueViolationError("Duplicate key")
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.UniqueViolationError("Duplicate key")
 
         with pytest.raises(DatabaseException, match="Integrity constraint violation"):
             async with async_cursor():
                 pass
 
     @pytest.mark.asyncio
-    async def test_async_cursor_handles_syntax_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_handles_syntax_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert PostgresSyntaxError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_cursor
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = (
-            asyncpg.PostgresSyntaxError("Syntax error")
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresSyntaxError("Syntax error")
 
         with pytest.raises(DatabaseException, match="SQL error"):
             async with async_cursor():
                 pass
 
     @pytest.mark.asyncio
-    async def test_async_cursor_handles_postgres_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_cursor_handles_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert PostgresError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_cursor
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError(
-            "Some error"
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError("Some error")
 
         with pytest.raises(DatabaseException, match="Database error"):
             async with async_cursor():
@@ -480,9 +442,7 @@ class TestAsyncConnectionContext:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_yields_connection(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_yields_connection(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should yield a connection."""
         from valence.core.db import async_connection_context
 
@@ -490,9 +450,7 @@ class TestAsyncConnectionContext:
             assert conn is mock_asyncpg_pool["connection"]
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_no_auto_transaction(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_no_auto_transaction(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should not start automatic transaction."""
         from valence.core.db import async_connection_context
 
@@ -503,9 +461,7 @@ class TestAsyncConnectionContext:
         mock_asyncpg_pool["connection"].transaction.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_releases_connection(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_releases_connection(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should release connection after use."""
         from valence.core.db import async_connection_context
 
@@ -515,12 +471,9 @@ class TestAsyncConnectionContext:
         mock_asyncpg_pool["pool"].release.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_handles_unique_violation(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_handles_unique_violation(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert UniqueViolationError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="Integrity constraint violation"):
@@ -528,12 +481,9 @@ class TestAsyncConnectionContext:
                 raise asyncpg.UniqueViolationError("Duplicate key")
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_handles_syntax_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_handles_syntax_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert PostgresSyntaxError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="SQL error"):
@@ -541,12 +491,9 @@ class TestAsyncConnectionContext:
                 raise asyncpg.PostgresSyntaxError("Syntax error")
 
     @pytest.mark.asyncio
-    async def test_async_connection_context_handles_postgres_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_connection_context_handles_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert PostgresError to DatabaseException."""
         import asyncpg
-
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="Database error"):
@@ -574,9 +521,7 @@ class TestAsyncCheckConnection:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_check_connection_returns_true_on_success(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_check_connection_returns_true_on_success(self, env_with_db_vars, mock_asyncpg_pool):
         """async_check_connection should return True when connection works."""
         from valence.core.db import async_check_connection
 
@@ -586,31 +531,22 @@ class TestAsyncCheckConnection:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_async_check_connection_returns_false_on_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_check_connection_returns_false_on_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_check_connection should return False on database error."""
         import asyncpg
-
         from valence.core.db import async_check_connection
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError(
-            "Connection failed"
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError("Connection failed")
 
         result = await async_check_connection()
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_async_check_connection_returns_false_on_exception(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_check_connection_returns_false_on_exception(self, env_with_db_vars, mock_asyncpg_pool):
         """async_check_connection should return False on any exception."""
         from valence.core.db import async_check_connection
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = Exception(
-            "Unexpected error"
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = Exception("Unexpected error")
 
         result = await async_check_connection()
         assert result is False
@@ -636,9 +572,7 @@ class TestAsyncInitSchema:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_init_schema_executes_sql_files(
-        self, env_with_db_vars, mock_asyncpg_pool, tmp_path
-    ):
+    async def test_async_init_schema_executes_sql_files(self, env_with_db_vars, mock_asyncpg_pool, tmp_path):
         """async_init_schema should execute schema SQL files."""
         from valence.core.db import async_init_schema
 
@@ -648,9 +582,7 @@ class TestAsyncInitSchema:
         # Mock the schema directory path
         with patch("valence.core.db.Path") as mock_path:
             mock_schema_dir = MagicMock()
-            mock_path.return_value.parent.parent.__truediv__.return_value = (
-                mock_schema_dir
-            )
+            mock_path.return_value.parent.parent.__truediv__.return_value = mock_schema_dir
 
             mock_schema_file = MagicMock()
             mock_schema_file.exists.return_value = True
@@ -677,17 +609,13 @@ class TestAsyncInitSchema:
         assert mock_asyncpg_pool["connection"].execute.called
 
     @pytest.mark.asyncio
-    async def test_async_init_schema_handles_missing_files(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_init_schema_handles_missing_files(self, env_with_db_vars, mock_asyncpg_pool):
         """async_init_schema should skip non-existent schema files."""
         from valence.core.db import async_init_schema
 
         with patch("valence.core.db.Path") as mock_path:
             mock_schema_dir = MagicMock()
-            mock_path.return_value.parent.parent.__truediv__.return_value = (
-                mock_schema_dir
-            )
+            mock_path.return_value.parent.parent.__truediv__.return_value = mock_schema_dir
 
             mock_schema_file = MagicMock()
             mock_schema_file.exists.return_value = False  # File doesn't exist
@@ -700,32 +628,23 @@ class TestAsyncInitSchema:
         mock_asyncpg_pool["connection"].execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_async_init_schema_raises_on_postgres_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_init_schema_raises_on_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_init_schema should raise DatabaseException on PostgresError."""
         import asyncpg
-
         from valence.core.db import async_init_schema
 
         with patch("valence.core.db.Path") as mock_path:
             mock_schema_dir = MagicMock()
-            mock_path.return_value.parent.parent.__truediv__.return_value = (
-                mock_schema_dir
-            )
+            mock_path.return_value.parent.parent.__truediv__.return_value = mock_schema_dir
 
             mock_schema_file = MagicMock()
             mock_schema_file.exists.return_value = True
             mock_schema_dir.__truediv__.return_value = mock_schema_file
 
-            mock_asyncpg_pool["connection"].execute.side_effect = asyncpg.PostgresError(
-                "SQL error"
-            )
+            mock_asyncpg_pool["connection"].execute.side_effect = asyncpg.PostgresError("SQL error")
 
             with patch("builtins.open", mock_open(read_data="INVALID SQL")):
-                with pytest.raises(
-                    DatabaseException, match="Failed to initialize schema"
-                ):
+                with pytest.raises(DatabaseException, match="Failed to initialize schema"):
                     await async_init_schema()
 
 
@@ -749,9 +668,7 @@ class TestAsyncGetSchemaVersion:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_get_schema_version_returns_version(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_get_schema_version_returns_version(self, env_with_db_vars, mock_asyncpg_pool):
         """async_get_schema_version should return the schema version."""
         from valence.core.db import async_get_schema_version
 
@@ -765,29 +682,21 @@ class TestAsyncGetSchemaVersion:
         assert version == "1.0.0"
 
     @pytest.mark.asyncio
-    async def test_async_get_schema_version_returns_none_when_table_missing(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_get_schema_version_returns_none_when_table_missing(self, env_with_db_vars, mock_asyncpg_pool):
         """async_get_schema_version should return None if schema_version table doesn't exist."""
         from valence.core.db import async_get_schema_version
 
-        mock_asyncpg_pool["connection"].fetchval.return_value = (
-            False  # Table doesn't exist
-        )
+        mock_asyncpg_pool["connection"].fetchval.return_value = False  # Table doesn't exist
 
         version = await async_get_schema_version()
         assert version is None
 
     @pytest.mark.asyncio
-    async def test_async_get_schema_version_returns_none_on_error(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_get_schema_version_returns_none_on_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_get_schema_version should return None on error."""
         from valence.core.db import async_get_schema_version
 
-        mock_asyncpg_pool["transaction"].__aenter__.side_effect = Exception(
-            "Query failed"
-        )
+        mock_asyncpg_pool["transaction"].__aenter__.side_effect = Exception("Query failed")
 
         version = await async_get_schema_version()
         assert version is None
@@ -813,9 +722,7 @@ class TestAsyncTableExists:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_table_exists_returns_true(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_table_exists_returns_true(self, env_with_db_vars, mock_asyncpg_pool):
         """async_table_exists should return True for existing tables."""
         from valence.core.db import async_table_exists
 
@@ -825,9 +732,7 @@ class TestAsyncTableExists:
         assert exists is True
 
     @pytest.mark.asyncio
-    async def test_async_table_exists_returns_false(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_table_exists_returns_false(self, env_with_db_vars, mock_asyncpg_pool):
         """async_table_exists should return False for non-existing tables."""
         from valence.core.db import async_table_exists
 
@@ -837,9 +742,7 @@ class TestAsyncTableExists:
         assert exists is False
 
     @pytest.mark.asyncio
-    async def test_async_table_exists_returns_false_on_none(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_table_exists_returns_false_on_none(self, env_with_db_vars, mock_asyncpg_pool):
         """async_table_exists should return False when fetchval returns None."""
         from valence.core.db import async_table_exists
 
@@ -869,9 +772,7 @@ class TestAsyncCountRows:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_count_rows_returns_count(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_count_rows_returns_count(self, env_with_db_vars, mock_asyncpg_pool):
         """async_count_rows should return the row count for a valid table."""
         from valence.core.db import async_count_rows
 
@@ -884,9 +785,7 @@ class TestAsyncCountRows:
         assert count == 42
 
     @pytest.mark.asyncio
-    async def test_async_count_rows_rejects_invalid_table(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_count_rows_rejects_invalid_table(self, env_with_db_vars, mock_asyncpg_pool):
         """async_count_rows should raise ValueError for tables not in allowlist."""
         from valence.core.db import async_count_rows
 
@@ -894,23 +793,17 @@ class TestAsyncCountRows:
             await async_count_rows("dangerous_table; DROP TABLE beliefs;")
 
     @pytest.mark.asyncio
-    async def test_async_count_rows_rejects_nonexistent_table(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_count_rows_rejects_nonexistent_table(self, env_with_db_vars, mock_asyncpg_pool):
         """async_count_rows should raise ValueError if table doesn't exist."""
         from valence.core.db import async_count_rows
 
-        mock_asyncpg_pool["connection"].fetchval.return_value = (
-            None  # Table doesn't exist
-        )
+        mock_asyncpg_pool["connection"].fetchval.return_value = None  # Table doesn't exist
 
         with pytest.raises(ValueError, match="Table does not exist"):
             await async_count_rows("beliefs")
 
     @pytest.mark.asyncio
-    async def test_async_count_rows_returns_zero_on_none(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_count_rows_returns_zero_on_none(self, env_with_db_vars, mock_asyncpg_pool):
         """async_count_rows should return 0 when count returns None."""
         from valence.core.db import async_count_rows
 
@@ -943,9 +836,7 @@ class TestDatabaseStatsAsyncCollect:
         db._async_pool = None
 
     @pytest.mark.asyncio
-    async def test_async_collect_returns_stats(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_collect_returns_stats(self, env_with_db_vars, mock_asyncpg_pool):
         """async_collect should return DatabaseStats with counts."""
         from valence.core.db import DatabaseStats
 
@@ -975,9 +866,7 @@ class TestDatabaseStatsAsyncCollect:
         assert stats.tensions_count == 2
 
     @pytest.mark.asyncio
-    async def test_async_collect_handles_errors_gracefully(
-        self, env_with_db_vars, mock_asyncpg_pool
-    ):
+    async def test_async_collect_handles_errors_gracefully(self, env_with_db_vars, mock_asyncpg_pool):
         """async_collect should handle errors and continue with other tables."""
         from valence.core.db import DatabaseStats
 

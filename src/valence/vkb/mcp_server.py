@@ -578,9 +578,7 @@ def pattern_record(
     """Record a new pattern."""
     with get_cursor() as cur:
         # Convert evidence strings to UUIDs if needed
-        evidence_uuids = [
-            UUID(e) if isinstance(e, str) else e for e in (evidence or [])
-        ]
+        evidence_uuids = [UUID(e) if isinstance(e, str) else e for e in (evidence or [])]
 
         cur.execute(
             """
@@ -715,9 +713,7 @@ def insight_extract(
 
     with get_cursor() as cur:
         # Get source for this session
-        cur.execute(
-            "SELECT id FROM sources WHERE session_id = %s LIMIT 1", (session_id,)
-        )
+        cur.execute("SELECT id FROM sources WHERE session_id = %s LIMIT 1", (session_id,))
         source_row = cur.fetchone()
         source_id = source_row["id"] if source_row else None
 
@@ -926,9 +922,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         else:
             result = {"success": False, "error": f"Unknown tool: {name}"}
 
-        return [
-            TextContent(type="text", text=json.dumps(result, indent=2, default=str))
-        ]
+        return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
     except ValidationException as e:
         logger.warning(f"Validation error in tool {name}: {e}")
@@ -980,12 +974,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 def run() -> None:
     """Run the MCP server."""
     parser = argparse.ArgumentParser(description="Valence VKB MCP Server")
-    parser.add_argument(
-        "--health-check", action="store_true", help="Run health check and exit"
-    )
-    parser.add_argument(
-        "--skip-health-check", action="store_true", help="Skip startup health checks"
-    )
+    parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
+    parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")
     args = parser.parse_args()
 
     # Health check mode
@@ -1007,9 +997,7 @@ def run() -> None:
 
     async def main():
         async with stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream, write_stream, server.create_initialization_options()
-            )
+            await server.run(read_stream, write_stream, server.create_initialization_options())
 
     asyncio.run(main())
 

@@ -162,12 +162,8 @@ class DetectedConflict:
             "conflict_type": self.conflict_type.value,
             "belief_a_id": str(self.belief_a_id) if self.belief_a_id else None,
             "belief_b_id": str(self.belief_b_id) if self.belief_b_id else None,
-            "federation_a_id": (
-                str(self.federation_a_id) if self.federation_a_id else None
-            ),
-            "federation_b_id": (
-                str(self.federation_b_id) if self.federation_b_id else None
-            ),
+            "federation_a_id": (str(self.federation_a_id) if self.federation_a_id else None),
+            "federation_b_id": (str(self.federation_b_id) if self.federation_b_id else None),
             "semantic_similarity": self.semantic_similarity,
             "confidence_divergence": self.confidence_divergence,
             "stance_divergence": self.stance_divergence,
@@ -540,9 +536,7 @@ class TrustWeightedAggregator:
 
             # Combine components
             weight = (
-                trust_component
-                + recency_component * self.recency_weight
-                + corroboration_component * self.corroboration_weight
+                trust_component + recency_component * self.recency_weight + corroboration_component * self.corroboration_weight
             ) * temporal_weight
 
             weights[contrib.federation_id] = weight
@@ -580,10 +574,7 @@ class TrustWeightedAggregator:
                 total_weight += weight
             elif contrib.beliefs:
                 # Compute local confidence from beliefs
-                belief_confidences = [
-                    b.confidence.overall if b.confidence else 0.5
-                    for b in contrib.beliefs
-                ]
+                belief_confidences = [b.confidence.overall if b.confidence else 0.5 for b in contrib.beliefs]
                 local_conf = sum(belief_confidences) / len(contrib.beliefs)
                 weighted_sum += local_conf * weight
                 total_weight += weight
@@ -616,10 +607,7 @@ class TrustWeightedAggregator:
             if contrib.local_confidence is not None:
                 confidences.append((contrib.local_confidence, weight))
             elif contrib.beliefs:
-                belief_confidences = [
-                    b.confidence.overall if b.confidence else 0.5
-                    for b in contrib.beliefs
-                ]
+                belief_confidences = [b.confidence.overall if b.confidence else 0.5 for b in contrib.beliefs]
                 local_conf = sum(belief_confidences) / len(contrib.beliefs)
                 confidences.append((local_conf, weight))
 
@@ -634,9 +622,7 @@ class TrustWeightedAggregator:
         weighted_mean = sum(c * w for c, w in confidences) / total_weight
 
         # Compute weighted variance
-        weighted_variance = (
-            sum(w * (c - weighted_mean) ** 2 for c, w in confidences) / total_weight
-        )
+        weighted_variance = sum(w * (c - weighted_mean) ** 2 for c, w in confidences) / total_weight
 
         # Convert to agreement score: 1 - normalized stddev
         # Max possible stddev is 0.5 (for values in [0,1])
@@ -753,12 +739,8 @@ class PrivacyPreservingAggregator:
 
         # Noise counts with sensitivity 1
         noisy_fed_count = max(0, round(add_noise(float(federation_count), 1.0, config)))
-        noisy_belief_count = max(
-            0, round(add_noise(float(total_belief_count), 1.0, config))
-        )
-        noisy_contributor_count = max(
-            0, round(add_noise(float(total_contributor_count), 1.0, config))
-        )
+        noisy_belief_count = max(0, round(add_noise(float(total_belief_count), 1.0, config)))
+        noisy_contributor_count = max(0, round(add_noise(float(total_contributor_count), 1.0, config)))
 
         return (
             noisy_confidence,
@@ -879,11 +861,7 @@ class FederationAggregator:
         query_hash = compute_topic_hash(domain_filter, semantic_query)
 
         # Filter contributions by minimum trust
-        valid_contributions = [
-            c
-            for c in contributions
-            if c.trust_score >= self.config.min_federation_trust
-        ]
+        valid_contributions = [c for c in contributions if c.trust_score >= self.config.min_federation_trust]
 
         # Check minimum federation requirement
         if len(valid_contributions) < self.config.min_federations:
@@ -911,9 +889,7 @@ class FederationAggregator:
             )
 
         # Detect conflicts
-        conflicts = self.conflict_detector.detect_conflicts(
-            valid_contributions, similarity_fn
-        )
+        conflicts = self.conflict_detector.detect_conflicts(valid_contributions, similarity_fn)
 
         # Handle conflicts based on resolution strategy
         resolved_contributions = self._resolve_conflicts(valid_contributions, conflicts)
@@ -925,14 +901,10 @@ class FederationAggregator:
         )
 
         # Aggregate confidences
-        aggregate_confidence = self.weighted_aggregator.aggregate_confidences(
-            resolved_contributions, weights
-        )
+        aggregate_confidence = self.weighted_aggregator.aggregate_confidences(resolved_contributions, weights)
 
         # Compute agreement score
-        agreement_score = self.weighted_aggregator.compute_agreement_score(
-            resolved_contributions, weights
-        )
+        agreement_score = self.weighted_aggregator.compute_agreement_score(resolved_contributions, weights)
 
         # Apply privacy
         (
@@ -953,9 +925,7 @@ class FederationAggregator:
 
         # Consume privacy budget
         if requester_id:
-            self.privacy_aggregator.consume_budget(
-                domain_filter, semantic_query, requester_id
-            )
+            self.privacy_aggregator.consume_budget(domain_filter, semantic_query, requester_id)
 
         # Build result
         return CrossFederationAggregateResult(
@@ -969,9 +939,7 @@ class FederationAggregator:
             total_contributor_count=noisy_contributor_count,
             conflicts_detected=conflicts,
             conflict_count=len(conflicts),
-            conflicts_resolved=len(
-                [c for c in conflicts if c.conflict_type != ConflictType.NONE]
-            ),
+            conflicts_resolved=len([c for c in conflicts if c.conflict_type != ConflictType.NONE]),
             privacy_epsilon=self.config.privacy_config.epsilon,
             privacy_delta=self.config.privacy_config.delta,
             k_anonymity_satisfied=k_satisfied,
@@ -1014,12 +982,7 @@ class FederationAggregator:
                 belief_a = self._find_belief(contributions, conflict.belief_a_id)
                 belief_b = self._find_belief(contributions, conflict.belief_b_id)
 
-                if (
-                    belief_a
-                    and belief_b
-                    and conflict.belief_a_id
-                    and conflict.belief_b_id
-                ):
+                if belief_a and belief_b and conflict.belief_a_id and conflict.belief_b_id:
                     if belief_a.signed_at < belief_b.signed_at:
                         beliefs_to_exclude.add(conflict.belief_a_id)
                     else:
@@ -1048,19 +1011,10 @@ class FederationAggregator:
                 if conflict.conflict_type == ConflictType.NONE:
                     continue
 
-                contrib_a = self._find_contribution(
-                    contributions, conflict.federation_a_id
-                )
-                contrib_b = self._find_contribution(
-                    contributions, conflict.federation_b_id
-                )
+                contrib_a = self._find_contribution(contributions, conflict.federation_a_id)
+                contrib_b = self._find_contribution(contributions, conflict.federation_b_id)
 
-                if (
-                    contrib_a
-                    and contrib_b
-                    and conflict.belief_a_id
-                    and conflict.belief_b_id
-                ):
+                if contrib_a and contrib_b and conflict.belief_a_id and conflict.belief_b_id:
                     if contrib_a.trust_score < contrib_b.trust_score:
                         corr_exclude.add(conflict.belief_a_id)
                     else:

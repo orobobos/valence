@@ -56,9 +56,7 @@ class TestTrustScoreGaming:
         # Signal weights are small to prevent rapid trust building
         for signal_type, weight in SIGNAL_WEIGHTS.items():
             if weight > 0:
-                assert (
-                    weight <= 0.10
-                ), f"Signal {signal_type} weight {weight} is too high"
+                assert weight <= 0.10, f"Signal {signal_type} weight {weight} is too high"
 
     def test_single_corroboration_limited_impact(self):
         """A single corroboration should have limited impact on trust."""
@@ -87,9 +85,7 @@ class TestTrustScoreGaming:
         dispute_weight = abs(SIGNAL_WEIGHTS.get("dispute", 0))
 
         # Disputes should impact more than corroborations
-        assert (
-            dispute_weight >= corroboration_weight
-        ), "Negative signals should have equal or greater impact"
+        assert dispute_weight >= corroboration_weight, "Negative signals should have equal or greater impact"
 
 
 class TestSybilAttackPrevention:
@@ -119,9 +115,7 @@ class TestSybilAttackPrevention:
 
         # Phase transitions should have time requirements
         # At minimum, higher phases should require some criteria
-        assert (
-            len(PHASE_TRANSITION) > 0
-        ), "Phase transition requirements should be defined"
+        assert len(PHASE_TRANSITION) > 0, "Phase transition requirements should be defined"
 
         # Verify at least one non-observer phase has requirements
         has_requirements = False
@@ -129,9 +123,7 @@ class TestSybilAttackPrevention:
             if phase != TrustPhase.OBSERVER and requirements:
                 has_requirements = True
                 break
-        assert (
-            has_requirements
-        ), "At least one phase should have progression requirements"
+        assert has_requirements, "At least one phase should have progression requirements"
 
     def test_endorsements_weighted_by_endorser_trust(self):
         """Endorsements are weighted by the endorser's trust level."""
@@ -151,10 +143,7 @@ class TestSybilAttackPrevention:
         # Check that higher phases require endorsements
         participant_reqs = PHASE_TRANSITION.get(TrustPhase.PARTICIPANT, {})
         # Should require some form of endorsement or corroboration
-        assert (
-            participant_reqs.get("min_endorsements", 0) >= 0
-            or participant_reqs.get("min_overall_trust", 0) > 0
-        )
+        assert participant_reqs.get("min_endorsements", 0) >= 0 or participant_reqs.get("min_overall_trust", 0) > 0
 
 
 class TestTrustInflationAttacks:
@@ -296,17 +285,12 @@ class TestUserTrustOverrides:
         node_id = uuid4()
 
         with patch.object(manager, "_registry") as mock_registry:
-            mock_registry.set_user_preference.return_value = MagicMock(
-                preference=TrustPreference.BLOCKED
-            )
+            mock_registry.set_user_preference.return_value = MagicMock(preference=TrustPreference.BLOCKED)
 
             manager.block_node(node_id, reason="Spam")
 
             mock_registry.set_user_preference.assert_called_once()
-            assert (
-                mock_registry.set_user_preference.call_args[1]["preference"]
-                == TrustPreference.BLOCKED
-            )
+            assert mock_registry.set_user_preference.call_args[1]["preference"] == TrustPreference.BLOCKED
 
     def test_blocked_node_effective_trust_zero(self):
         """Blocked nodes should have zero effective trust."""

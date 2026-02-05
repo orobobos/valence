@@ -15,7 +15,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.discovery import RouterInfo
 from valence.network.messages import (
     MisbehaviorEvidence,
@@ -26,9 +25,7 @@ from valence.network.messages import (
 )
 from valence.network.node import NodeClient
 
-pytestmark = pytest.mark.skip(
-    reason="Needs update for NodeClient decomposition - see #167"
-)
+pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
 
 
 # =============================================================================

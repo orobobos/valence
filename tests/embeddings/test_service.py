@@ -67,9 +67,7 @@ class TestGenerateEmbedding:
 
         service._openai_client = mock_openai
 
-        result = service.generate_embedding(
-            "test text", provider=EmbeddingProvider.OPENAI
-        )
+        result = service.generate_embedding("test text", provider=EmbeddingProvider.OPENAI)
 
         assert len(result) == 1536
         mock_openai.embeddings.create.assert_called_once()
@@ -94,9 +92,7 @@ class TestGenerateEmbedding:
 
         service._openai_client = mock_openai
 
-        service.generate_embedding(
-            "test", model="text-embedding-3-large", provider=EmbeddingProvider.OPENAI
-        )
+        service.generate_embedding("test", model="text-embedding-3-large", provider=EmbeddingProvider.OPENAI)
 
         call_args = mock_openai.embeddings.create.call_args
         assert call_args.kwargs["model"] == "text-embedding-3-large"
@@ -162,9 +158,7 @@ class TestEmbedContent:
         with patch("valence.embeddings.service.get_cursor", fake_get_cursor):
             yield mock_cursor
 
-    def test_embed_belief(
-        self, env_with_openai_key, mock_openai, mock_get_cursor, monkeypatch
-    ):
+    def test_embed_belief(self, env_with_openai_key, mock_openai, mock_get_cursor, monkeypatch):
         """Should embed belief content."""
         from valence.embeddings import service
 
@@ -262,9 +256,7 @@ class TestSearchSimilar:
             # Should have searched beliefs, exchanges, and patterns
             assert mock_get_cursor.execute.call_count == 3
 
-    def test_filter_by_content_type(
-        self, env_with_openai_key, mock_openai, mock_get_cursor
-    ):
+    def test_filter_by_content_type(self, env_with_openai_key, mock_openai, mock_get_cursor):
         """Should filter by content type."""
         from valence.embeddings import service
 
@@ -281,9 +273,7 @@ class TestSearchSimilar:
             # Should only search beliefs
             assert mock_get_cursor.execute.call_count == 1
 
-    def test_returns_sorted_results(
-        self, env_with_openai_key, mock_openai, mock_get_cursor
-    ):
+    def test_returns_sorted_results(self, env_with_openai_key, mock_openai, mock_get_cursor):
         """Should return results sorted by similarity."""
         from valence.embeddings import service
 
@@ -353,9 +343,7 @@ class TestBackfillEmbeddings:
         from valence.embeddings import service
 
         belief_id = uuid4()
-        mock_get_cursor.fetchall.return_value = [
-            {"id": belief_id, "content": "Test belief"}
-        ]
+        mock_get_cursor.fetchall.return_value = [{"id": belief_id, "content": "Test belief"}]
 
         with patch("valence.embeddings.service.get_embedding_type") as mock_get_type:
             mock_type = MagicMock()

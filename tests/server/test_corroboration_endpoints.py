@@ -15,7 +15,6 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
-
 from valence.server.corroboration_endpoints import (
     belief_corroboration_endpoint,
     most_corroborated_beliefs_endpoint,
@@ -40,8 +39,7 @@ def mock_corroboration_info():
             belief_id=belief_id or uuid4(),
             corroboration_count=count,
             confidence_corroboration=confidence,
-            sources=sources
-            or [{"source_did": "did:vkb:web:example.com", "similarity": 0.95}],
+            sources=sources or [{"source_did": "did:vkb:web:example.com", "similarity": 0.95}],
         )
 
     return _factory
@@ -226,9 +224,7 @@ class TestMostCorroboratedBeliefsEndpoint:
             },
         ]
 
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.return_value = mock_beliefs
 
             response = client.get("/beliefs/most-corroborated")
@@ -244,9 +240,7 @@ class TestMostCorroboratedBeliefsEndpoint:
 
     def test_most_corroborated_with_limit(self, client):
         """Test with custom limit."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.return_value = []
 
             response = client.get("/beliefs/most-corroborated?limit=5")
@@ -259,9 +253,7 @@ class TestMostCorroboratedBeliefsEndpoint:
 
     def test_most_corroborated_with_min_count(self, client):
         """Test with minimum corroboration count."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.return_value = []
 
             response = client.get("/beliefs/most-corroborated?min_count=3")
@@ -273,9 +265,7 @@ class TestMostCorroboratedBeliefsEndpoint:
 
     def test_most_corroborated_with_domain_filter(self, client):
         """Test with domain filter."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.return_value = []
 
             response = client.get("/beliefs/most-corroborated?domain=tech")
@@ -287,9 +277,7 @@ class TestMostCorroboratedBeliefsEndpoint:
 
     def test_most_corroborated_empty_result(self, client):
         """Test when no corroborated beliefs exist."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.return_value = []
 
             response = client.get("/beliefs/most-corroborated")
@@ -302,9 +290,7 @@ class TestMostCorroboratedBeliefsEndpoint:
 
     def test_most_corroborated_internal_error(self, client):
         """Test 500 on internal error."""
-        with patch(
-            "valence.core.corroboration.get_most_corroborated_beliefs"
-        ) as mock_get:
+        with patch("valence.core.corroboration.get_most_corroborated_beliefs") as mock_get:
             mock_get.side_effect = Exception("Database error")
 
             response = client.get("/beliefs/most-corroborated")
@@ -337,9 +323,7 @@ class TestConfidenceLabelLogic:
             (100, "highly corroborated"),
         ],
     )
-    def test_confidence_labels(
-        self, client, mock_corroboration_info, count, expected_label
-    ):
+    def test_confidence_labels(self, client, mock_corroboration_info, count, expected_label):
         """Test all confidence label thresholds."""
         belief_id = uuid4()
 

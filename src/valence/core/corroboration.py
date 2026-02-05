@@ -37,9 +37,7 @@ class CorroborationResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "corroborated": self.corroborated,
-            "existing_belief_id": (
-                str(self.existing_belief_id) if self.existing_belief_id else None
-            ),
+            "existing_belief_id": (str(self.existing_belief_id) if self.existing_belief_id else None),
             "similarity": self.similarity,
             "source_did": self.source_did,
             "is_new_source": self.is_new_source,
@@ -139,9 +137,7 @@ def check_corroboration(
 
             # Check if this source already corroborated
             existing_sources = row["corroborating_sources"] or []
-            is_new_source = not any(
-                s.get("source_did") == source_did for s in existing_sources
-            )
+            is_new_source = not any(s.get("source_did") == source_did for s in existing_sources)
 
             return CorroborationResult(
                 corroborated=True,
@@ -184,10 +180,7 @@ def add_corroboration(
             added = row["added"] if row else False
 
             if added:
-                logger.info(
-                    f"Added corroboration to belief {belief_id} from {source_did} "
-                    f"(similarity={similarity:.3f})"
-                )
+                logger.info(f"Added corroboration to belief {belief_id} from {source_did} (similarity={similarity:.3f})")
 
             return added
 
@@ -316,7 +309,7 @@ def get_most_corroborated_beliefs(
                     domain_path,
                     created_at
                 FROM beliefs
-                WHERE {' AND '.join(conditions)}
+                WHERE {" AND ".join(conditions)}
                 ORDER BY corroboration_count DESC, created_at DESC
                 LIMIT %s
             """,

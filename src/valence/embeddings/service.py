@@ -47,9 +47,7 @@ def get_embedding_provider() -> EmbeddingProvider:
     try:
         return EmbeddingProvider(provider)
     except ValueError:
-        logger.warning(
-            f"Unknown embedding provider '{provider}', defaulting to 'local'"
-        )
+        logger.warning(f"Unknown embedding provider '{provider}', defaulting to 'local'")
         return EmbeddingProvider.LOCAL
 
 
@@ -67,9 +65,7 @@ def get_openai_client() -> OpenAI:
         config = get_config()
         api_key = config.openai_api_key
         if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable required for OpenAI embeddings"
-            )
+            raise ValueError("OPENAI_API_KEY environment variable required for OpenAI embeddings")
         _openai_client = OpenAI(api_key=api_key)
     return _openai_client
 

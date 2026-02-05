@@ -19,7 +19,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.discovery import DiscoveryClient
 from valence.network.messages import (
     RevocationReason,
@@ -472,9 +471,7 @@ class TestSeedRevocationManager:
         assert "effective-seed" in revoked
         assert "future-seed" not in revoked
 
-    def test_load_revocation_list_from_file(
-        self, revocation_manager, sample_revocation
-    ):
+    def test_load_revocation_list_from_file(self, revocation_manager, sample_revocation):
         """Test loading revocations from file."""
         rev_list = SeedRevocationList(
             version=1,
@@ -487,9 +484,7 @@ class TestSeedRevocationManager:
             temp_path = f.name
 
         try:
-            loaded, errors = revocation_manager.load_revocation_list_from_file(
-                temp_path
-            )
+            loaded, errors = revocation_manager.load_revocation_list_from_file(temp_path)
 
             assert loaded == 1
             assert len(errors) == 0
@@ -499,9 +494,7 @@ class TestSeedRevocationManager:
 
     def test_load_missing_file(self, revocation_manager):
         """Test loading from non-existent file."""
-        loaded, errors = revocation_manager.load_revocation_list_from_file(
-            "/nonexistent/file.json"
-        )
+        loaded, errors = revocation_manager.load_revocation_list_from_file("/nonexistent/file.json")
 
         assert loaded == 0
         assert any("file_not_found" in e for e in errors)
@@ -513,9 +506,7 @@ class TestSeedRevocationManager:
             temp_path = f.name
 
         try:
-            loaded, errors = revocation_manager.load_revocation_list_from_file(
-                temp_path
-            )
+            loaded, errors = revocation_manager.load_revocation_list_from_file(temp_path)
 
             assert loaded == 0
             assert any("invalid_json" in e for e in errors)
@@ -736,9 +727,7 @@ class TestSeedNodeRevocation:
         assert sample_revocation.seed_id in data["revoked_seed_ids"]
 
     @pytest.mark.asyncio
-    async def test_handle_get_revocations_by_seed_id(
-        self, seed_node, sample_revocation
-    ):
+    async def test_handle_get_revocations_by_seed_id(self, seed_node, sample_revocation):
         """Test the get_revocations endpoint with seed_id query param."""
 
         # Add a revocation

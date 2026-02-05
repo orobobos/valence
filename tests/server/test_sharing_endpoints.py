@@ -16,7 +16,6 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
-
 from valence.server.sharing_endpoints import (
     _share_to_dict,
     get_share_endpoint,
@@ -216,9 +215,7 @@ class TestShareBeliefEndpoint:
 
     def test_share_validation_error(self, client, mock_sharing_service):
         """Service validation error returns 400."""
-        mock_sharing_service.share = AsyncMock(
-            side_effect=ValueError("Belief not found")
-        )
+        mock_sharing_service.share = AsyncMock(side_effect=ValueError("Belief not found"))
 
         response = client.post(
             "/api/v1/share",
@@ -331,9 +328,7 @@ class TestListSharesEndpoint:
 
     def test_list_shares_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
-        mock_sharing_service.list_shares = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        mock_sharing_service.list_shares = AsyncMock(side_effect=Exception("Database error"))
 
         response = client.get("/api/v1/shares")
 
@@ -385,9 +380,7 @@ class TestGetShareEndpoint:
 
     def test_get_share_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
-        mock_sharing_service.get_share = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        mock_sharing_service.get_share = AsyncMock(side_effect=Exception("Database error"))
 
         response = client.get("/api/v1/shares/share-001")
 
@@ -461,9 +454,7 @@ class TestRevokeShareEndpoint:
 
     def test_revoke_not_found(self, client, mock_sharing_service):
         """Share not found returns 404."""
-        mock_sharing_service.revoke_share = AsyncMock(
-            side_effect=ValueError("Share not found")
-        )
+        mock_sharing_service.revoke_share = AsyncMock(side_effect=ValueError("Share not found"))
 
         response = client.post("/api/v1/shares/nonexistent/revoke", json={})
 
@@ -471,9 +462,7 @@ class TestRevokeShareEndpoint:
 
     def test_revoke_already_revoked(self, client, mock_sharing_service):
         """Already revoked returns 409."""
-        mock_sharing_service.revoke_share = AsyncMock(
-            side_effect=ValueError("Share already revoked")
-        )
+        mock_sharing_service.revoke_share = AsyncMock(side_effect=ValueError("Share already revoked"))
 
         response = client.post("/api/v1/shares/share-001/revoke", json={})
 
@@ -483,9 +472,7 @@ class TestRevokeShareEndpoint:
 
     def test_revoke_permission_denied(self, client, mock_sharing_service):
         """Not owner returns 403."""
-        mock_sharing_service.revoke_share = AsyncMock(
-            side_effect=PermissionError("Not the original sharer")
-        )
+        mock_sharing_service.revoke_share = AsyncMock(side_effect=PermissionError("Not the original sharer"))
 
         response = client.post("/api/v1/shares/share-001/revoke", json={})
 
@@ -501,9 +488,7 @@ class TestRevokeShareEndpoint:
 
     def test_revoke_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
-        mock_sharing_service.revoke_share = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        mock_sharing_service.revoke_share = AsyncMock(side_effect=Exception("Database error"))
 
         response = client.post("/api/v1/shares/share-001/revoke", json={})
 

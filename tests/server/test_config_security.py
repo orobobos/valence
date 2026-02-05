@@ -6,7 +6,6 @@ import os
 from unittest.mock import patch
 
 import pytest
-
 from valence.server.config import ServerSettings
 
 
@@ -168,7 +167,5 @@ class TestJWTSecretRequirement:
                 assert settings.oauth_jwt_secret is not None
                 # Warning should be logged
                 assert any(
-                    "Auto-generating JWT secret" in record.message
-                    and "tokens will not persist" in record.message
-                    for record in caplog.records
+                    "Auto-generating JWT secret" in record.message and "tokens will not persist" in record.message for record in caplog.records
                 )

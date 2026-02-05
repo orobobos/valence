@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from valence.core.confidence import (
     DEFAULT_WEIGHTS,
     ConfidenceDimension,
@@ -136,9 +135,7 @@ class TestDimensionalConfidence:
 
     def test_validation_rejects_negative_dimension(self):
         """Negative dimension values should raise ValueError."""
-        with pytest.raises(
-            ValueError, match="source_reliability must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="source_reliability must be between 0 and 1"):
             DimensionalConfidence(source_reliability=-0.5)
 
     def test_validation_rejects_dimension_above_one(self):
@@ -318,9 +315,7 @@ class TestDimensionalConfidenceWithDimension:
     def test_with_dimension_skip_recalculate(self):
         """with_dimension can skip recalculation."""
         original = DimensionalConfidence(overall=0.7, source_reliability=0.5)
-        new = original.with_dimension(
-            ConfidenceDimension.SOURCE_RELIABILITY, 0.9, recalculate=False
-        )
+        new = original.with_dimension(ConfidenceDimension.SOURCE_RELIABILITY, 0.9, recalculate=False)
         assert new.overall == original.overall
 
     def test_with_dimension_overall_no_recalculate(self):

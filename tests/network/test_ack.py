@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
 from valence.network.discovery import RouterInfo
 from valence.network.message_handler import MessageHandler, MessageHandlerConfig
 from valence.network.messages import AckMessage, AckRequest, DeliverPayload
@@ -388,9 +387,7 @@ class TestIdempotentDelivery:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestACKSigning:
     """Tests for ACK message signing."""
 
@@ -423,9 +420,7 @@ class TestACKSigning:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestE2EACKHandling:
     """Tests for E2E ACK message handling."""
 
@@ -500,9 +495,7 @@ class TestE2EACKHandling:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestACKFailureHandling:
     """Tests for ACK failure and retry handling."""
 
@@ -627,9 +620,7 @@ class TestACKStats:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestACKTimeoutRetry:
     """Integration tests for ACK timeout and retry logic."""
 
@@ -786,10 +777,7 @@ class TestACKTimeoutRetry:
 
         # Should have switched to second router
         if "retry-msg" in node_client.pending_acks:
-            assert (
-                node_client.pending_acks["retry-msg"].router_id
-                == mock_router_info_2.router_id
-            )
+            assert node_client.pending_acks["retry-msg"].router_id == mock_router_info_2.router_id
             # Second websocket should have been used
             ws2.send_json.assert_called()
 
@@ -799,9 +787,7 @@ class TestACKTimeoutRetry:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestSendMessageWithACK:
     """Tests for send_message with ACK tracking."""
 
@@ -915,9 +901,7 @@ class TestSendMessageWithACK:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)"
-)
+@pytest.mark.skip(reason="NodeClient methods moved to MessageHandler (Issue #128 god class decomposition)")
 class TestACKEdgeCases:
     """Tests for edge cases in ACK handling."""
 

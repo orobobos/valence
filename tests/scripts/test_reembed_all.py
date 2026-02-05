@@ -347,13 +347,9 @@ class TestReembedTable:
 
         mock_embeddings = [[0.1] * 384, [0.2] * 384, [0.3] * 384]
 
-        with patch(
-            "reembed_all.generate_embeddings_batch", return_value=mock_embeddings
-        ):
+        with patch("reembed_all.generate_embeddings_batch", return_value=mock_embeddings):
             with patch("reembed_all.execute_values"):
-                result = reembed_table(
-                    mock_conn, "beliefs", batch_size=10, verbose=False
-                )
+                result = reembed_table(mock_conn, "beliefs", batch_size=10, verbose=False)
 
         assert result["processed"] == 3
         assert result["elapsed"] > 0
@@ -373,9 +369,7 @@ class TestReembedTable:
 
         progress_file = tmp_path / "progress.json"
 
-        with patch(
-            "reembed_all.generate_embeddings_batch", return_value=[[0.1] * 384] * 2
-        ):
+        with patch("reembed_all.generate_embeddings_batch", return_value=[[0.1] * 384] * 2):
             with patch("reembed_all.execute_values"):
                 reembed_table(
                     mock_conn,
@@ -399,9 +393,7 @@ class TestReembedTable:
         progress_file = tmp_path / "progress.json"
         progress_file.write_text('{"beliefs": 50}')
 
-        reembed_table(
-            mock_conn, "beliefs", progress_file=str(progress_file), verbose=False
-        )
+        reembed_table(mock_conn, "beliefs", progress_file=str(progress_file), verbose=False)
 
         # Check that OFFSET was passed
         call_args = [c for c in cursor.execute.call_args_list if "OFFSET" in str(c)]
@@ -438,9 +430,7 @@ class TestVerifyEmbeddings:
             (50,),  # vkb_exchanges
         ]
 
-        result = verify_embeddings(
-            mock_conn, ["beliefs", "vkb_exchanges"], verbose=False
-        )
+        result = verify_embeddings(mock_conn, ["beliefs", "vkb_exchanges"], verbose=False)
 
         assert result["beliefs"]["total"] == 100
         assert result["beliefs"]["embedded"] == 80
@@ -513,9 +503,7 @@ class TestMainCLI:
 
     def test_table_flag(self):
         """Should support --table flag to process single table."""
-        with patch(
-            "sys.argv", ["reembed_all.py", "--table", "beliefs", "--dry-run", "--quiet"]
-        ):
+        with patch("sys.argv", ["reembed_all.py", "--table", "beliefs", "--dry-run", "--quiet"]):
             with patch("reembed_all.get_connection") as mock_conn:
                 mock_conn.return_value = MagicMock()
                 mock_conn.return_value.cursor.return_value.fetchone.return_value = (0,)

@@ -284,9 +284,7 @@ class TestCheckCorroboration:
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.generate_embedding")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_generates_embedding_when_not_provided(
-        self, mock_vector, mock_embed, mock_cursor
-    ):
+    def test_generates_embedding_when_not_provided(self, mock_vector, mock_embed, mock_cursor):
         """Should generate embedding if not provided."""
         mock_embed.return_value = [0.1] * 1536
         mock_vector.return_value = "[0.1,...]"
@@ -333,9 +331,7 @@ class TestCheckCorroboration:
 
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_returns_none_when_similarity_below_threshold(
-        self, mock_vector, mock_cursor
-    ):
+    def test_returns_none_when_similarity_below_threshold(self, mock_vector, mock_cursor):
         """Should return None if similarity below threshold."""
         mock_vector.return_value = "[0.1,...]"
 
@@ -356,9 +352,7 @@ class TestCheckCorroboration:
 
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_returns_result_when_similarity_above_threshold(
-        self, mock_vector, mock_cursor
-    ):
+    def test_returns_result_when_similarity_above_threshold(self, mock_vector, mock_cursor):
         """Should return CorroborationResult if similarity >= threshold."""
         mock_vector.return_value = "[0.1,...]"
 
@@ -373,9 +367,7 @@ class TestCheckCorroboration:
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
 
-        result = check_corroboration(
-            "test", "did:source:1", content_embedding=[0.1] * 10
-        )
+        result = check_corroboration("test", "did:source:1", content_embedding=[0.1] * 10)
 
         assert result is not None
         assert result.corroborated is True
@@ -403,9 +395,7 @@ class TestCheckCorroboration:
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
 
-        result = check_corroboration(
-            "test", "did:existing:source", content_embedding=[0.1] * 10
-        )
+        result = check_corroboration("test", "did:existing:source", content_embedding=[0.1] * 10)
 
         assert result is not None
         assert result.is_new_source is False

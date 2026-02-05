@@ -6,7 +6,6 @@ import json
 
 import pytest
 from cryptography.exceptions import InvalidSignature
-
 from valence.network.crypto import (
     decrypt_message,
     encrypt_message,
@@ -394,9 +393,7 @@ class TestRouterCantRead:
         )
 
         # Create relay message (what router sees)
-        relay_msg = RelayMessage.create(
-            next_hop="bob-node", payload=json.dumps(encrypted), ttl=10
-        )
+        relay_msg = RelayMessage.create(next_hop="bob-node", payload=json.dumps(encrypted), ttl=10)
 
         # Router can see routing info
         assert relay_msg.next_hop == "bob-node"

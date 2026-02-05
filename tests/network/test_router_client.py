@@ -15,7 +15,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.connection_manager import (
     ConnectionManager,
     ConnectionManagerConfig,
@@ -183,46 +182,34 @@ class TestRouterSelection:
         result = router_client.select_router()
         assert result is None
 
-    def test_select_router_single_connection(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    def test_select_router_single_connection(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection with single connection."""
         # Add connection to manager
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
 
         result = router_client.select_router()
 
         assert result is not None
         assert result.router_id == mock_router_connection.router.router_id
 
-    def test_select_router_excludes_closed(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    def test_select_router_excludes_closed(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection excludes closed connections."""
         # Mark connection as closed
         mock_router_connection.websocket.closed = True
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
 
         result = router_client.select_router()
 
         # Should not select closed connection
         assert result is None
 
-    def test_select_router_excludes_back_pressured(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    def test_select_router_excludes_back_pressured(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection excludes back-pressured routers."""
         # Mark as under back-pressure
         mock_router_connection.back_pressure_active = True
         mock_router_connection.back_pressure_until = time.time() + 100
 
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
 
         result = router_client.select_router(exclude_back_pressured=True)
 
@@ -230,13 +217,9 @@ class TestRouterSelection:
         # as fallback
         assert result is not None
 
-    def test_select_router_uses_health_callback(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    def test_select_router_uses_health_callback(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection uses health callback."""
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
 
         # Set up health callback
         router_client.get_aggregated_health = MagicMock(return_value=0.9)
@@ -244,17 +227,11 @@ class TestRouterSelection:
         router_client.select_router()
 
         # Health callback should have been called
-        router_client.get_aggregated_health.assert_called_with(
-            mock_router_connection.router.router_id
-        )
+        router_client.get_aggregated_health.assert_called_with(mock_router_connection.router.router_id)
 
-    def test_select_router_penalizes_flagged(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    def test_select_router_penalizes_flagged(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection penalizes flagged routers."""
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
 
         # Set up flagged router check
         router_client.is_router_flagged = MagicMock(return_value=True)
@@ -262,9 +239,7 @@ class TestRouterSelection:
         router_client.select_router()
 
         # Flag check should have been called
-        router_client.is_router_flagged.assert_called_with(
-            mock_router_connection.router.router_id
-        )
+        router_client.is_router_flagged.assert_called_with(mock_router_connection.router.router_id)
 
 
 # =============================================================================
@@ -347,9 +322,7 @@ class TestRouterRotation:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_check_rotation_needed_no_connections(
-        self, router_client, mock_connection_manager
-    ):
+    async def test_check_rotation_needed_no_connections(self, router_client, mock_connection_manager):
         """Test rotation check with no connections."""
         mock_connection_manager.connections = {}
 
@@ -358,9 +331,7 @@ class TestRouterRotation:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_check_rotation_needed_old_connection(
-        self, router_client, mock_connection_manager, mock_router_connection
-    ):
+    async def test_check_rotation_needed_old_connection(self, router_client, mock_connection_manager, mock_router_connection):
         """Test rotation check detects old connection."""
         router_id = mock_router_connection.router.router_id
 
@@ -407,9 +378,7 @@ class TestRouterRotation:
         assert router_client._stats["routers_rotated"] == 1
 
     @pytest.mark.asyncio
-    async def test_rotate_router_nonexistent(
-        self, router_client, mock_connection_manager
-    ):
+    async def test_rotate_router_nonexistent(self, router_client, mock_connection_manager):
         """Test rotating non-existent router."""
         mock_connection_manager.connections = {}
 
@@ -520,9 +489,7 @@ class TestFailoverHandling:
 
         # No alternatives available
         mock_discovery.discover_routers = AsyncMock(return_value=[])
-        mock_connection_manager.connect_to_router = AsyncMock(
-            side_effect=Exception("Failed")
-        )
+        mock_connection_manager.connect_to_router = AsyncMock(side_effect=Exception("Failed"))
 
         await router_client.handle_router_failure(router_id)
 
@@ -530,9 +497,7 @@ class TestFailoverHandling:
         assert router_client.direct_mode is True
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_nonexistent(
-        self, router_client, mock_connection_manager
-    ):
+    async def test_handle_router_failure_nonexistent(self, router_client, mock_connection_manager):
         """Test handling failure for non-existent router."""
         mock_connection_manager.connections = {}
 

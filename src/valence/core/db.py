@@ -117,15 +117,10 @@ class ConnectionPool:
                             maxconn=pool_config["maxconn"],
                             **conn_params,
                         )
-                        logger.info(
-                            f"Connection pool initialized: "
-                            f"min={pool_config['minconn']}, max={pool_config['maxconn']}"
-                        )
+                        logger.info(f"Connection pool initialized: min={pool_config['minconn']}, max={pool_config['maxconn']}")
                     except psycopg2.OperationalError as e:
                         logger.error(f"Failed to create connection pool: {e}")
-                        raise DatabaseException(
-                            f"Failed to create connection pool: {e}"
-                        )
+                        raise DatabaseException(f"Failed to create connection pool: {e}")
         return self._pool
 
     def get_connection(self):
@@ -326,9 +321,7 @@ class AsyncConnectionPool:
     async def _ensure_pool(self) -> asyncpg.Pool:
         """Ensure pool is initialized, creating it if necessary."""
         if not ASYNCPG_AVAILABLE:
-            raise DatabaseException(
-                "asyncpg not installed. Install with: pip install asyncpg"
-            )
+            raise DatabaseException("asyncpg not installed. Install with: pip install asyncpg")
 
         if self._pool is None:
             async with self._pool_lock:
@@ -341,15 +334,10 @@ class AsyncConnectionPool:
                             max_size=pool_config["maxconn"],
                             **conn_params,
                         )
-                        logger.info(
-                            f"Async connection pool initialized: "
-                            f"min={pool_config['minconn']}, max={pool_config['maxconn']}"
-                        )
+                        logger.info(f"Async connection pool initialized: min={pool_config['minconn']}, max={pool_config['maxconn']}")
                     except asyncpg.PostgresError as e:
                         logger.error(f"Failed to create async connection pool: {e}")
-                        raise DatabaseException(
-                            f"Failed to create async connection pool: {e}"
-                        )
+                        raise DatabaseException(f"Failed to create async connection pool: {e}")
                     except OSError as e:
                         logger.error(f"Failed to connect to database: {e}")
                         raise DatabaseException(f"Failed to connect to database: {e}")
@@ -608,16 +596,16 @@ def get_schema_version() -> str | None:
     """Get the current schema version if tracked."""
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
                     WHERE table_name = 'schema_version'
                 )
-            """)
+            """
+            )
             if cur.fetchone()[0]:
-                cur.execute(
-                    "SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1"
-                )
+                cur.execute("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
                 row = cur.fetchone()
                 return row["version"] if row else None
             return None
@@ -630,16 +618,16 @@ async def async_get_schema_version() -> str | None:
     """Get the current schema version if tracked (async version)."""
     try:
         async with async_cursor() as conn:
-            exists = await conn.fetchval("""
+            exists = await conn.fetchval(
+                """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
                     WHERE table_name = 'schema_version'
                 )
-            """)
+            """
+            )
             if exists:
-                row = await conn.fetchrow(
-                    "SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1"
-                )
+                row = await conn.fetchrow("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
                 return row["version"] if row else None
             return None
     except (DatabaseException, Exception) as e:
@@ -718,10 +706,7 @@ def count_rows(table_name: str) -> int:
     # Security: Validate against allowlist BEFORE any database query
     # This prevents SQL injection via table name manipulation
     if table_name not in VALID_TABLES:
-        raise ValueError(
-            f"Table not in allowlist: {table_name}. "
-            f"Valid tables: {', '.join(sorted(VALID_TABLES))}"
-        )
+        raise ValueError(f"Table not in allowlist: {table_name}. Valid tables: {', '.join(sorted(VALID_TABLES))}")
 
     with get_cursor() as cur:
         # Double-check table exists (defense in depth)
@@ -736,11 +721,7 @@ def count_rows(table_name: str) -> int:
             raise ValueError(f"Table does not exist: {table_name}")
 
         # Use sql.Identifier for safe table name interpolation (defense in depth)
-        cur.execute(
-            sql.SQL("SELECT COUNT(*) as count FROM {}").format(
-                sql.Identifier(table_name)
-            )
-        )
+        cur.execute(sql.SQL("SELECT COUNT(*) as count FROM {}").format(sql.Identifier(table_name)))
         row = cur.fetchone()
         return row["count"] if row else 0
 
@@ -757,10 +738,7 @@ async def async_count_rows(table_name: str) -> int:
     """
     # Security: Validate against allowlist BEFORE any database query
     if table_name not in VALID_TABLES:
-        raise ValueError(
-            f"Table not in allowlist: {table_name}. "
-            f"Valid tables: {', '.join(sorted(VALID_TABLES))}"
-        )
+        raise ValueError(f"Table not in allowlist: {table_name}. Valid tables: {', '.join(sorted(VALID_TABLES))}")
 
     async with async_cursor() as conn:
         # Double-check table exists (defense in depth)
@@ -778,9 +756,7 @@ async def async_count_rows(table_name: str) -> int:
         # asyncpg doesn't have psycopg2's sql.Identifier, so we use double-quoted
         # identifiers. The allowlist validation above ensures no injection is possible.
         safe_table = table_name.replace('"', '""')  # Escape any quotes (defensive)
-        count = await conn.fetchval(
-            f'SELECT COUNT(*) FROM "{safe_table}"'
-        )  # nosec B608
+        count = await conn.fetchval(f'SELECT COUNT(*) FROM "{safe_table}"')  # nosec B608
         return count or 0
 
 

@@ -10,7 +10,6 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.federation.identity import (
     DIDDocument,
     ServiceEndpoint,
@@ -98,9 +97,7 @@ def verification_cache() -> VerificationCache:
 class TestVerificationResult:
     """Tests for VerificationResult dataclass."""
 
-    def test_create_successful_result(
-        self, local_fed_did: str, remote_fed_did: str, test_domain: str
-    ):
+    def test_create_successful_result(self, local_fed_did: str, remote_fed_did: str, test_domain: str):
         """Test creating a successful verification result."""
         result = VerificationResult(
             local_federation=local_fed_did,
@@ -119,9 +116,7 @@ class TestVerificationResult:
         assert result.dns_verified is True
         assert result.error is None
 
-    def test_create_failed_result(
-        self, local_fed_did: str, remote_fed_did: str, test_domain: str
-    ):
+    def test_create_failed_result(self, local_fed_did: str, remote_fed_did: str, test_domain: str):
         """Test creating a failed verification result."""
         result = VerificationResult(
             local_federation=local_fed_did,
@@ -224,9 +219,7 @@ class TestVerificationCache:
         assert cached.cached is True
         assert verification_cache.size == 1
 
-    def test_cache_miss(
-        self, verification_cache: VerificationCache, remote_fed_did: str
-    ):
+    def test_cache_miss(self, verification_cache: VerificationCache, remote_fed_did: str):
         """Test cache miss."""
         cached = verification_cache.get(remote_fed_did, "nonexistent.example")
 
@@ -395,9 +388,7 @@ class TestDNSVerification:
     """Tests for DNS TXT record verification."""
 
     @pytest.mark.asyncio
-    async def test_dns_verification_success(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_dns_verification_success(self, remote_fed_did: str, test_domain: str):
         """Test successful DNS verification."""
         # Mock dns.resolver
         mock_rdata = MagicMock()
@@ -410,18 +401,14 @@ class TestDNSVerification:
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = mock_answers
 
-            verified, txt_record, error = await verify_dns_txt_record(
-                test_domain, remote_fed_did
-            )
+            verified, txt_record, error = await verify_dns_txt_record(test_domain, remote_fed_did)
 
         assert verified is True
         assert txt_record == f"{DNS_TXT_PREFIX}{remote_fed_did}"
         assert error is None
 
     @pytest.mark.asyncio
-    async def test_dns_verification_nxdomain(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_dns_verification_nxdomain(self, remote_fed_did: str, test_domain: str):
         """Test DNS verification with non-existent domain."""
         import dns.resolver
 
@@ -430,18 +417,14 @@ class TestDNSVerification:
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = dns.resolver.NXDOMAIN()
 
-            verified, txt_record, error = await verify_dns_txt_record(
-                test_domain, remote_fed_did
-            )
+            verified, txt_record, error = await verify_dns_txt_record(test_domain, remote_fed_did)
 
         assert verified is False
         assert txt_record is None
         assert "No matching DNS TXT record" in error
 
     @pytest.mark.asyncio
-    async def test_dns_verification_did_mismatch(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_dns_verification_did_mismatch(self, remote_fed_did: str, test_domain: str):
         """Test DNS verification with DID mismatch."""
         wrong_did = "did:vkb:web:wrong.example"
 
@@ -453,16 +436,12 @@ class TestDNSVerification:
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
 
-            verified, txt_record, error = await verify_dns_txt_record(
-                test_domain, remote_fed_did
-            )
+            verified, txt_record, error = await verify_dns_txt_record(test_domain, remote_fed_did)
 
         assert verified is False
 
     @pytest.mark.asyncio
-    async def test_dns_verification_timeout_retry(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_dns_verification_timeout_retry(self, remote_fed_did: str, test_domain: str):
         """Test DNS verification retries on timeout."""
         import dns.exception
 
@@ -483,9 +462,7 @@ class TestDNSVerification:
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = side_effect
 
-            verified, txt_record, error = await verify_dns_txt_record(
-                test_domain, remote_fed_did, retries=2
-            )
+            verified, txt_record, error = await verify_dns_txt_record(test_domain, remote_fed_did, retries=2)
 
         assert call_count >= 2  # Should have retried
 
@@ -506,23 +483,17 @@ class TestDIDDocumentVerification:
         mock_did_document: DIDDocument,
     ):
         """Test verification via DID document service endpoint."""
-        with patch(
-            "valence.federation.verification.resolve_did", new_callable=AsyncMock
-        ) as mock_resolve:
+        with patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve:
             mock_resolve.return_value = mock_did_document
 
-            verified, endpoint, error = await verify_did_document_claim(
-                remote_fed_did, test_domain
-            )
+            verified, endpoint, error = await verify_did_document_claim(remote_fed_did, test_domain)
 
         assert verified is True
         assert endpoint == test_domain
         assert error is None
 
     @pytest.mark.asyncio
-    async def test_did_verification_via_profile(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_did_verification_via_profile(self, remote_fed_did: str, test_domain: str):
         """Test verification via DID document profile domains."""
         did_doc = DIDDocument(
             id=remote_fed_did,
@@ -533,22 +504,16 @@ class TestDIDDocumentVerification:
             },
         )
 
-        with patch(
-            "valence.federation.verification.resolve_did", new_callable=AsyncMock
-        ) as mock_resolve:
+        with patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve:
             mock_resolve.return_value = did_doc
 
-            verified, endpoint, error = await verify_did_document_claim(
-                remote_fed_did, test_domain
-            )
+            verified, endpoint, error = await verify_did_document_claim(remote_fed_did, test_domain)
 
         assert verified is True
         assert "profile:domains" in endpoint
 
     @pytest.mark.asyncio
-    async def test_did_verification_no_claim(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_did_verification_no_claim(self, remote_fed_did: str, test_domain: str):
         """Test verification fails when no domain claim exists."""
         did_doc = DIDDocument(
             id=remote_fed_did,
@@ -556,32 +521,22 @@ class TestDIDDocumentVerification:
             profile={"name": "Remote Federation"},
         )
 
-        with patch(
-            "valence.federation.verification.resolve_did", new_callable=AsyncMock
-        ) as mock_resolve:
+        with patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve:
             mock_resolve.return_value = did_doc
 
-            verified, endpoint, error = await verify_did_document_claim(
-                remote_fed_did, test_domain
-            )
+            verified, endpoint, error = await verify_did_document_claim(remote_fed_did, test_domain)
 
         assert verified is False
         assert endpoint is None
         assert "No matching domain claim" in error
 
     @pytest.mark.asyncio
-    async def test_did_verification_resolution_failure(
-        self, remote_fed_did: str, test_domain: str
-    ):
+    async def test_did_verification_resolution_failure(self, remote_fed_did: str, test_domain: str):
         """Test verification when DID resolution fails."""
-        with patch(
-            "valence.federation.verification.resolve_did", new_callable=AsyncMock
-        ) as mock_resolve:
+        with patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve:
             mock_resolve.return_value = None
 
-            verified, endpoint, error = await verify_did_document_claim(
-                remote_fed_did, test_domain
-            )
+            verified, endpoint, error = await verify_did_document_claim(remote_fed_did, test_domain)
 
         assert verified is False
         assert "Could not resolve DID document" in error
@@ -615,18 +570,14 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
             mock_resolve.return_value = None  # DID resolution fails
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         assert result.verified is True
         assert result.status == VerificationStatus.VERIFIED
@@ -647,18 +598,14 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = dns.resolver.NXDOMAIN()
             mock_resolve.return_value = mock_did_document
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         assert result.verified is True
         assert result.status == VerificationStatus.VERIFIED
@@ -680,18 +627,14 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
             mock_resolve.return_value = mock_did_document
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         assert result.verified is True
         assert result.method == VerificationMethod.BOTH
@@ -710,18 +653,14 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = dns.resolver.NXDOMAIN()
             mock_resolve.return_value = None
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         assert result.verified is False
         assert result.status == VerificationStatus.FAILED
@@ -741,9 +680,7 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
@@ -776,9 +713,7 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
@@ -812,9 +747,7 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
@@ -847,9 +780,7 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
@@ -857,17 +788,13 @@ class TestCrossFederationVerification:
             mock_resolve.return_value = mock_did_document
 
             # First call - not cached
-            result1 = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=True
-            )
+            result1 = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=True)
 
             assert result1.verified is True
             assert result1.cached is False
 
             # Second call - should be cached
-            result2 = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=True
-            )
+            result2 = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=True)
 
             assert result2.verified is True
             assert result2.cached is True
@@ -885,18 +812,14 @@ class TestCrossFederationVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
             mock_resolve.return_value = mock_did_document
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, "VERIFIED.Example.COM.", use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, "VERIFIED.Example.COM.", use_cache=False)
 
         assert result.domain == "verified.example.com"
 
@@ -937,9 +860,7 @@ class TestBatchVerification:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
@@ -954,9 +875,7 @@ class TestBatchVerification:
 
             mock_resolve.side_effect = resolve_side_effect
 
-            results = await verify_multiple_domains(
-                local_fed_did, claims, use_cache=False
-            )
+            results = await verify_multiple_domains(local_fed_did, claims, use_cache=False)
 
         assert len(results) == 3
         for i, result in enumerate(results):
@@ -982,9 +901,7 @@ class TestSyncFunctions:
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
 
-            verified, txt, error = verify_dns_txt_record_sync(
-                test_domain, remote_fed_did
-            )
+            verified, txt, error = verify_dns_txt_record_sync(test_domain, remote_fed_did)
 
         assert verified is True
 
@@ -995,14 +912,10 @@ class TestSyncFunctions:
         mock_did_document: DIDDocument,
     ):
         """Test synchronous DID verification."""
-        with patch(
-            "valence.federation.verification.resolve_did", new_callable=AsyncMock
-        ) as mock_resolve:
+        with patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve:
             mock_resolve.return_value = mock_did_document
 
-            verified, endpoint, error = verify_did_document_claim_sync(
-                remote_fed_did, test_domain
-            )
+            verified, endpoint, error = verify_did_document_claim_sync(remote_fed_did, test_domain)
 
         assert verified is True
 
@@ -1019,18 +932,14 @@ class TestSyncFunctions:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.return_value = [mock_rdata]
             mock_resolve.return_value = mock_did_document
 
-            result = verify_cross_federation_domain_sync(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = verify_cross_federation_domain_sync(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         assert result.verified is True
 
@@ -1107,18 +1016,14 @@ class TestErrorHandling:
         """Test handling of DNS resolution exceptions."""
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = Exception("Network error")
             mock_resolve.return_value = None
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         # Should fail gracefully
         assert result.verified is False
@@ -1137,18 +1042,14 @@ class TestErrorHandling:
 
         with (
             patch("dns.resolver.Resolver") as mock_resolver_class,
-            patch(
-                "valence.federation.verification.resolve_did", new_callable=AsyncMock
-            ) as mock_resolve,
+            patch("valence.federation.verification.resolve_did", new_callable=AsyncMock) as mock_resolve,
         ):
             mock_resolver = MagicMock()
             mock_resolver_class.return_value = mock_resolver
             mock_resolver.resolve.side_effect = dns.resolver.NXDOMAIN()
             mock_resolve.side_effect = Exception("DID resolution error")
 
-            result = await verify_cross_federation_domain(
-                local_fed_did, remote_fed_did, test_domain, use_cache=False
-            )
+            result = await verify_cross_federation_domain(local_fed_did, remote_fed_did, test_domain, use_cache=False)
 
         # Should fail gracefully
         assert result.verified is False
@@ -1164,9 +1065,7 @@ class TestErrorHandling:
         with patch("valence.federation.verification.asyncio.run") as mock_run:
             mock_run.side_effect = RuntimeError("Event loop error")
 
-            result = verify_cross_federation_domain_sync(
-                local_fed_did, remote_fed_did, test_domain
-            )
+            result = verify_cross_federation_domain_sync(local_fed_did, remote_fed_did, test_domain)
 
         assert result.verified is False
         assert result.status == VerificationStatus.ERROR

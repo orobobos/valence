@@ -152,9 +152,7 @@ class AnomalyDetector:
 
         # Event history per actor per anomaly type
         # Dict[AnomalyType, Dict[actor_did, List[timestamp]]]
-        self._events: dict[AnomalyType, dict[str, list[datetime]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        self._events: dict[AnomalyType, dict[str, list[datetime]]] = defaultdict(lambda: defaultdict(list))
 
         # Last alert time per actor per anomaly type (for cooldown)
         # Dict[AnomalyType, Dict[actor_did, datetime]]
@@ -338,9 +336,7 @@ class AnomalyDetector:
                 return None
 
             # Check cooldown
-            if self._check_cooldown(
-                anomaly_type, actor_did, rule.cooldown_seconds, now
-            ):
+            if self._check_cooldown(anomaly_type, actor_did, rule.cooldown_seconds, now):
                 return None
 
             # Trigger alert
@@ -457,9 +453,7 @@ class AnomalyDetector:
             details: dict[str, Any] = {"hour": now.hour}
             if action:
                 details["action"] = action
-            details["normal_hours"] = (
-                f"{self._normal_hours_start}:00-{self._normal_hours_end}:00"
-            )
+            details["normal_hours"] = f"{self._normal_hours_start}:00-{self._normal_hours_end}:00"
 
             return self._trigger_alert(
                 anomaly_type=AnomalyType.UNUSUAL_HOURS,

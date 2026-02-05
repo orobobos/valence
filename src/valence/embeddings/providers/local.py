@@ -78,10 +78,7 @@ def get_model() -> SentenceTransformer:
                 try:
                     from sentence_transformers import SentenceTransformer
                 except ImportError as e:
-                    raise ModelLoadError(
-                        "sentence-transformers not installed. "
-                        "Install with: pip install sentence-transformers"
-                    ) from e
+                    raise ModelLoadError("sentence-transformers not installed. Install with: pip install sentence-transformers") from e
 
                 from ...core.config import get_config
 
@@ -101,14 +98,10 @@ def get_model() -> SentenceTransformer:
                             "Then set:\n"
                             "  export VALENCE_EMBEDDING_MODEL_PATH=/path/to/model"
                         )
-                    logger.info(
-                        f"Loading embedding model from local path: {resolved_path}"
-                    )
+                    logger.info(f"Loading embedding model from local path: {resolved_path}")
                     load_path = str(resolved_path)
                 else:
-                    logger.info(
-                        f"Loading embedding model: {model_path} (device={device})"
-                    )
+                    logger.info(f"Loading embedding model: {model_path} (device={device})")
                     load_path = model_path
 
                 try:
@@ -116,11 +109,7 @@ def get_model() -> SentenceTransformer:
                 except OSError as e:
                     # Common error when offline and model not cached
                     error_msg = str(e).lower()
-                    if (
-                        "connection" in error_msg
-                        or "resolve" in error_msg
-                        or "network" in error_msg
-                    ):
+                    if "connection" in error_msg or "resolve" in error_msg or "network" in error_msg:
                         raise ModelLoadError(
                             f"Cannot download model '{model_path}' - network unavailable.\n\n"
                             "For offline/air-gapped environments:\n\n"
@@ -134,9 +123,7 @@ def get_model() -> SentenceTransformer:
                         ) from e
                     raise ModelLoadError(f"Failed to load embedding model: {e}") from e
                 except Exception as e:
-                    raise ModelLoadError(
-                        f"Failed to load embedding model '{model_path}': {e}"
-                    ) from e
+                    raise ModelLoadError(f"Failed to load embedding model '{model_path}': {e}") from e
 
                 dim = _model.get_sentence_embedding_dimension()
                 logger.info(f"Embedding model ready (dim={dim})")

@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from valence.privacy.capabilities import (
     DEFAULT_TTL_SECONDS,
     MAX_TTL_SECONDS,
@@ -147,9 +146,7 @@ class TestCapabilityModel:
                 expires_at=now + timedelta(hours=1),
             )
 
-    def test_capability_expires_at_must_be_after_issued_at(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_capability_expires_at_must_be_after_issued_at(self, issuer_did, holder_did, resource, actions):
         """Test that expires_at must be after issued_at."""
         now = datetime.now(UTC)
         with pytest.raises(ValueError, match="expires_at must be after issued_at"):
@@ -214,9 +211,7 @@ class TestCapabilityModel:
         assert cap.has_action("query")
         assert not cap.has_action("write")
 
-    def test_capability_admin_grants_all_actions(
-        self, issuer_did, holder_did, resource
-    ):
+    def test_capability_admin_grants_all_actions(self, issuer_did, holder_did, resource):
         """Test that admin action grants all actions."""
         now = datetime.now(UTC)
         cap = Capability(
@@ -262,9 +257,7 @@ class TestCapabilityModel:
         assert restored.parent_id == cap.parent_id
         assert restored.metadata == cap.metadata
 
-    def test_capability_serialization_with_revocation(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_capability_serialization_with_revocation(self, issuer_did, holder_did, resource, actions):
         """Test capability serialization/deserialization with revocation info."""
         now = datetime.now(UTC)
         cap = Capability(
@@ -287,9 +280,7 @@ class TestCapabilityModel:
         assert restored.revocation_reason == "Security breach"
         assert restored.revoked_at is not None
 
-    def test_capability_payload_bytes_is_deterministic(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_capability_payload_bytes_is_deterministic(self, issuer_did, holder_did, resource, actions):
         """Test that payload bytes are deterministic for signing."""
         now = datetime.now(UTC)
         cap1 = Capability(
@@ -355,9 +346,7 @@ class TestInMemoryCapabilityStore:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_list_by_holder(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_by_holder(self, store, issuer_did, holder_did, resource, actions):
         """Test listing capabilities by holder."""
         now = datetime.now(UTC)
 
@@ -389,9 +378,7 @@ class TestInMemoryCapabilityStore:
         assert holder_caps[0].id == "cap-1"
 
     @pytest.mark.asyncio
-    async def test_list_by_holder_excludes_expired(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_by_holder_excludes_expired(self, store, issuer_did, holder_did, resource, actions):
         """Test that expired capabilities are excluded by default."""
         past = datetime.now(UTC) - timedelta(hours=2)
         now = datetime.now(UTC)
@@ -428,9 +415,7 @@ class TestInMemoryCapabilityStore:
         assert len(all_caps) == 2
 
     @pytest.mark.asyncio
-    async def test_list_by_issuer(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_by_issuer(self, store, issuer_did, holder_did, resource, actions):
         """Test listing capabilities by issuer."""
         now = datetime.now(UTC)
 
@@ -451,9 +436,7 @@ class TestInMemoryCapabilityStore:
         assert issuer_caps[0].id == "cap-1"
 
     @pytest.mark.asyncio
-    async def test_list_by_resource(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_by_resource(self, store, issuer_did, holder_did, resource, actions):
         """Test listing capabilities by resource."""
         now = datetime.now(UTC)
 
@@ -516,9 +499,7 @@ class TestInMemoryCapabilityStore:
         assert cap.revocation_reason == original_reason
 
     @pytest.mark.asyncio
-    async def test_revoke_by_issuer(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_by_issuer(self, store, issuer_did, holder_did, resource, actions):
         """Test bulk revocation by issuer."""
         now = datetime.now(UTC)
 
@@ -566,9 +547,7 @@ class TestInMemoryCapabilityStore:
         assert not (await store.get("cap-3")).is_revoked
 
     @pytest.mark.asyncio
-    async def test_revoke_by_holder(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_by_holder(self, store, issuer_did, holder_did, resource, actions):
         """Test bulk revocation by holder."""
         now = datetime.now(UTC)
 
@@ -611,9 +590,7 @@ class TestInMemoryCapabilityStore:
 
         # Verify revocation
         assert (await store.get("cap-1")).is_revoked
-        assert (
-            await store.get("cap-1")
-        ).revocation_reason == "Holder access terminated"
+        assert (await store.get("cap-1")).revocation_reason == "Holder access terminated"
         assert (await store.get("cap-2")).is_revoked
         assert not (await store.get("cap-3")).is_revoked
 
@@ -643,9 +620,7 @@ class TestInMemoryCapabilityStore:
         assert info is None
 
     @pytest.mark.asyncio
-    async def test_cleanup_expired(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_cleanup_expired(self, store, issuer_did, holder_did, resource, actions):
         """Test cleanup of old expired capabilities."""
         old_time = datetime.now(UTC) - timedelta(days=60)
         recent_time = datetime.now(UTC) - timedelta(days=5)
@@ -707,9 +682,7 @@ class TestCapabilityService:
     """Tests for the capability service."""
 
     @pytest.mark.asyncio
-    async def test_issue_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_issue_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test issuing a capability."""
         private_key, _ = issuer_keypair
 
@@ -729,9 +702,7 @@ class TestCapabilityService:
         assert cap.is_valid
 
     @pytest.mark.asyncio
-    async def test_issue_with_custom_ttl(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_issue_with_custom_ttl(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test issuing a capability with custom TTL."""
         private_key, _ = issuer_keypair
 
@@ -748,9 +719,7 @@ class TestCapabilityService:
         assert 1790 < cap.ttl_seconds <= 1800
 
     @pytest.mark.asyncio
-    async def test_issue_enforces_max_ttl(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_issue_enforces_max_ttl(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test that issue enforces maximum TTL."""
         private_key, _ = issuer_keypair
 
@@ -765,9 +734,7 @@ class TestCapabilityService:
             )
 
     @pytest.mark.asyncio
-    async def test_issue_stores_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_issue_stores_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test that issued capabilities are stored."""
         private_key, _ = issuer_keypair
 
@@ -785,9 +752,7 @@ class TestCapabilityService:
         assert retrieved.id == cap.id
 
     @pytest.mark.asyncio
-    async def test_verify_valid_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_verify_valid_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test verifying a valid capability."""
         private_key, public_key = issuer_keypair
 
@@ -808,9 +773,7 @@ class TestCapabilityService:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_verify_expired_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_verify_expired_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test verifying an expired capability raises error."""
         private_key, _ = issuer_keypair
 
@@ -831,9 +794,7 @@ class TestCapabilityService:
             await service.verify(cap)
 
     @pytest.mark.asyncio
-    async def test_verify_revoked_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_verify_revoked_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test verifying a revoked capability raises error."""
         private_key, public_key = issuer_keypair
 
@@ -852,9 +813,7 @@ class TestCapabilityService:
             await service.verify(cap, public_key)
 
     @pytest.mark.asyncio
-    async def test_verify_tampered_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_verify_tampered_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test verifying a tampered capability raises error."""
         private_key, public_key = issuer_keypair
 
@@ -873,9 +832,7 @@ class TestCapabilityService:
             await service.verify(cap, public_key)
 
     @pytest.mark.asyncio
-    async def test_revoke_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test revoking a capability with reason."""
         private_key, _ = issuer_keypair
 
@@ -896,9 +853,7 @@ class TestCapabilityService:
         assert retrieved.revocation_reason == "No longer needed"
 
     @pytest.mark.asyncio
-    async def test_revoke_requires_reason(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_requires_reason(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test that revoke requires a reason."""
         private_key, _ = issuer_keypair
 
@@ -917,9 +872,7 @@ class TestCapabilityService:
             await service.revoke(cap.id, "   ")
 
     @pytest.mark.asyncio
-    async def test_revoke_is_immutable(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_is_immutable(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test that revocation is immutable at service level."""
         private_key, _ = issuer_keypair
 
@@ -944,9 +897,7 @@ class TestCapabilityService:
         assert retrieved.revocation_reason == "First reason"
 
     @pytest.mark.asyncio
-    async def test_revoke_by_issuer(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_by_issuer(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test bulk revocation by issuer."""
         private_key, _ = issuer_keypair
 
@@ -974,9 +925,7 @@ class TestCapabilityService:
         assert (await service.get(cap2.id)).is_revoked
 
     @pytest.mark.asyncio
-    async def test_revoke_by_holder(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_revoke_by_holder(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test bulk revocation by holder."""
         private_key, _ = issuer_keypair
 
@@ -1004,9 +953,7 @@ class TestCapabilityService:
         assert (await service.get(cap2.id)).is_revoked
 
     @pytest.mark.asyncio
-    async def test_get_revocation_info(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_get_revocation_info(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test getting revocation info via service."""
         private_key, _ = issuer_keypair
 
@@ -1033,9 +980,7 @@ class TestCapabilityService:
         assert revoked_at is not None
 
     @pytest.mark.asyncio
-    async def test_list_holder_capabilities(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_holder_capabilities(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test listing capabilities for a holder."""
         private_key, _ = issuer_keypair
 
@@ -1052,9 +997,7 @@ class TestCapabilityService:
         assert caps[0].holder_did == holder_did
 
     @pytest.mark.asyncio
-    async def test_list_issuer_capabilities(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_list_issuer_capabilities(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test listing capabilities for an issuer."""
         private_key, _ = issuer_keypair
 
@@ -1071,9 +1014,7 @@ class TestCapabilityService:
         assert caps[0].issuer_did == issuer_did
 
     @pytest.mark.asyncio
-    async def test_check_access_granted(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_check_access_granted(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test checking access when granted."""
         private_key, public_key = issuer_keypair
 
@@ -1090,9 +1031,7 @@ class TestCapabilityService:
         assert cap.holder_did == holder_did
 
     @pytest.mark.asyncio
-    async def test_check_access_denied_wrong_action(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_check_access_denied_wrong_action(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test checking access when action not permitted."""
         private_key, public_key = issuer_keypair
 
@@ -1108,9 +1047,7 @@ class TestCapabilityService:
         assert cap is None
 
     @pytest.mark.asyncio
-    async def test_check_access_denied_wrong_resource(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_check_access_denied_wrong_resource(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test checking access when resource doesn't match."""
         private_key, public_key = issuer_keypair
 
@@ -1122,9 +1059,7 @@ class TestCapabilityService:
             issuer_private_key=private_key,
         )
 
-        cap = await service.check_access(
-            holder_did, "different/resource", "read", public_key
-        )
+        cap = await service.check_access(holder_did, "different/resource", "read", public_key)
         assert cap is None
 
 
@@ -1137,9 +1072,7 @@ class TestCapabilityDelegation:
     """Tests for capability delegation."""
 
     @pytest.mark.asyncio
-    async def test_delegate_capability(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_capability(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test delegating a capability."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1169,9 +1102,7 @@ class TestCapabilityDelegation:
         assert "delegate" not in delegated_cap.actions  # Didn't delegate this
 
     @pytest.mark.asyncio
-    async def test_delegate_requires_delegate_action(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_requires_delegate_action(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test that delegation requires delegate action."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1186,9 +1117,7 @@ class TestCapabilityDelegation:
         )
 
         # Try to delegate - should fail
-        with pytest.raises(
-            CapabilityInsufficientPermissionError, match="delegation rights"
-        ):
+        with pytest.raises(CapabilityInsufficientPermissionError, match="delegation rights"):
             await service.delegate(
                 parent_capability=parent_cap,
                 new_holder_did="did:valence:delegatee",
@@ -1197,9 +1126,7 @@ class TestCapabilityDelegation:
             )
 
     @pytest.mark.asyncio
-    async def test_delegate_cannot_exceed_parent_actions(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_cannot_exceed_parent_actions(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test that delegated actions cannot exceed parent's."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1212,9 +1139,7 @@ class TestCapabilityDelegation:
             issuer_private_key=issuer_private,
         )
 
-        with pytest.raises(
-            CapabilityInsufficientPermissionError, match="Cannot delegate actions"
-        ):
+        with pytest.raises(CapabilityInsufficientPermissionError, match="Cannot delegate actions"):
             await service.delegate(
                 parent_capability=parent_cap,
                 new_holder_did="did:valence:delegatee",
@@ -1223,9 +1148,7 @@ class TestCapabilityDelegation:
             )
 
     @pytest.mark.asyncio
-    async def test_delegate_ttl_capped_by_parent(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_ttl_capped_by_parent(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test that delegated TTL cannot exceed parent's remaining TTL."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1251,9 +1174,7 @@ class TestCapabilityDelegation:
         assert delegated_cap.ttl_seconds < 610  # Less than parent's original
 
     @pytest.mark.asyncio
-    async def test_delegate_from_expired_parent_fails(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_from_expired_parent_fails(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test that delegation from expired parent fails."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1279,9 +1200,7 @@ class TestCapabilityDelegation:
             )
 
     @pytest.mark.asyncio
-    async def test_delegate_from_revoked_parent_fails(
-        self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource
-    ):
+    async def test_delegate_from_revoked_parent_fails(self, service, issuer_keypair, holder_keypair, issuer_did, holder_did, resource):
         """Test that delegation from revoked parent fails."""
         issuer_private, _ = issuer_keypair
         holder_private, _ = holder_keypair
@@ -1314,9 +1233,7 @@ class TestCapabilityConfiguration:
     """Tests for capability service configuration."""
 
     @pytest.mark.asyncio
-    async def test_custom_default_ttl(
-        self, store, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_custom_default_ttl(self, store, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test custom default TTL."""
         private_key, _ = issuer_keypair
 
@@ -1336,9 +1253,7 @@ class TestCapabilityConfiguration:
         assert 290 < cap.ttl_seconds <= 300
 
     @pytest.mark.asyncio
-    async def test_custom_max_ttl(
-        self, store, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_custom_max_ttl(self, store, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test custom maximum TTL."""
         private_key, _ = issuer_keypair
 
@@ -1382,9 +1297,7 @@ class TestSingletonAndConvenience:
             set_capability_service(original)
 
     @pytest.mark.asyncio
-    async def test_convenience_functions(
-        self, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_convenience_functions(self, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test module-level convenience functions."""
         private_key, public_key = issuer_keypair
 
@@ -1431,7 +1344,6 @@ class TestSingletonAndConvenience:
 import time  # noqa: E402
 
 import jwt as pyjwt  # noqa: E402
-
 from valence.privacy.capabilities import CapabilityInvalidError  # noqa: E402
 
 
@@ -1609,9 +1521,9 @@ class TestCapabilityCreateFactory:
         assert cap.id is not None
         assert len(cap.id) == 36  # UUID format
 
-        # Check TTL is approximately 1 hour
+        # Check TTL is approximately 15 minutes (DEFAULT_TTL_SECONDS = 900)
         ttl = cap.ttl_seconds
-        assert 3599 < ttl <= DEFAULT_TTL_SECONDS
+        assert 899 < ttl <= DEFAULT_TTL_SECONDS
 
     def test_create_with_custom_ttl(self, issuer_did, holder_did, resource):
         """Test creating a capability with custom TTL."""
@@ -1792,9 +1704,7 @@ class TestValidateCapability:
         assert result.resource == resource
         assert result.action == "read"
 
-    def test_validate_expired_capability(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_validate_expired_capability(self, issuer_did, holder_did, resource, actions):
         """Test validating an expired capability."""
         past = datetime.now(UTC) - timedelta(hours=2)
         cap = Capability(
@@ -1813,9 +1723,7 @@ class TestValidateCapability:
         assert len(result.errors) == 1
         assert "expired" in result.errors[0].lower()
 
-    def test_validate_revoked_capability(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_validate_revoked_capability(self, issuer_did, holder_did, resource, actions):
         """Test validating a revoked capability."""
         now = datetime.now(UTC)
         cap = Capability(
@@ -1838,9 +1746,7 @@ class TestValidateCapability:
 
     def test_validate_wrong_resource(self, valid_capability):
         """Test validating against wrong resource."""
-        result = validate_capability(
-            valid_capability, "valence://other/resource", "read"
-        )
+        result = validate_capability(valid_capability, "valence://other/resource", "read")
 
         assert not result.is_valid
         assert len(result.errors) == 1
@@ -1888,9 +1794,7 @@ class TestValidateCapability:
             result = validate_capability(cap, resource, action)
             assert result.is_valid, f"Admin should allow action: {action}"
 
-    def test_validate_skip_revocation_check(
-        self, issuer_did, holder_did, resource, actions
-    ):
+    def test_validate_skip_revocation_check(self, issuer_did, holder_did, resource, actions):
         """Test skipping revocation check."""
         now = datetime.now(UTC)
         cap = Capability(
@@ -1905,15 +1809,11 @@ class TestValidateCapability:
         )
 
         # With check_revocation=True (default) - fails
-        result_with_check = validate_capability(
-            cap, resource, "read", check_revocation=True
-        )
+        result_with_check = validate_capability(cap, resource, "read", check_revocation=True)
         assert not result_with_check.is_valid
 
         # With check_revocation=False - passes
-        result_no_check = validate_capability(
-            cap, resource, "read", check_revocation=False
-        )
+        result_no_check = validate_capability(cap, resource, "read", check_revocation=False)
         assert result_no_check.is_valid
 
 
@@ -1921,9 +1821,7 @@ class TestValidateCapabilityAsync:
     """Tests for validate_capability_async function."""
 
     @pytest.mark.asyncio
-    async def test_async_validation_with_store(
-        self, store, issuer_did, holder_did, resource, actions
-    ):
+    async def test_async_validation_with_store(self, store, issuer_did, holder_did, resource, actions):
         """Test async validation checks store for revocation."""
         now = datetime.now(UTC)
         cap = Capability(
@@ -2045,9 +1943,7 @@ class TestRequiresCapabilityDecorator:
         result = get_data("users", capability=cap)
         assert result == "data from users"
 
-    def test_decorator_with_dynamic_resource_wrong_resource(
-        self, issuer_did, holder_did
-    ):
+    def test_decorator_with_dynamic_resource_wrong_resource(self, issuer_did, holder_did):
         """Test decorator with callable resource resolver - wrong resource."""
         cap = Capability.create(
             issuer_did=issuer_did,
@@ -2094,9 +1990,7 @@ class TestRequiresCapabilityDecorator:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_async_decorator_with_store(
-        self, store, issuer_did, holder_did, test_resource
-    ):
+    async def test_async_decorator_with_store(self, store, issuer_did, holder_did, test_resource):
         """Test async decorator with store for revocation checking."""
         cap = Capability.create(
             issuer_did=issuer_did,
@@ -2107,9 +2001,7 @@ class TestRequiresCapabilityDecorator:
         await store.save(cap)
 
         @requires_capability(test_resource, "read", store_param="store")
-        async def protected_function(
-            capability: Capability, store: InMemoryCapabilityStore
-        ) -> str:
+        async def protected_function(capability: Capability, store: InMemoryCapabilityStore) -> str:
             return "success"
 
         # Initially works
@@ -2128,9 +2020,7 @@ class TestCapabilityServiceValidation:
     """Tests for CapabilityService.validate_capability method (Issue #79)."""
 
     @pytest.mark.asyncio
-    async def test_service_validate_valid_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_valid_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validating a valid capability through service."""
         private_key, public_key = issuer_keypair
 
@@ -2142,17 +2032,13 @@ class TestCapabilityServiceValidation:
             issuer_private_key=private_key,
         )
 
-        result = await service.validate_capability(
-            cap, resource, "read", issuer_public_key=public_key
-        )
+        result = await service.validate_capability(cap, resource, "read", issuer_public_key=public_key)
 
         assert result.is_valid
         assert result.errors == []
 
     @pytest.mark.asyncio
-    async def test_service_validate_wrong_resource(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_wrong_resource(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validating capability with wrong resource."""
         private_key, _ = issuer_keypair
 
@@ -2164,17 +2050,13 @@ class TestCapabilityServiceValidation:
             issuer_private_key=private_key,
         )
 
-        result = await service.validate_capability(
-            cap, "wrong/resource", "read", verify_signature=False
-        )
+        result = await service.validate_capability(cap, "wrong/resource", "read", verify_signature=False)
 
         assert not result.is_valid
         assert any("mismatch" in err.lower() for err in result.errors)
 
     @pytest.mark.asyncio
-    async def test_service_validate_wrong_action(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_wrong_action(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validating capability with unpermitted action."""
         private_key, _ = issuer_keypair
 
@@ -2186,17 +2068,13 @@ class TestCapabilityServiceValidation:
             issuer_private_key=private_key,
         )
 
-        result = await service.validate_capability(
-            cap, resource, "delete", verify_signature=False
-        )
+        result = await service.validate_capability(cap, resource, "delete", verify_signature=False)
 
         assert not result.is_valid
         assert any("not permitted" in err.lower() for err in result.errors)
 
     @pytest.mark.asyncio
-    async def test_service_validate_revoked_capability(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_revoked_capability(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validating a revoked capability through service."""
         private_key, public_key = issuer_keypair
 
@@ -2211,17 +2089,13 @@ class TestCapabilityServiceValidation:
         # Revoke the capability
         await service.revoke(cap.id, "Security incident")
 
-        result = await service.validate_capability(
-            cap, resource, "read", issuer_public_key=public_key
-        )
+        result = await service.validate_capability(cap, resource, "read", issuer_public_key=public_key)
 
         assert not result.is_valid
         assert any("revoked" in err.lower() for err in result.errors)
 
     @pytest.mark.asyncio
-    async def test_service_validate_with_signature_verification(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_with_signature_verification(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validation includes signature verification."""
         private_key, public_key = issuer_keypair
 
@@ -2248,9 +2122,7 @@ class TestCapabilityServiceValidation:
         assert any("signature" in err.lower() for err in result.errors)
 
     @pytest.mark.asyncio
-    async def test_service_validate_skip_signature(
-        self, service, issuer_keypair, issuer_did, holder_did, resource, actions
-    ):
+    async def test_service_validate_skip_signature(self, service, issuer_keypair, issuer_did, holder_did, resource, actions):
         """Test validation can skip signature verification."""
         private_key, _ = issuer_keypair
 

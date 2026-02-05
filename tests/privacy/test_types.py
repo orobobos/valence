@@ -200,10 +200,7 @@ class TestSharePolicy:
         assert restored.level == original.level
         assert restored.enforcement == original.enforcement
         assert restored.propagation.max_hops == original.propagation.max_hops
-        assert (
-            restored.propagation.min_trust_to_receive
-            == original.propagation.min_trust_to_receive
-        )
+        assert restored.propagation.min_trust_to_receive == original.propagation.min_trust_to_receive
 
     def test_allows_sharing_private(self):
         """Test that private policy blocks all sharing."""
