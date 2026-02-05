@@ -7,6 +7,8 @@ import logging
 import sys
 from unittest.mock import MagicMock, patch
 
+from valence.core.config import clear_config_cache
+
 # ============================================================================
 # Correlation ID Tests
 # ============================================================================
@@ -427,6 +429,7 @@ class TestConfigureLogging:
         """Should read level from environment variable."""
         from valence.core.logging import configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_LEVEL", "CRITICAL")
         configure_logging()
         root = logging.getLogger()
@@ -445,6 +448,7 @@ class TestConfigureLogging:
         """Should use JSON format from VALENCE_LOG_FORMAT=json."""
         from valence.core.logging import JSONFormatter, configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_FORMAT", "json")
         configure_logging()
         root = logging.getLogger()
@@ -455,6 +459,7 @@ class TestConfigureLogging:
         """Should use text format from VALENCE_LOG_FORMAT=text."""
         from valence.core.logging import StandardFormatter, configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_FORMAT", "text")
         configure_logging()
         root = logging.getLogger()

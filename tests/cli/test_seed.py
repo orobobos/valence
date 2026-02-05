@@ -13,7 +13,6 @@ import argparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.cli.seed import (
     async_main,
     cmd_discover,
@@ -219,7 +218,7 @@ class TestGetConfigFromEnv:
         mock_core_config.seed_id = None
         mock_core_config.seed_peers = None
 
-        with patch("valence.cli.seed.get_config", return_value=mock_core_config):
+        with patch("valence.core.config.get_config", return_value=mock_core_config):
             config = get_config_from_env()
 
         assert config == {}
@@ -232,7 +231,7 @@ class TestGetConfigFromEnv:
         mock_core_config.seed_id = "test-seed"
         mock_core_config.seed_peers = "https://peer1.com, https://peer2.com"
 
-        with patch("valence.cli.seed.get_config", return_value=mock_core_config):
+        with patch("valence.core.config.get_config", return_value=mock_core_config):
             config = get_config_from_env()
 
         assert config["host"] == "0.0.0.0"
@@ -248,7 +247,7 @@ class TestGetConfigFromEnv:
         mock_core_config.seed_id = None
         mock_core_config.seed_peers = "   ,  "  # Empty after stripping
 
-        with patch("valence.cli.seed.get_config", return_value=mock_core_config):
+        with patch("valence.core.config.get_config", return_value=mock_core_config):
             config = get_config_from_env()
 
         assert "known_seeds" not in config or config.get("known_seeds") == []
@@ -333,7 +332,7 @@ class TestCmdStatus:
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
-            with patch("valence.cli.seed.get_config", return_value=mock_config):
+            with patch("valence.core.config.get_config", return_value=mock_config):
                 result = await cmd_status(args)
 
         assert result == 0
@@ -383,9 +382,7 @@ class TestCmdStatus:
         )
 
         mock_session = AsyncMock()
-        mock_session.get = MagicMock(
-            side_effect=aiohttp.ClientError("Connection refused")
-        )
+        mock_session.get = MagicMock(side_effect=aiohttp.ClientError("Connection refused"))
 
         mock_session_ctx = AsyncMock()
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
@@ -542,7 +539,7 @@ class TestCmdDiscover:
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
-            with patch("valence.cli.seed.get_config", return_value=mock_config):
+            with patch("valence.core.config.get_config", return_value=mock_config):
                 result = await cmd_discover(args)
 
         assert result == 0
@@ -588,7 +585,7 @@ class TestCmdDiscover:
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
-            with patch("valence.cli.seed.get_config", return_value=mock_config):
+            with patch("valence.core.config.get_config", return_value=mock_config):
                 result = await cmd_discover(args)
 
         assert result == 0
@@ -673,9 +670,7 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch(
-            "valence.cli.seed.cmd_status", new_callable=AsyncMock
-        ) as mock_status:
+        with patch("valence.cli.seed.cmd_status", new_callable=AsyncMock) as mock_status:
             mock_status.return_value = 0
             result = await async_main(args)
 
@@ -696,9 +691,7 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch(
-            "valence.cli.seed.cmd_discover", new_callable=AsyncMock
-        ) as mock_discover:
+        with patch("valence.cli.seed.cmd_discover", new_callable=AsyncMock) as mock_discover:
             mock_discover.return_value = 0
             result = await async_main(args)
 
