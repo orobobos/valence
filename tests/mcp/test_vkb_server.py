@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 import pytest
-
 
 # ============================================================================
 # Test Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_cursor():
@@ -39,6 +38,7 @@ def mock_get_cursor(mock_cursor):
 # ============================================================================
 # session_start Tests
 # ============================================================================
+
 
 class TestSessionStart:
     """Tests for session_start function."""
@@ -151,6 +151,7 @@ class TestSessionStart:
 # ============================================================================
 # session_end Tests
 # ============================================================================
+
 
 class TestSessionEnd:
     """Tests for session_end function."""
@@ -275,6 +276,7 @@ class TestSessionEnd:
 # session_get Tests
 # ============================================================================
 
+
 class TestSessionGet:
     """Tests for session_get function."""
 
@@ -365,6 +367,7 @@ class TestSessionGet:
 # session_list Tests
 # ============================================================================
 
+
 class TestSessionList:
     """Tests for session_list function."""
 
@@ -427,6 +430,7 @@ class TestSessionList:
 # session_find_by_room Tests
 # ============================================================================
 
+
 class TestSessionFindByRoom:
     """Tests for session_find_by_room function."""
 
@@ -473,6 +477,7 @@ class TestSessionFindByRoom:
 # ============================================================================
 # exchange_add Tests
 # ============================================================================
+
 
 class TestExchangeAdd:
     """Tests for exchange_add function."""
@@ -554,9 +559,7 @@ class TestExchangeAdd:
             },
         ]
 
-        result = exchange_add(
-            str(session_id), "user", "Test", tokens_approx=150
-        )
+        result = exchange_add(str(session_id), "user", "Test", tokens_approx=150)
 
         assert result["success"] is True
 
@@ -564,6 +567,7 @@ class TestExchangeAdd:
 # ============================================================================
 # exchange_list Tests
 # ============================================================================
+
 
 class TestExchangeList:
     """Tests for exchange_list function."""
@@ -611,6 +615,7 @@ class TestExchangeList:
 # ============================================================================
 # pattern_record Tests
 # ============================================================================
+
 
 class TestPatternRecord:
     """Tests for pattern_record function."""
@@ -660,11 +665,7 @@ class TestPatternRecord:
             "last_observed": now,
         }
 
-        result = pattern_record(
-            "topic_recurrence",
-            "Discusses testing often",
-            evidence=[str(session_id)]
-        )
+        result = pattern_record("topic_recurrence", "Discusses testing often", evidence=[str(session_id)])
 
         assert result["success"] is True
 
@@ -695,6 +696,7 @@ class TestPatternRecord:
 # ============================================================================
 # pattern_reinforce Tests
 # ============================================================================
+
 
 class TestPatternReinforce:
     """Tests for pattern_reinforce function."""
@@ -829,6 +831,7 @@ class TestPatternReinforce:
 # pattern_list Tests
 # ============================================================================
 
+
 class TestPatternList:
     """Tests for pattern_list function."""
 
@@ -899,6 +902,7 @@ class TestPatternList:
 # pattern_search Tests
 # ============================================================================
 
+
 class TestPatternSearch:
     """Tests for pattern_search function."""
 
@@ -944,6 +948,7 @@ class TestPatternSearch:
 # ============================================================================
 # insight_extract Tests
 # ============================================================================
+
 
 class TestInsightExtract:
     """Tests for insight_extract function."""
@@ -1012,11 +1017,7 @@ class TestInsightExtract:
             {"id": uuid4()},
         ]
 
-        result = insight_extract(
-            str(session_id),
-            "Test",
-            domain_path=["tech", "preferences"]
-        )
+        result = insight_extract(str(session_id), "Test", domain_path=["tech", "preferences"])
 
         assert result["success"] is True
 
@@ -1050,11 +1051,7 @@ class TestInsightExtract:
             {"id": uuid4()},  # Insight link
         ]
 
-        result = insight_extract(
-            str(session_id),
-            "Test",
-            entities=[{"name": "Python", "type": "tool"}]
-        )
+        result = insight_extract(str(session_id), "Test", entities=[{"name": "Python", "type": "tool"}])
 
         assert result["success"] is True
 
@@ -1062,6 +1059,7 @@ class TestInsightExtract:
 # ============================================================================
 # insight_list Tests
 # ============================================================================
+
 
 class TestInsightList:
     """Tests for insight_list function."""

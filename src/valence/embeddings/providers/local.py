@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Model singleton (lazy loaded)
-_model: "SentenceTransformer | None" = None
+_model: SentenceTransformer | None = None
 _model_lock = threading.Lock()  # Thread lock for model initialization
 
 # Default model - bge-small-en-v1.5 is excellent for semantic similarity
@@ -51,26 +51,26 @@ def _is_local_path(model_path: str) -> bool:
     return path.exists() or model_path.startswith(("/", "./", "../", "~"))
 
 
-def get_model() -> "SentenceTransformer":
+def get_model() -> SentenceTransformer:
     """Get or initialize the sentence transformer model.
-    
+
     The model is lazily loaded and cached for reuse.
     Thread-safe initialization using double-checked locking pattern.
-    
+
     Environment variables:
         VALENCE_EMBEDDING_MODEL_PATH: Model name/path (default: BAAI/bge-small-en-v1.5)
             - HuggingFace model name: downloads if not cached
             - Local filesystem path: loads directly (for offline use)
         VALENCE_EMBEDDING_DEVICE: Device to run on (cpu|cuda, default: cpu)
-    
+
     Returns:
         Loaded SentenceTransformer model
-        
+
     Raises:
         ModelLoadError: If model cannot be loaded (with helpful offline instructions)
     """
     global _model
-    
+
     if _model is None:
         with _model_lock:
             # Double-check after acquiring lock
@@ -78,18 +78,16 @@ def get_model() -> "SentenceTransformer":
                 try:
                     from sentence_transformers import SentenceTransformer
                 except ImportError as e:
-                    raise ModelLoadError(
-                        "sentence-transformers not installed. "
-                        "Install with: pip install sentence-transformers"
-                    ) from e
-                
+                    raise ModelLoadError("sentence-transformers not installed. Install with: pip install sentence-transformers") from e
+
                 from ...core.config import get_config
+
                 config = get_config()
                 model_path = config.embedding_model_path
                 device = config.embedding_device
-                
+
                 is_local = _is_local_path(model_path)
-                
+
                 if is_local:
                     resolved_path = Path(model_path).expanduser().resolve()
                     if not resolved_path.exists():
@@ -105,7 +103,7 @@ def get_model() -> "SentenceTransformer":
                 else:
                     logger.info(f"Loading embedding model: {model_path} (device={device})")
                     load_path = model_path
-                
+
                 try:
                     _model = SentenceTransformer(load_path, device=device)
                 except OSError as e:
@@ -126,31 +124,31 @@ def get_model() -> "SentenceTransformer":
                     raise ModelLoadError(f"Failed to load embedding model: {e}") from e
                 except Exception as e:
                     raise ModelLoadError(f"Failed to load embedding model '{model_path}': {e}") from e
-                
+
                 dim = _model.get_sentence_embedding_dimension()
                 logger.info(f"Embedding model ready (dim={dim})")
-    
+
     return _model
 
 
 def generate_embedding(text: str) -> list[float]:
     """Generate a single embedding for text.
-    
+
     Uses BGE model which produces L2-normalized embeddings by default
     when normalize_embeddings=True.
-    
+
     Args:
         text: Text to embed
-        
+
     Returns:
         384-dimensional embedding vector (L2 normalized)
     """
     model = get_model()
-    
+
     # BGE models work best with a query prefix for retrieval tasks,
     # but for storage we embed without prefix
     embedding = model.encode(text, normalize_embeddings=True)
-    
+
     return embedding.tolist()
 
 
@@ -160,36 +158,36 @@ def generate_embeddings_batch(
     show_progress: bool | None = None,
 ) -> list[list[float]]:
     """Generate embeddings for multiple texts efficiently.
-    
+
     Uses batching for better throughput on GPU/CPU.
     Shows progress bar for large batches (>100 texts).
-    
+
     Args:
         texts: List of texts to embed
         batch_size: Batch size for processing (default: 32)
         show_progress: Show progress bar (default: True if >100 texts)
-        
+
     Returns:
         List of 384-dimensional embedding vectors (L2 normalized)
     """
     model = get_model()
-    
+
     if show_progress is None:
         show_progress = len(texts) > 100
-    
+
     embeddings = model.encode(
         texts,
         normalize_embeddings=True,
         batch_size=batch_size,
         show_progress_bar=show_progress,
     )
-    
+
     return embeddings.tolist()
 
 
 def reset_model() -> None:
     """Reset the cached model (useful for testing).
-    
+
     Thread-safe reset using lock.
     """
     global _model

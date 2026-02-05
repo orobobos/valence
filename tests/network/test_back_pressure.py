@@ -11,16 +11,13 @@ These tests verify:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from valence.network.router import Connection, QueuedMessage, RouterNode
 from valence.network.messages import BackPressureMessage
-
+from valence.network.router import Connection, QueuedMessage, RouterNode
 
 # =============================================================================
 # Unit Tests - BackPressureMessage
@@ -101,7 +98,7 @@ class TestRouterLoadTracking:
     def test_get_load_pct_connections_only(self):
         """Test load calculation based on connections."""
         router = RouterNode(max_connections=100)
-        
+
         # Add 50 connections (50% of max)
         for i in range(50):
             ws = MagicMock()
@@ -111,7 +108,7 @@ class TestRouterLoadTracking:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         load = router.get_load_pct()
         # 50% connection load * 0.7 weight = 35%
         assert load == pytest.approx(35.0, rel=0.01)
@@ -120,14 +117,11 @@ class TestRouterLoadTracking:
         """Test load calculation based on queued messages."""
         router = RouterNode()
         router.MAX_QUEUE_SIZE = 1000
-        
+
         # Add 500 queued messages across multiple nodes
         for i in range(50):
-            router.offline_queues[f"node-{i}"] = [
-                QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5)
-                for j in range(10)
-            ]
-        
+            router.offline_queues[f"node-{i}"] = [QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5) for j in range(10)]
+
         load = router.get_load_pct()
         # 500/1000 = 50% queue load * 0.3 weight = 15%
         assert load == pytest.approx(15.0, rel=0.01)
@@ -136,7 +130,7 @@ class TestRouterLoadTracking:
         """Test combined load from connections and queues."""
         router = RouterNode(max_connections=100)
         router.MAX_QUEUE_SIZE = 1000
-        
+
         # 80 connections (80% of max)
         for i in range(80):
             ws = MagicMock()
@@ -146,14 +140,11 @@ class TestRouterLoadTracking:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # 600 queued messages (60% of max)
         for i in range(60):
-            router.offline_queues[f"offline-{i}"] = [
-                QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5)
-                for j in range(10)
-            ]
-        
+            router.offline_queues[f"offline-{i}"] = [QueuedMessage(f"msg-{i}-{j}", "payload", time.time(), 5) for j in range(10)]
+
         load = router.get_load_pct()
         # (80% * 0.7) + (60% * 0.3) = 56 + 18 = 74%
         assert load == pytest.approx(74.0, rel=0.01)
@@ -185,7 +176,7 @@ class TestRouterBackPressureSettings:
         """Test is_back_pressure_active property."""
         router = RouterNode()
         assert router.is_back_pressure_active is False
-        
+
         router._back_pressure_active = True
         assert router.is_back_pressure_active is True
 
@@ -204,7 +195,7 @@ class TestRouterBackPressureActivation:
         # With connection weight of 0.7, need >80/0.7 = 114% connections
         # So we use a lower threshold
         router = RouterNode(max_connections=10, back_pressure_threshold=60.0)
-        
+
         # Add 9 connections (90% connection load * 0.7 weight = 63% total load)
         for i in range(9):
             ws = AsyncMock()
@@ -214,11 +205,11 @@ class TestRouterBackPressureActivation:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         assert router._back_pressure_active is False
-        
+
         await router._check_back_pressure()
-        
+
         assert router._back_pressure_active is True
 
     @pytest.mark.asyncio
@@ -230,7 +221,7 @@ class TestRouterBackPressureActivation:
             back_pressure_release_threshold=50.0,
         )
         router._back_pressure_active = True
-        
+
         # Add 3 connections (30% load from connections alone)
         for i in range(3):
             ws = AsyncMock()
@@ -240,9 +231,9 @@ class TestRouterBackPressureActivation:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         await router._check_back_pressure()
-        
+
         assert router._back_pressure_active is False
 
     @pytest.mark.asyncio
@@ -256,7 +247,7 @@ class TestRouterBackPressureActivation:
             back_pressure_threshold=55.0,  # Will activate at >55%
             back_pressure_release_threshold=35.0,  # Will release at <35%
         )
-        
+
         # 5 connections = 50% * 0.7 = 35% load (exactly at release threshold)
         for i in range(5):
             ws = AsyncMock()
@@ -266,14 +257,14 @@ class TestRouterBackPressureActivation:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # Should NOT activate (35% < 55% threshold)
         await router._check_back_pressure()
         assert router._back_pressure_active is False
-        
+
         # Manually activate
         router._back_pressure_active = True
-        
+
         # Add one more connection to be clearly above release threshold
         ws = AsyncMock()
         router.connections["node-5"] = Connection(
@@ -283,7 +274,7 @@ class TestRouterBackPressureActivation:
             last_seen=time.time(),
         )
         # Now 6 connections = 60% * 0.7 = 42% load, above 35% release threshold
-        
+
         # Should NOT release (42% > 35% release threshold)
         await router._check_back_pressure()
         assert router._back_pressure_active is True
@@ -292,7 +283,7 @@ class TestRouterBackPressureActivation:
     async def test_activate_back_pressure_broadcasts(self):
         """Test that activating back-pressure broadcasts to all nodes."""
         router = RouterNode(max_connections=10)
-        
+
         # Add 3 connected nodes
         for i in range(3):
             ws = AsyncMock()
@@ -302,9 +293,9 @@ class TestRouterBackPressureActivation:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         await router._activate_back_pressure(85.0)
-        
+
         # All 3 nodes should have been notified
         for conn in router.connections.values():
             conn.websocket.send_json.assert_called_once()
@@ -312,7 +303,7 @@ class TestRouterBackPressureActivation:
             assert call_args["type"] == "back_pressure"
             assert call_args["active"] is True
             assert call_args["load_pct"] == 85.0
-        
+
         # Nodes should be tracked
         assert len(router._back_pressure_nodes) == 3
 
@@ -320,7 +311,7 @@ class TestRouterBackPressureActivation:
     async def test_release_back_pressure_notifies_tracked_nodes(self):
         """Test that releasing back-pressure notifies previously notified nodes."""
         router = RouterNode(max_connections=10)
-        
+
         # Set up some connected nodes
         for i in range(3):
             ws = AsyncMock()
@@ -330,13 +321,13 @@ class TestRouterBackPressureActivation:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # Simulate previous activation
         router._back_pressure_active = True
         router._back_pressure_nodes = {"node-0", "node-1", "node-2"}
-        
+
         await router._release_back_pressure(55.0)
-        
+
         # All 3 nodes should have been notified of release
         for conn in router.connections.values():
             conn.websocket.send_json.assert_called_once()
@@ -344,7 +335,7 @@ class TestRouterBackPressureActivation:
             assert call_args["type"] == "back_pressure"
             assert call_args["active"] is False
             assert call_args["load_pct"] == 55.0
-        
+
         # Tracked nodes should be cleared
         assert len(router._back_pressure_nodes) == 0
 
@@ -362,7 +353,7 @@ class TestRouterEndpointsBackPressure:
         """Test health endpoint includes back-pressure status."""
         router = RouterNode()
         router._back_pressure_active = True
-        
+
         # Add some load
         for i in range(5):
             ws = MagicMock()
@@ -372,10 +363,10 @@ class TestRouterEndpointsBackPressure:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         request = MagicMock()
         response = await router.handle_health(request)
-        
+
         data = json.loads(response.body)
         assert "back_pressure" in data
         assert data["back_pressure"]["active"] is True
@@ -390,12 +381,12 @@ class TestRouterEndpointsBackPressure:
         )
         router._back_pressure_active = True
         router._back_pressure_nodes = {"node-1", "node-2"}
-        
+
         # Mock circuit stats to avoid unrelated initialization issues
-        with patch.object(router, 'get_circuit_stats', return_value={"circuits_active": 0}):
+        with patch.object(router, "get_circuit_stats", return_value={"circuits_active": 0}):
             request = MagicMock()
             response = await router.handle_status(request)
-            
+
             data = json.loads(response.body)
             assert "back_pressure" in data
             bp = data["back_pressure"]
@@ -418,7 +409,7 @@ class TestBackPressureDuringRelay:
         """Test that handling a relay checks back-pressure status."""
         # 9 connections = 90% * 0.7 = 63% load, so threshold must be <= 63%
         router = RouterNode(max_connections=10, back_pressure_threshold=60.0)
-        
+
         # Add enough connections to trigger back-pressure
         for i in range(9):
             ws = AsyncMock()
@@ -428,17 +419,19 @@ class TestBackPressureDuringRelay:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         assert router._back_pressure_active is False
-        
+
         # Handle a relay message
-        await router._handle_relay({
-            "message_id": "msg-1",
-            "next_hop": "offline-node",
-            "payload": "encrypted_data",
-            "ttl": 10,
-        })
-        
+        await router._handle_relay(
+            {
+                "message_id": "msg-1",
+                "next_hop": "offline-node",
+                "payload": "encrypted_data",
+                "ttl": 10,
+            }
+        )
+
         # Back-pressure should now be active
         assert router._back_pressure_active is True
 
@@ -451,7 +444,7 @@ class TestBackPressureDuringRelay:
             back_pressure_release_threshold=50.0,
         )
         router._back_pressure_active = True
-        
+
         # Only 3 connections now (30% load)
         for i in range(3):
             ws = AsyncMock()
@@ -461,15 +454,17 @@ class TestBackPressureDuringRelay:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # Handle a relay message
-        await router._handle_relay({
-            "message_id": "msg-1",
-            "next_hop": "offline-node",
-            "payload": "encrypted_data",
-            "ttl": 10,
-        })
-        
+        await router._handle_relay(
+            {
+                "message_id": "msg-1",
+                "next_hop": "offline-node",
+                "payload": "encrypted_data",
+                "ttl": 10,
+            }
+        )
+
         # Back-pressure should be released
         assert router._back_pressure_active is False
 
@@ -484,9 +479,9 @@ class TestNodeBackPressureHandling:
 
     def test_router_connection_back_pressure_defaults(self):
         """Test RouterConnection back-pressure defaults."""
-        from valence.network.node import RouterConnection
         from valence.network.discovery import RouterInfo
-        
+        from valence.network.node import RouterConnection
+
         router_info = RouterInfo(
             router_id="test-router",
             endpoints=["127.0.0.1:8471"],
@@ -495,7 +490,7 @@ class TestNodeBackPressureHandling:
             regions=[],
             features=[],
         )
-        
+
         # Create minimal connection (can't use real websocket in unit test)
         # Just test the dataclass defaults
         conn = RouterConnection(
@@ -505,16 +500,16 @@ class TestNodeBackPressureHandling:
             connected_at=time.time(),
             last_seen=time.time(),
         )
-        
+
         assert conn.back_pressure_active is False
         assert conn.back_pressure_until == 0.0
         assert conn.back_pressure_retry_ms == 1000
 
     def test_router_connection_is_under_back_pressure(self):
         """Test is_under_back_pressure property."""
-        from valence.network.node import RouterConnection
         from valence.network.discovery import RouterInfo
-        
+        from valence.network.node import RouterConnection
+
         router_info = RouterInfo(
             router_id="test-router",
             endpoints=["127.0.0.1:8471"],
@@ -523,7 +518,7 @@ class TestNodeBackPressureHandling:
             regions=[],
             features=[],
         )
-        
+
         conn = RouterConnection(
             router=router_info,
             websocket=MagicMock(),
@@ -531,15 +526,15 @@ class TestNodeBackPressureHandling:
             connected_at=time.time(),
             last_seen=time.time(),
         )
-        
+
         # Not under back-pressure by default
         assert conn.is_under_back_pressure is False
-        
+
         # Activate back-pressure
         conn.back_pressure_active = True
         conn.back_pressure_until = time.time() + 10  # 10 seconds from now
         assert conn.is_under_back_pressure is True
-        
+
         # Expired back-pressure
         conn.back_pressure_until = time.time() - 1  # 1 second ago
         assert conn.is_under_back_pressure is False
@@ -565,7 +560,7 @@ class TestBackPressureIntegration:
             back_pressure_threshold=50.0,  # Activates at 50% load
             back_pressure_release_threshold=25.0,  # Releases at 25% load
         )
-        
+
         # Add initial connections (below threshold: 5 * 0.7 = 35% < 50%)
         for i in range(5):
             ws = AsyncMock()
@@ -575,11 +570,11 @@ class TestBackPressureIntegration:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # Verify not under back-pressure
         await router._check_back_pressure()
         assert router._back_pressure_active is False
-        
+
         # Add more connections (above threshold: 9 * 0.7 = 63% > 50%)
         for i in range(5, 9):
             ws = AsyncMock()
@@ -589,33 +584,33 @@ class TestBackPressureIntegration:
                 connected_at=time.time(),
                 last_seen=time.time(),
             )
-        
+
         # Check back-pressure - should activate
         await router._check_back_pressure()
         assert router._back_pressure_active is True
         assert len(router._back_pressure_nodes) == 9
-        
+
         # Verify all nodes received back-pressure signal
         for conn in router.connections.values():
             conn.websocket.send_json.assert_called()
             last_call = conn.websocket.send_json.call_args[0][0]
             assert last_call["type"] == "back_pressure"
             assert last_call["active"] is True
-        
+
         # Remove connections (below release threshold)
         # Reset mocks first
         for conn in router.connections.values():
             conn.websocket.reset_mock()
-        
+
         # Remove 6 connections, leaving only 3 (30% * 0.7 = 21% load < 25%)
         for i in range(6):
             del router.connections[f"node-{i}"]
-        
+
         # Check back-pressure - should release
         await router._check_back_pressure()
         assert router._back_pressure_active is False
         assert len(router._back_pressure_nodes) == 0
-        
+
         # Verify remaining nodes received release signal
         for conn in router.connections.values():
             conn.websocket.send_json.assert_called()

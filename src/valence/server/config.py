@@ -6,7 +6,6 @@ import logging
 import secrets
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -62,14 +61,14 @@ class ServerSettings(BaseSettings):
         description="Secret for signing JWTs (REQUIRED in production - set VALENCE_OAUTH_JWT_SECRET)",
     )
     oauth_jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
-    oauth_access_token_expiry: int = Field(
-        default=3600, description="Access token expiry in seconds (default: 1 hour)"
-    )
+    oauth_access_token_expiry: int = Field(default=3600, description="Access token expiry in seconds (default: 1 hour)")
     oauth_refresh_token_expiry: int = Field(
-        default=86400 * 30, description="Refresh token expiry in seconds (default: 30 days)"
+        default=86400 * 30,
+        description="Refresh token expiry in seconds (default: 30 days)",
     )
     oauth_code_expiry: int = Field(
-        default=600, description="Authorization code expiry in seconds (default: 10 minutes)"
+        default=600,
+        description="Authorization code expiry in seconds (default: 10 minutes)",
     )
 
     # OAuth user credentials (simple single-user setup)
@@ -202,7 +201,7 @@ class ServerSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_production_settings(self) -> "ServerSettings":
+    def validate_production_settings(self) -> ServerSettings:
         """Validate security settings for production environments.
 
         In production (when host is not localhost/127.0.0.1 or external_url is set),
@@ -210,15 +209,14 @@ class ServerSettings(BaseSettings):
         """
         is_production = (
             self.external_url is not None
-            or self.host not in ("localhost", "127.0.0.1", "0.0.0.0")
+            or self.host not in ("localhost", "127.0.0.1", "0.0.0.0")  # nosec B104
             or self.production
         )
 
         if is_production and self.oauth_enabled:
             if not self.oauth_jwt_secret:
                 raise ValueError(
-                    "VALENCE_OAUTH_JWT_SECRET is required in production. "
-                    "Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
+                    "VALENCE_OAUTH_JWT_SECRET is required in production. Generate one with: python -c 'import secrets; print(secrets.token_hex(32))'"
                 )
             # Warn if secret looks weak (too short)
             if len(self.oauth_jwt_secret) < 32:
@@ -268,6 +266,7 @@ def get_settings() -> ServerSettings:
         _settings = ServerSettings()
         # Register with core config layer so federation can access without importing server
         from ..core.config import set_federation_config
+
         set_federation_config(_settings)
     return _settings
 

@@ -4,25 +4,22 @@ Tests for ConnectionManager component.
 Tests cover:
 - Connection lifecycle (establishment, closure)
 - IP diversity enforcement
-- ASN diversity enforcement  
+- ASN diversity enforcement
 - Failover state management
 - Connection statistics
 """
 
 from __future__ import annotations
 
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.network.connection_manager import (
     ConnectionManager,
     ConnectionManagerConfig,
 )
 from valence.network.discovery import RouterInfo
-
 
 # =============================================================================
 # Fixtures
@@ -176,7 +173,7 @@ class TestIPDiversity:
         """Test IP diversity check for router in same /16 subnet."""
         # Simulate that we already have a connection to this subnet
         connection_manager._connected_subnets.add("192.168.0.0/16")
-        
+
         # Same subnet should be rejected
         assert connection_manager.check_ip_diversity(mock_router_info) is False
         assert connection_manager._stats["diversity_rejections"] == 1
@@ -185,7 +182,7 @@ class TestIPDiversity:
         """Test IP diversity check for router in different subnet."""
         # Simulate connection to a different subnet
         connection_manager._connected_subnets.add("10.0.0.0/16")
-        
+
         # Different subnet should pass
         assert connection_manager.check_ip_diversity(mock_router_info) is True
 
@@ -211,7 +208,7 @@ class TestIPDiversity:
         """Test IP diversity check for IPv6 in same /48."""
         # Simulate that we already have a connection to this /48
         connection_manager._connected_subnets.add("2001:db8::/48")
-        
+
         # Same /48 should be rejected
         assert connection_manager.check_ip_diversity(mock_router_info_ipv6) is False
 
@@ -251,11 +248,11 @@ class TestASNDiversity:
             regions=[],
             features=[],
         )
-        
+
         # Simulate we already have this ASN and hit the min diverse
         connection_manager._connected_asns.add("AS12345")
         connection_manager._connected_asns.add("AS67890")
-        
+
         # Same ASN when we have min_diverse_asns should be rejected
         assert connection_manager.check_asn_diversity(router) is False
         assert connection_manager._stats["diversity_rejections"] == 1
@@ -271,7 +268,7 @@ class TestASNDiversity:
             regions=[],
             features=[],
         )
-        
+
         # Should always pass when disabled
         assert connection_manager.check_asn_diversity(router) is True
 
@@ -287,7 +284,7 @@ class TestSubnetTracking:
     def test_add_subnet_ipv4(self, connection_manager, mock_router_info):
         """Test adding IPv4 subnet tracking."""
         connection_manager._add_subnet(mock_router_info)
-        
+
         assert "192.168.0.0/16" in connection_manager._connected_subnets
 
     def test_add_subnet_with_asn(self, connection_manager):
@@ -301,7 +298,7 @@ class TestSubnetTracking:
             features=[],
         )
         connection_manager._add_subnet(router)
-        
+
         assert "AS12345" in connection_manager._connected_asns
 
     def test_remove_subnet(self, connection_manager, mock_router_info):
@@ -309,7 +306,7 @@ class TestSubnetTracking:
         # Add then remove
         connection_manager._add_subnet(mock_router_info)
         assert len(connection_manager._connected_subnets) == 1
-        
+
         connection_manager._remove_subnet(mock_router_info)
         assert len(connection_manager._connected_subnets) == 0
 
@@ -330,9 +327,13 @@ class TestDiversityRequirements:
     def test_check_diversity_requirements_insufficient_subnets(self, connection_manager):
         """Test diversity requirements with insufficient subnet diversity."""
         # Simulate 3 connections but only 1 subnet
-        connection_manager.connections = {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
+        connection_manager.connections = {
+            "a": MagicMock(),
+            "b": MagicMock(),
+            "c": MagicMock(),
+        }
         connection_manager._connected_subnets = {"192.168.0.0/16"}
-        
+
         assert connection_manager.check_diversity_requirements() is False
 
 
@@ -377,7 +378,7 @@ class TestConnectionManagement:
     async def test_close_all_empty(self, connection_manager):
         """Test closing all connections when none exist."""
         await connection_manager.close_all()
-        
+
         assert connection_manager.connection_count == 0
         assert len(connection_manager._connected_subnets) == 0
         assert len(connection_manager._connected_asns) == 0
@@ -395,22 +396,22 @@ class TestConnectionManagerIntegration:
     async def test_ensure_connections_no_routers(self, connection_manager, mock_discovery):
         """Test ensuring connections when no routers are discovered."""
         mock_discovery.discover_routers = AsyncMock(return_value=[])
-        
+
         await connection_manager.ensure_connections()
-        
+
         assert connection_manager.connection_count == 0
 
     @pytest.mark.asyncio
     async def test_ensure_connections_with_routers(self, connection_manager, mock_discovery, mock_router_info):
         """Test ensuring connections with available routers."""
         mock_discovery.discover_routers = AsyncMock(return_value=[mock_router_info])
-        
+
         # Mock the connect_to_router method to avoid actual network calls
-        with patch.object(connection_manager, 'connect_to_router', new_callable=AsyncMock) as mock_connect:
+        with patch.object(connection_manager, "connect_to_router", new_callable=AsyncMock) as mock_connect:
             mock_connect.side_effect = Exception("Connection failed")
-            
+
             await connection_manager.ensure_connections()
-            
+
             # Should have tried to connect
             mock_connect.assert_called()
 
@@ -418,18 +419,19 @@ class TestConnectionManagerIntegration:
     async def test_close_connection_with_callback(self, connection_manager, mock_router_info):
         """Test closing connection triggers callback."""
         callback_called = []
-        
+
         def on_lost(router_id):
             callback_called.append(router_id)
-        
+
         connection_manager.on_connection_lost = on_lost
-        
+
         # Create mock connection
         mock_ws = AsyncMock()
         mock_ws.closed = False
         mock_session = AsyncMock()
-        
+
         from valence.network.node import RouterConnection
+
         conn = RouterConnection(
             router=mock_router_info,
             websocket=mock_ws,
@@ -437,10 +439,10 @@ class TestConnectionManagerIntegration:
             connected_at=time.time(),
             last_seen=time.time(),
         )
-        
+
         connection_manager.connections[mock_router_info.router_id] = conn
         connection_manager._add_subnet(mock_router_info)
-        
+
         await connection_manager.close_connection(mock_router_info.router_id, conn)
-        
+
         assert mock_router_info.router_id in callback_called

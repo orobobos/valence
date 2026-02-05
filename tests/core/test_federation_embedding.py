@@ -20,7 +20,6 @@ from valence.core.federation_embedding import (
     validate_incoming_belief_embedding,
 )
 
-
 # =============================================================================
 # FIXTURES
 # =============================================================================

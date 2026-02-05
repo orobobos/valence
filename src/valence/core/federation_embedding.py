@@ -18,7 +18,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-
 # =============================================================================
 # FEDERATION EMBEDDING STANDARD
 # =============================================================================
@@ -81,10 +80,7 @@ def is_federation_compatible(
         >>> is_federation_compatible("text_embedding_3_small", 1536)
         False
     """
-    return (
-        embedding_type == FEDERATION_EMBEDDING_TYPE
-        and dimensions == FEDERATION_EMBEDDING_DIMS
-    )
+    return embedding_type == FEDERATION_EMBEDDING_TYPE and dimensions == FEDERATION_EMBEDDING_DIMS
 
 
 def validate_federation_embedding(
@@ -118,8 +114,7 @@ def validate_federation_embedding(
     if len(embedding) != FEDERATION_EMBEDDING_DIMS:
         return (
             False,
-            f"Embedding must have {FEDERATION_EMBEDDING_DIMS} dimensions, "
-            f"got {len(embedding)}",
+            f"Embedding must have {FEDERATION_EMBEDDING_DIMS} dimensions, got {len(embedding)}",
         )
 
     # Check for invalid values
@@ -165,22 +160,13 @@ def validate_incoming_belief_embedding(
 
     # If metadata is provided, it must match federation standard
     if embedding_model and embedding_model != FEDERATION_EMBEDDING_MODEL:
-        return False, (
-            f"Embedding model mismatch: expected '{FEDERATION_EMBEDDING_MODEL}', "
-            f"got '{embedding_model}'"
-        )
+        return False, (f"Embedding model mismatch: expected '{FEDERATION_EMBEDDING_MODEL}', got '{embedding_model}'")
 
     if embedding_dims and embedding_dims != FEDERATION_EMBEDDING_DIMS:
-        return False, (
-            f"Embedding dimensions mismatch: expected {FEDERATION_EMBEDDING_DIMS}, "
-            f"got {embedding_dims}"
-        )
+        return False, (f"Embedding dimensions mismatch: expected {FEDERATION_EMBEDDING_DIMS}, got {embedding_dims}")
 
     if embedding_type and embedding_type != FEDERATION_EMBEDDING_TYPE:
-        return False, (
-            f"Embedding type mismatch: expected '{FEDERATION_EMBEDDING_TYPE}', "
-            f"got '{embedding_type}'"
-        )
+        return False, (f"Embedding type mismatch: expected '{FEDERATION_EMBEDDING_TYPE}', got '{embedding_type}'")
 
     # Validate the actual embedding vector
     return validate_federation_embedding(embedding)

@@ -12,13 +12,13 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.types import (
-    Tool,
-    TextContent,
-    Prompt,
-    PromptMessage,
-    PromptArgument,
     GetPromptResult,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
     Resource,
+    TextContent,
+    Tool,
 )
 from pydantic import AnyUrl
 
@@ -94,7 +94,7 @@ def create_server() -> Server:
                     ),
                 )
             ]
-        except Exception as e:
+        except Exception:
             logger.exception(f"Unexpected error in tool {name}")
             return [
                 TextContent(

@@ -14,63 +14,61 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
-
+from valence.core.exceptions import NotFoundError, ValidationException
 from valence.core.verification import (
-    # Enums
-    VerificationResult,
-    VerificationStatus,
-    StakeType,
-    EvidenceType,
-    EvidenceContribution,
+    BeliefReference,
     ContradictionType,
-    UncertaintyReason,
-    DisputeType,
+    DerivationProof,
+    DiscrepancyBounty,
+    Dispute,
     DisputeOutcome,
     DisputeStatus,
-    ResolutionMethod,
+    DisputeType,
+    Evidence,
+    EvidenceContribution,
+    EvidenceType,
     # Data models
     ExternalSource,
-    BeliefReference,
     Observation,
-    DerivationProof,
-    Evidence,
-    ResultDetails,
-    Stake,
-    Verification,
-    Dispute,
-    ReputationScore,
-    ReputationUpdate,
-    StakePosition,
-    DiscrepancyBounty,
     # Constants
     ReputationConstants,
-    # Functions
-    calculate_min_stake,
-    calculate_max_stake,
-    calculate_dispute_min_stake,
+    ReputationScore,
+    ReputationUpdate,
+    ResolutionMethod,
+    ResultDetails,
+    Stake,
+    StakePosition,
+    StakeType,
+    UncertaintyReason,
+    Verification,
+    # Enums
+    VerificationResult,
+    # Service
+    VerificationService,
+    VerificationStatus,
     calculate_bounty,
     calculate_confirmation_reward,
     calculate_contradiction_reward,
+    calculate_dispute_min_stake,
     calculate_holder_confirmation_bonus,
     calculate_holder_contradiction_penalty,
+    calculate_max_stake,
+    # Functions
+    calculate_min_stake,
     calculate_partial_reward,
-    validate_verification_submission,
-    validate_evidence_requirements,
-    validate_dispute_submission,
     create_evidence,
-    # Service
-    VerificationService,
+    validate_dispute_submission,
+    validate_evidence_requirements,
+    validate_verification_submission,
 )
-from valence.core.confidence import DimensionalConfidence
-from valence.core.exceptions import ValidationException, NotFoundError
-
 
 # ============================================================================
 # Enum Tests
 # ============================================================================
+
 
 class TestVerificationResult:
     """Tests for VerificationResult enum."""
@@ -93,7 +91,14 @@ class TestVerificationStatus:
     """Tests for VerificationStatus enum."""
 
     def test_all_values_exist(self):
-        expected = {"PENDING", "ACCEPTED", "DISPUTED", "OVERTURNED", "REJECTED", "EXPIRED"}
+        expected = {
+            "PENDING",
+            "ACCEPTED",
+            "DISPUTED",
+            "OVERTURNED",
+            "REJECTED",
+            "EXPIRED",
+        }
         actual = {s.name for s in VerificationStatus}
         assert actual == expected
 
@@ -130,8 +135,12 @@ class TestContradictionType:
 
     def test_all_values_exist(self):
         expected = {
-            "FACTUALLY_FALSE", "OUTDATED", "MISATTRIBUTED",
-            "OVERSTATED", "MISSING_CONTEXT", "LOGICAL_ERROR"
+            "FACTUALLY_FALSE",
+            "OUTDATED",
+            "MISATTRIBUTED",
+            "OVERSTATED",
+            "MISSING_CONTEXT",
+            "LOGICAL_ERROR",
         }
         actual = {t.name for t in ContradictionType}
         assert actual == expected
@@ -142,8 +151,12 @@ class TestDisputeType:
 
     def test_all_values_exist(self):
         expected = {
-            "EVIDENCE_INVALID", "EVIDENCE_FABRICATED", "EVIDENCE_INSUFFICIENT",
-            "REASONING_FLAWED", "CONFLICT_OF_INTEREST", "NEW_EVIDENCE"
+            "EVIDENCE_INVALID",
+            "EVIDENCE_FABRICATED",
+            "EVIDENCE_INSUFFICIENT",
+            "REASONING_FLAWED",
+            "CONFLICT_OF_INTEREST",
+            "NEW_EVIDENCE",
         }
         actual = {t.name for t in DisputeType}
         assert actual == expected
@@ -161,6 +174,7 @@ class TestDisputeOutcome:
 # ============================================================================
 # Constants Tests
 # ============================================================================
+
 
 class TestReputationConstants:
     """Tests for ReputationConstants values."""
@@ -193,6 +207,7 @@ class TestReputationConstants:
 # ============================================================================
 # Data Model Tests
 # ============================================================================
+
 
 class TestExternalSource:
     """Tests for ExternalSource model."""
@@ -682,6 +697,7 @@ class TestDiscrepancyBounty:
 # Stake Calculation Tests
 # ============================================================================
 
+
 class TestCalculateMinStake:
     """Tests for calculate_min_stake function."""
 
@@ -732,7 +748,7 @@ class TestCalculateDisputeMinStake:
         verification_stake = 0.05
         holder_min = calculate_dispute_min_stake(verification_stake, is_holder=True)
         third_party_min = calculate_dispute_min_stake(verification_stake, is_holder=False)
-        
+
         assert holder_min == pytest.approx(0.05)  # 1.0x
         assert third_party_min == pytest.approx(0.075)  # 1.5x
 
@@ -767,6 +783,7 @@ class TestCalculateBounty:
 # Reputation Update Calculation Tests
 # ============================================================================
 
+
 class TestCalculateConfirmationReward:
     """Tests for calculate_confirmation_reward function."""
 
@@ -788,7 +805,7 @@ class TestCalculateConfirmationReward:
         second = calculate_confirmation_reward(0.02, 0.01, 0.8, 1)
         # Third confirmation
         third = calculate_confirmation_reward(0.02, 0.01, 0.8, 2)
-        
+
         assert first > second > third
 
     def test_higher_stake_earns_more(self):
@@ -899,6 +916,7 @@ class TestCalculatePartialReward:
 # Validation Tests
 # ============================================================================
 
+
 class TestValidateEvidenceRequirements:
     """Tests for validate_evidence_requirements function."""
 
@@ -944,12 +962,14 @@ class TestValidateEvidenceRequirements:
         # Only supporting
         errors = validate_evidence_requirements(
             VerificationResult.PARTIAL,
-            [Evidence(
-                id=uuid4(),
-                type=EvidenceType.EXTERNAL,
-                relevance=0.8,
-                contribution=EvidenceContribution.SUPPORTS,
-            )]
+            [
+                Evidence(
+                    id=uuid4(),
+                    type=EvidenceType.EXTERNAL,
+                    relevance=0.8,
+                    contribution=EvidenceContribution.SUPPORTS,
+                )
+            ],
         )
         assert len(errors) > 0
 
@@ -1035,10 +1055,8 @@ class TestValidateVerificationSubmission:
             ),
         )
         sample_reputation.identity_id = "did:example:holder"
-        
-        errors = validate_verification_submission(
-            verification, sample_belief, sample_reputation, []
-        )
+
+        errors = validate_verification_submission(verification, sample_belief, sample_reputation, [])
         assert any("own belief" in e.lower() for e in errors)
 
     def test_duplicate_verification_rejected(self, sample_verification, sample_belief, sample_reputation):
@@ -1059,10 +1077,8 @@ class TestValidateVerificationSubmission:
             ],
             stake=sample_verification.stake,
         )
-        
-        errors = validate_verification_submission(
-            new_verification, sample_belief, sample_reputation, existing
-        )
+
+        errors = validate_verification_submission(new_verification, sample_belief, sample_reputation, existing)
         assert any("already verified" in e.lower() for e in errors)
 
     def test_insufficient_stake_rejected(self, sample_belief, sample_reputation):
@@ -1087,16 +1103,12 @@ class TestValidateVerificationSubmission:
                 escrow_id=uuid4(),
             ),
         )
-        
-        errors = validate_verification_submission(
-            verification, sample_belief, sample_reputation, []
-        )
+
+        errors = validate_verification_submission(verification, sample_belief, sample_reputation, [])
         assert any("below minimum" in e.lower() for e in errors)
 
     def test_valid_submission_passes(self, sample_verification, sample_belief, sample_reputation):
-        errors = validate_verification_submission(
-            sample_verification, sample_belief, sample_reputation, []
-        )
+        errors = validate_verification_submission(sample_verification, sample_belief, sample_reputation, [])
         assert len(errors) == 0
 
 
@@ -1162,22 +1174,18 @@ class TestValidateDisputeSubmission:
             ),
             status=VerificationStatus.PENDING,  # Not ACCEPTED
         )
-        
+
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
-        
-        errors = validate_dispute_submission(
-            sample_dispute, verification, disputer_rep, is_holder=True
-        )
+
+        errors = validate_dispute_submission(sample_dispute, verification, disputer_rep, is_holder=True)
         assert any("pending" in e.lower() for e in errors)
 
     def test_expired_dispute_window(self, sample_verification, sample_dispute):
         sample_verification.accepted_at = datetime.now() - timedelta(days=10)  # Past window
-        
+
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
-        
-        errors = validate_dispute_submission(
-            sample_dispute, sample_verification, disputer_rep, is_holder=True
-        )
+
+        errors = validate_dispute_submission(sample_dispute, sample_verification, disputer_rep, is_holder=True)
         assert any("expired" in e.lower() for e in errors)
 
     def test_no_counter_evidence_rejected(self, sample_verification):
@@ -1195,26 +1203,23 @@ class TestValidateDisputeSubmission:
             dispute_type=DisputeType.NEW_EVIDENCE,
             reasoning="...",
         )
-        
+
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
-        
-        errors = validate_dispute_submission(
-            dispute, sample_verification, disputer_rep, is_holder=True
-        )
+
+        errors = validate_dispute_submission(dispute, sample_verification, disputer_rep, is_holder=True)
         assert any("counter-evidence" in e.lower() for e in errors)
 
     def test_valid_dispute_passes(self, sample_verification, sample_dispute):
         disputer_rep = ReputationScore(identity_id="did:example:holder", overall=0.5)
-        
-        errors = validate_dispute_submission(
-            sample_dispute, sample_verification, disputer_rep, is_holder=True
-        )
+
+        errors = validate_dispute_submission(sample_dispute, sample_verification, disputer_rep, is_holder=True)
         assert len(errors) == 0
 
 
 # ============================================================================
 # VerificationService Tests
 # ============================================================================
+
 
 class TestVerificationService:
     """Tests for VerificationService class."""
@@ -1233,27 +1238,31 @@ class TestVerificationService:
 
     @pytest.fixture
     def supporting_evidence(self):
-        return [Evidence(
-            id=uuid4(),
-            type=EvidenceType.EXTERNAL,
-            relevance=0.9,
-            contribution=EvidenceContribution.SUPPORTS,
-            external_source=ExternalSource(url="https://example.com"),
-        )]
+        return [
+            Evidence(
+                id=uuid4(),
+                type=EvidenceType.EXTERNAL,
+                relevance=0.9,
+                contribution=EvidenceContribution.SUPPORTS,
+                external_source=ExternalSource(url="https://example.com"),
+            )
+        ]
 
     @pytest.fixture
     def contradicting_evidence(self):
-        return [Evidence(
-            id=uuid4(),
-            type=EvidenceType.EXTERNAL,
-            relevance=0.9,
-            contribution=EvidenceContribution.CONTRADICTS,
-            external_source=ExternalSource(url="https://counter.example.com"),
-        )]
+        return [
+            Evidence(
+                id=uuid4(),
+                type=EvidenceType.EXTERNAL,
+                relevance=0.9,
+                contribution=EvidenceContribution.CONTRADICTS,
+                external_source=ExternalSource(url="https://counter.example.com"),
+            )
+        ]
 
     def test_submit_verification_success(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1263,14 +1272,14 @@ class TestVerificationService:
             stake_amount=0.02,
             reasoning="This is accurate because...",
         )
-        
+
         assert verification.id is not None
         assert verification.status == VerificationStatus.PENDING
         assert verification.result == VerificationResult.CONFIRMED
 
     def test_submit_verification_self_verification_rejected(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
-        
+
         with pytest.raises(ValidationException) as exc:
             service.submit_verification(
                 belief_id=belief_id,
@@ -1280,12 +1289,12 @@ class TestVerificationService:
                 evidence=supporting_evidence,
                 stake_amount=0.02,
             )
-        
+
         assert "own belief" in str(exc.value).lower()
 
     def test_accept_verification(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1294,15 +1303,15 @@ class TestVerificationService:
             evidence=supporting_evidence,
             stake_amount=0.02,
         )
-        
+
         accepted = service.accept_verification(verification.id)
-        
+
         assert accepted.status == VerificationStatus.ACCEPTED
         assert accepted.accepted_at is not None
 
     def test_accept_verification_updates_reputation(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1311,19 +1320,19 @@ class TestVerificationService:
             evidence=supporting_evidence,
             stake_amount=0.02,
         )
-        
+
         verifier_rep_before = service.get_or_create_reputation("did:example:verifier").overall
-        
+
         service.accept_verification(verification.id)
-        
+
         verifier_rep_after = service.get_reputation("did:example:verifier").overall
-        
+
         # Verifier should gain reputation
         assert verifier_rep_after > verifier_rep_before
 
     def test_contradiction_gives_higher_reward(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1332,20 +1341,20 @@ class TestVerificationService:
             evidence=contradicting_evidence,
             stake_amount=0.02,
         )
-        
+
         verifier_rep_before = service.get_or_create_reputation("did:example:verifier").overall
-        
+
         service.accept_verification(verification.id)
-        
+
         verifier_rep = service.get_reputation("did:example:verifier")
         verifier_delta = verifier_rep.overall - verifier_rep_before
-        
+
         # Contradiction reward should be significant
         assert verifier_delta > 0
 
     def test_contradiction_penalizes_holder(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1354,19 +1363,19 @@ class TestVerificationService:
             evidence=contradicting_evidence,
             stake_amount=0.02,
         )
-        
+
         holder_rep_before = service.get_or_create_reputation("did:example:holder").overall
-        
+
         service.accept_verification(verification.id)
-        
+
         holder_rep_after = service.get_reputation("did:example:holder").overall
-        
+
         # Holder should lose reputation
         assert holder_rep_after < holder_rep_before
 
     def test_dispute_verification(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
-        
+
         # Submit and accept verification
         verification = service.submit_verification(
             belief_id=belief_id,
@@ -1377,7 +1386,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(verification.id)
-        
+
         # File dispute
         dispute = service.dispute_verification(
             verification_id=verification.id,
@@ -1388,10 +1397,10 @@ class TestVerificationService:
             reasoning="New evidence shows the belief was correct",
             proposed_result=VerificationResult.CONFIRMED,
         )
-        
+
         assert dispute.id is not None
         assert dispute.status == DisputeStatus.PENDING
-        
+
         # Verification should be marked as disputed
         updated_verification = service.get_verification(verification.id)
         assert updated_verification.status == VerificationStatus.DISPUTED
@@ -1409,7 +1418,7 @@ class TestVerificationService:
 
     def test_resolve_dispute_upheld(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
-        
+
         # Submit, accept, and dispute
         verification = service.submit_verification(
             belief_id=belief_id,
@@ -1420,7 +1429,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(verification.id)
-        
+
         dispute = service.dispute_verification(
             verification_id=verification.id,
             disputer_id="did:example:holder",
@@ -1429,26 +1438,26 @@ class TestVerificationService:
             dispute_type=DisputeType.NEW_EVIDENCE,
             reasoning="New evidence",
         )
-        
+
         disputer_rep_before = service.get_reputation("did:example:holder").overall
-        
+
         # Resolve as upheld (verifier wins)
         resolved = service.resolve_dispute(
             dispute_id=dispute.id,
             outcome=DisputeOutcome.UPHELD,
             resolution_reasoning="Original evidence is stronger",
         )
-        
+
         assert resolved.outcome == DisputeOutcome.UPHELD
         assert resolved.status == DisputeStatus.RESOLVED
-        
+
         # Disputer should lose stake
         disputer_rep_after = service.get_reputation("did:example:holder").overall
         assert disputer_rep_after < disputer_rep_before
 
     def test_resolve_dispute_overturned(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
-        
+
         # Submit, accept, and dispute
         verification = service.submit_verification(
             belief_id=belief_id,
@@ -1459,7 +1468,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(verification.id)
-        
+
         dispute = service.dispute_verification(
             verification_id=verification.id,
             disputer_id="did:example:holder",
@@ -1468,29 +1477,29 @@ class TestVerificationService:
             dispute_type=DisputeType.NEW_EVIDENCE,
             reasoning="New evidence",
         )
-        
+
         verifier_rep_before = service.get_reputation("did:example:verifier").overall
-        
+
         # Resolve as overturned (disputer wins)
         resolved = service.resolve_dispute(
             dispute_id=dispute.id,
             outcome=DisputeOutcome.OVERTURNED,
             resolution_reasoning="New evidence is compelling",
         )
-        
+
         assert resolved.outcome == DisputeOutcome.OVERTURNED
-        
+
         # Verifier should lose stake
         verifier_rep_after = service.get_reputation("did:example:verifier").overall
         assert verifier_rep_after < verifier_rep_before
-        
+
         # Verification should be overturned
         updated_verification = service.get_verification(verification.id)
         assert updated_verification.status == VerificationStatus.OVERTURNED
 
     def test_resolve_dispute_dismissed(self, service, sample_belief_info, contradicting_evidence, supporting_evidence):
         belief_id = uuid4()
-        
+
         verification = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1500,7 +1509,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(verification.id)
-        
+
         dispute = service.dispute_verification(
             verification_id=verification.id,
             disputer_id="did:example:holder",
@@ -1509,18 +1518,18 @@ class TestVerificationService:
             dispute_type=DisputeType.NEW_EVIDENCE,
             reasoning="Frivolous dispute",
         )
-        
+
         disputer_rep_before = service.get_reputation("did:example:holder").overall
-        
+
         # Resolve as dismissed (frivolous)
         resolved = service.resolve_dispute(
             dispute_id=dispute.id,
             outcome=DisputeOutcome.DISMISSED,
             resolution_reasoning="Dispute is frivolous",
         )
-        
+
         assert resolved.outcome == DisputeOutcome.DISMISSED
-        
+
         # Disputer should get extra penalty for frivolous dispute
         disputer_rep_after = service.get_reputation("did:example:holder").overall
         penalty = disputer_rep_before - disputer_rep_after
@@ -1529,7 +1538,7 @@ class TestVerificationService:
 
     def test_get_verification_summary(self, service, sample_belief_info, supporting_evidence, contradicting_evidence):
         belief_id = uuid4()
-        
+
         # Submit multiple verifications
         v1 = service.submit_verification(
             belief_id=belief_id,
@@ -1540,7 +1549,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(v1.id)
-        
+
         v2 = service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
@@ -1550,9 +1559,9 @@ class TestVerificationService:
             stake_amount=0.03,
         )
         service.accept_verification(v2.id)
-        
+
         summary = service.get_verification_summary(belief_id)
-        
+
         assert summary["total"] == 2
         assert summary["by_result"]["confirmed"] == 2
         assert summary["by_status"]["accepted"] == 2
@@ -1561,13 +1570,13 @@ class TestVerificationService:
 
     def test_stake_locking_and_release(self, service, sample_belief_info, supporting_evidence):
         belief_id = uuid4()
-        
+
         # Check initial state
         verifier_rep = service.get_or_create_reputation("did:example:verifier")
         initial_stake_at_risk = verifier_rep.stake_at_risk
-        
+
         # Submit verification (locks stake)
-        verification = service.submit_verification(
+        service.submit_verification(
             belief_id=belief_id,
             belief_info=sample_belief_info,
             verifier_id="did:example:verifier",
@@ -1575,18 +1584,18 @@ class TestVerificationService:
             evidence=supporting_evidence,
             stake_amount=0.02,
         )
-        
+
         # Check stake is locked
         verifier_rep = service.get_reputation("did:example:verifier")
         assert verifier_rep.stake_at_risk == initial_stake_at_risk + 0.02
 
     def test_discrepancy_find_increments(self, service, sample_belief_info, contradicting_evidence):
         belief_id = uuid4()
-        
+
         # Check initial state
         verifier_rep = service.get_or_create_reputation("did:example:verifier")
         initial_finds = verifier_rep.discrepancy_finds
-        
+
         # Submit and accept contradiction
         verification = service.submit_verification(
             belief_id=belief_id,
@@ -1597,7 +1606,7 @@ class TestVerificationService:
             stake_amount=0.02,
         )
         service.accept_verification(verification.id)
-        
+
         # Check discrepancy_finds incremented
         verifier_rep = service.get_reputation("did:example:verifier")
         assert verifier_rep.discrepancy_finds == initial_finds + 1
@@ -1606,6 +1615,7 @@ class TestVerificationService:
 # ============================================================================
 # Create Evidence Helper Tests
 # ============================================================================
+
 
 class TestCreateEvidence:
     """Tests for create_evidence helper function."""
@@ -1647,6 +1657,7 @@ class TestCreateEvidence:
 # Edge Cases and Error Handling
 # ============================================================================
 
+
 class TestEdgeCases:
     """Tests for edge cases and error conditions."""
 
@@ -1654,10 +1665,10 @@ class TestEdgeCases:
         rep = ReputationScore(identity_id="test", overall=0.15)
         service = VerificationService()
         service._reputations["test"] = rep
-        
+
         # Apply large negative delta
         service._apply_reputation_update(rep, -0.10, "test penalty")
-        
+
         # Should be floored at 0.1
         assert rep.overall == ReputationConstants.REPUTATION_FLOOR
 
@@ -1665,16 +1676,16 @@ class TestEdgeCases:
         rep = ReputationScore(identity_id="test", overall=0.95)
         service = VerificationService()
         service._reputations["test"] = rep
-        
+
         # Apply large positive delta
         service._apply_reputation_update(rep, 0.10, "test bonus")
-        
+
         # Should be capped at 1.0
         assert rep.overall == 1.0
 
     def test_accept_already_accepted_verification_raises(self):
         service = VerificationService()
-        
+
         verification = Verification(
             id=uuid4(),
             verifier_id="did:example:verifier",
@@ -1691,15 +1702,15 @@ class TestEdgeCases:
             status=VerificationStatus.ACCEPTED,  # Already accepted
         )
         service._verifications[verification.id] = verification
-        
+
         with pytest.raises(ValidationException) as exc:
             service.accept_verification(verification.id)
-        
+
         assert "not pending" in str(exc.value).lower()
 
     def test_resolve_already_resolved_dispute_raises(self):
         service = VerificationService()
-        
+
         dispute = Dispute(
             id=uuid4(),
             verification_id=uuid4(),
@@ -1716,14 +1727,14 @@ class TestEdgeCases:
             status=DisputeStatus.RESOLVED,  # Already resolved
         )
         service._disputes[dispute.id] = dispute
-        
+
         with pytest.raises(ValidationException) as exc:
             service.resolve_dispute(
                 dispute.id,
                 DisputeOutcome.UPHELD,
                 "...",
             )
-        
+
         assert "not pending" in str(exc.value).lower()
 
     def test_get_nonexistent_verification_returns_none(self):
@@ -1743,6 +1754,7 @@ class TestEdgeCases:
 # ============================================================================
 # Serialization Round-Trip Tests
 # ============================================================================
+
 
 class TestSerializationRoundTrip:
     """Tests for full serialization/deserialization round trips."""
@@ -1788,13 +1800,13 @@ class TestSerializationRoundTrip:
             ),
             status=VerificationStatus.ACCEPTED,
         )
-        
+
         # Convert to dict and back
         d = original.to_dict()
         json_str = json.dumps(d)
         restored_dict = json.loads(json_str)
         restored = Verification.from_dict(restored_dict)
-        
+
         assert restored.id == original.id
         assert restored.result == original.result
         assert len(restored.evidence) == 2
@@ -1827,12 +1839,12 @@ class TestSerializationRoundTrip:
             resolution_reasoning="New evidence is compelling",
             resolution_method=ResolutionMethod.JURY,
         )
-        
+
         d = original.to_dict()
         json_str = json.dumps(d)
         restored_dict = json.loads(json_str)
         restored = Dispute.from_dict(restored_dict)
-        
+
         assert restored.id == original.id
         assert restored.outcome == DisputeOutcome.OVERTURNED
         assert restored.resolution_method == ResolutionMethod.JURY

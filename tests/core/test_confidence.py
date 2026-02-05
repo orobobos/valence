@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import pytest
-
 from valence.core.confidence import (
-    ConfidenceDimension,
     DEFAULT_WEIGHTS,
+    ConfidenceDimension,
     DimensionalConfidence,
     aggregate_confidence,
     confidence_label,
 )
 
-
 # ============================================================================
 # ConfidenceDimension Tests
 # ============================================================================
+
 
 class TestConfidenceDimension:
     """Tests for ConfidenceDimension enum."""
@@ -56,6 +55,7 @@ class TestConfidenceDimension:
 # DEFAULT_WEIGHTS Tests
 # ============================================================================
 
+
 class TestDefaultWeights:
     """Tests for DEFAULT_WEIGHTS configuration."""
 
@@ -83,6 +83,7 @@ class TestDefaultWeights:
 # ============================================================================
 # DimensionalConfidence Tests
 # ============================================================================
+
 
 class TestDimensionalConfidence:
     """Tests for DimensionalConfidence dataclass."""
@@ -314,9 +315,7 @@ class TestDimensionalConfidenceWithDimension:
     def test_with_dimension_skip_recalculate(self):
         """with_dimension can skip recalculation."""
         original = DimensionalConfidence(overall=0.7, source_reliability=0.5)
-        new = original.with_dimension(
-            ConfidenceDimension.SOURCE_RELIABILITY, 0.9, recalculate=False
-        )
+        new = original.with_dimension(ConfidenceDimension.SOURCE_RELIABILITY, 0.9, recalculate=False)
         assert new.overall == original.overall
 
     def test_with_dimension_overall_no_recalculate(self):
@@ -491,21 +490,25 @@ class TestDimensionalConfidenceStr:
 # confidence_label Tests
 # ============================================================================
 
+
 class TestConfidenceLabel:
     """Tests for confidence_label function."""
 
-    @pytest.mark.parametrize("value,expected", [
-        (0.95, "very high"),
-        (0.90, "very high"),
-        (0.89, "high"),
-        (0.75, "high"),
-        (0.74, "moderate"),
-        (0.50, "moderate"),
-        (0.49, "low"),
-        (0.25, "low"),
-        (0.24, "very low"),
-        (0.0, "very low"),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (0.95, "very high"),
+            (0.90, "very high"),
+            (0.89, "high"),
+            (0.75, "high"),
+            (0.74, "moderate"),
+            (0.50, "moderate"),
+            (0.49, "low"),
+            (0.25, "low"),
+            (0.24, "very low"),
+            (0.0, "very low"),
+        ],
+    )
     def test_confidence_label_boundaries(self, value, expected):
         """Test confidence label at various boundaries."""
         assert confidence_label(value) == expected
@@ -522,6 +525,7 @@ class TestConfidenceLabel:
 # ============================================================================
 # aggregate_confidence Tests
 # ============================================================================
+
 
 class TestAggregateConfidence:
     """Tests for aggregate_confidence function."""

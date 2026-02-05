@@ -4,40 +4,41 @@ Implements share() API with DIRECT and BOUNDED level support, consent chains,
 and cryptographic/policy enforcement.
 """
 
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Protocol, Any, List, AsyncIterator, Set, Dict
 import copy
-import uuid
-import time
 import hashlib
 import json
 import logging
+import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import asdict, dataclass
+from typing import Any, Protocol
 
-from .types import SharePolicy, ShareLevel, EnforcementType, PropagationRules
 from .encryption import EncryptionEnvelope
+from .types import EnforcementType, PropagationRules, ShareLevel, SharePolicy
 
 logger = logging.getLogger(__name__)
 
 
-def _strip_field_path(data: Dict[str, Any], path: str) -> None:
+def _strip_field_path(data: dict[str, Any], path: str) -> None:
     """Strip a field from a nested dictionary using dot-notation path.
-    
+
     Modifies the dictionary in-place. Supports nested paths like "metadata.source".
     If any part of the path doesn't exist, silently does nothing.
-    
+
     Args:
         data: The dictionary to modify
         path: Dot-separated field path (e.g., "metadata.source", "top_level")
     """
     parts = path.split(".")
-    
+
     # Navigate to parent of target field
     current = data
     for part in parts[:-1]:
         if not isinstance(current, dict) or part not in current:
             return  # Path doesn't exist, nothing to strip
         current = current[part]
-    
+
     # Remove the final field if it exists
     if isinstance(current, dict):
         current.pop(parts[-1], None)
@@ -45,59 +46,59 @@ def _strip_field_path(data: Dict[str, Any], path: str) -> None:
 
 def strip_fields_from_content(
     content: bytes,
-    fields_to_strip: List[str],
+    fields_to_strip: list[str],
 ) -> bytes:
     """Strip specified fields from JSON content.
-    
+
     Creates a copy of the content with specified fields removed.
     Supports nested paths using dot notation (e.g., "metadata.source").
-    
+
     Args:
         content: The original content as bytes (must be valid JSON)
         fields_to_strip: List of field paths to remove
-        
+
     Returns:
         Modified content as bytes with fields stripped.
         Returns original content unchanged if not valid JSON.
     """
     if not fields_to_strip:
         return content
-    
+
     try:
         content_dict = json.loads(content.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         # Not JSON content, can't strip fields
         return content
-    
+
     # Make a deep copy to avoid modifying the original
     stripped_dict = copy.deepcopy(content_dict)
-    
+
     for field_path in fields_to_strip:
         _strip_field_path(stripped_dict, field_path)
-    
+
     return json.dumps(stripped_dict).encode("utf-8")
 
 
 @dataclass
 class ShareRequest:
     """Request to share a belief with a specific recipient."""
-    
+
     belief_id: str
     recipient_did: str
-    policy: Optional[SharePolicy] = None  # Defaults to DIRECT
+    policy: SharePolicy | None = None  # Defaults to DIRECT
 
 
 @dataclass
 class ReceiveRequest:
     """Request to receive and acknowledge a shared belief."""
-    
+
     share_id: str
 
 
 @dataclass
 class ShareResult:
     """Result of a successful share operation."""
-    
+
     share_id: str
     consent_chain_id: str
     encrypted_for: str
@@ -107,15 +108,15 @@ class ShareResult:
 @dataclass
 class RevokeRequest:
     """Request to revoke a previously shared belief."""
-    
+
     share_id: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
 class RevokeResult:
     """Result of a successful revoke operation."""
-    
+
     share_id: str
     consent_chain_id: str
     revoked_at: float
@@ -125,31 +126,31 @@ class RevokeResult:
 @dataclass
 class RevocationNotification:
     """Notification sent to recipients when a share is revoked."""
-    
+
     id: str
     consent_chain_id: str
     belief_id: str
     revoked_by: str
     revoked_at: float
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
 class Notification:
     """A stored notification pending delivery."""
-    
+
     id: str
     recipient_did: str
     notification_type: str
     payload: dict
     created_at: float
-    acknowledged_at: Optional[float] = None
+    acknowledged_at: float | None = None
 
 
 @dataclass
 class ReceiveResult:
     """Result of a successful receive operation."""
-    
+
     share_id: str
     belief_id: str
     content: bytes  # Decrypted content
@@ -161,11 +162,11 @@ class ReceiveResult:
 @dataclass
 class CrossFederationHop:
     """A hop that crosses federation boundaries in a consent chain.
-    
+
     Used to track when consent/sharing crosses from one federation to another,
     preserving provenance and enforcing federation-level policies.
     """
-    
+
     hop_id: str
     federation_id: str  # Target federation
     gateway_id: str  # Gateway in target federation
@@ -174,24 +175,24 @@ class CrossFederationHop:
     from_federation_id: str
     from_gateway_id: str
     hop_number: int
-    policy_snapshot: Optional[dict] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    policy_snapshot: dict | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "hop_id": self.hop_id,
             "federation_id": self.federation_id,
             "gateway_id": self.gateway_id,
             "timestamp": self.timestamp,
-            "signature": self.signature.hex() if isinstance(self.signature, bytes) else self.signature,
+            "signature": (self.signature.hex() if isinstance(self.signature, bytes) else self.signature),
             "from_federation_id": self.from_federation_id,
             "from_gateway_id": self.from_gateway_id,
             "hop_number": self.hop_number,
             "policy_snapshot": self.policy_snapshot,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CrossFederationHop":
+    def from_dict(cls, data: dict[str, Any]) -> "CrossFederationHop":
         """Deserialize from dictionary."""
         sig = data.get("signature", b"")
         if isinstance(sig, str):
@@ -212,7 +213,7 @@ class CrossFederationHop:
 @dataclass
 class ConsentChainEntry:
     """A consent chain tracking the origin and path of a share."""
-    
+
     id: str
     belief_id: str
     origin_sharer: str  # DID
@@ -223,25 +224,25 @@ class ConsentChainEntry:
     chain_hash: bytes
     current_hop: int = 0  # Current depth in propagation chain
     revoked: bool = False
-    revoked_at: Optional[float] = None
-    revoked_by: Optional[str] = None
-    revoke_reason: Optional[str] = None
-    
+    revoked_at: float | None = None
+    revoked_by: str | None = None
+    revoke_reason: str | None = None
+
     # Cross-federation tracking (Issue #89)
-    cross_federation_hops: List[CrossFederationHop] = None  # type: ignore
-    origin_federation_id: Optional[str] = None
-    origin_gateway_id: Optional[str] = None
-    
+    cross_federation_hops: list[CrossFederationHop] = None  # type: ignore
+    origin_federation_id: str | None = None
+    origin_gateway_id: str | None = None
+
     def __post_init__(self):
         """Initialize mutable defaults."""
         if self.cross_federation_hops is None:
             self.cross_federation_hops = []
-    
+
     def add_cross_federation_hop(self, hop: CrossFederationHop) -> None:
         """Add a cross-federation hop to this consent chain."""
         self.cross_federation_hops.append(hop)
-    
-    def get_federation_path(self) -> List[str]:
+
+    def get_federation_path(self) -> list[str]:
         """Get the list of federations this chain has traversed."""
         if not self.origin_federation_id:
             return []
@@ -249,25 +250,25 @@ class ConsentChainEntry:
         for hop in self.cross_federation_hops:
             path.append(hop.federation_id)
         return path
-    
-    def get_current_federation(self) -> Optional[str]:
+
+    def get_current_federation(self) -> str | None:
         """Get the federation ID where the chain currently resides."""
         if not self.cross_federation_hops:
             return self.origin_federation_id
         return self.cross_federation_hops[-1].federation_id
-    
+
     def crossed_federation_boundary(self) -> bool:
         """Check if this chain has crossed any federation boundaries."""
         return len(self.cross_federation_hops) > 0
-    
+
     @property
-    def max_hops(self) -> Optional[int]:
+    def max_hops(self) -> int | None:
         """Get max_hops from the origin policy's propagation rules."""
         propagation = self.origin_policy.get("propagation")
         if propagation:
             return propagation.get("max_hops")
         return None
-    
+
     def can_reshare(self) -> bool:
         """Check if this consent chain allows another reshare hop."""
         if self.revoked:
@@ -275,8 +276,8 @@ class ConsentChainEntry:
         if self.max_hops is None:
             return True  # No limit
         return self.current_hop < self.max_hops
-    
-    def hops_remaining(self) -> Optional[int]:
+
+    def hops_remaining(self) -> int | None:
         """Get the number of reshare hops remaining, or None if unlimited."""
         if self.max_hops is None:
             return None
@@ -286,24 +287,24 @@ class ConsentChainEntry:
 @dataclass
 class Share:
     """A share record linking encrypted content to a consent chain."""
-    
+
     id: str
     consent_chain_id: str
     encrypted_envelope: dict
     recipient_did: str
     created_at: float
-    belief_id: Optional[str] = None
-    accessed_at: Optional[float] = None
-    received_at: Optional[float] = None
+    belief_id: str | None = None
+    accessed_at: float | None = None
+    received_at: float | None = None
 
 
 class DatabaseProtocol(Protocol):
     """Protocol for database operations required by SharingService."""
-    
-    async def get_belief(self, belief_id: str) -> Optional[Any]:
+
+    async def get_belief(self, belief_id: str) -> Any | None:
         """Get a belief by ID."""
         ...
-    
+
     async def create_consent_chain(
         self,
         id: str,
@@ -316,53 +317,53 @@ class DatabaseProtocol(Protocol):
     ) -> None:
         """Create a consent chain record."""
         ...
-    
+
     async def create_share(
         self,
         id: str,
         consent_chain_id: str,
         encrypted_envelope: dict,
         recipient_did: str,
-        belief_id: Optional[str] = None,
+        belief_id: str | None = None,
     ) -> None:
         """Create a share record."""
         ...
-    
-    async def get_share(self, share_id: str) -> Optional[Share]:
+
+    async def get_share(self, share_id: str) -> Share | None:
         """Get a share by ID."""
         ...
-    
+
     async def list_shares(
         self,
-        sharer_did: Optional[str] = None,
-        recipient_did: Optional[str] = None,
+        sharer_did: str | None = None,
+        recipient_did: str | None = None,
         limit: int = 100,
         include_revoked: bool = False,
     ) -> list[Share]:
         """List shares, optionally filtered by sharer or recipient."""
         ...
-    
-    async def get_consent_chain(self, chain_id: str) -> Optional[ConsentChainEntry]:
+
+    async def get_consent_chain(self, chain_id: str) -> ConsentChainEntry | None:
         """Get a consent chain by ID."""
         ...
-    
+
     async def revoke_consent_chain(
         self,
         consent_chain_id: str,
         revoked_at: float,
         revoked_by: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> None:
         """Mark a consent chain as revoked."""
         ...
-    
+
     async def get_shares_by_consent_chain(
         self,
         consent_chain_id: str,
     ) -> list[Share]:
         """Get all shares associated with a consent chain."""
         ...
-    
+
     async def acknowledge_share(
         self,
         share_id: str,
@@ -370,7 +371,7 @@ class DatabaseProtocol(Protocol):
     ) -> None:
         """Mark a share as received/acknowledged."""
         ...
-    
+
     async def add_consent_chain_hop(
         self,
         consent_chain_id: str,
@@ -378,14 +379,14 @@ class DatabaseProtocol(Protocol):
     ) -> None:
         """Add a hop to a consent chain."""
         ...
-    
+
     async def get_pending_shares(
         self,
         recipient_did: str,
     ) -> list[Share]:
         """Get shares that haven't been received yet for a recipient."""
         ...
-    
+
     async def create_notification(
         self,
         id: str,
@@ -396,14 +397,14 @@ class DatabaseProtocol(Protocol):
     ) -> None:
         """Create a notification for a recipient."""
         ...
-    
+
     async def get_pending_notifications(
         self,
         recipient_did: str,
     ) -> list[Notification]:
         """Get pending notifications for a recipient."""
         ...
-    
+
     async def acknowledge_notification(
         self,
         notification_id: str,
@@ -411,14 +412,14 @@ class DatabaseProtocol(Protocol):
     ) -> None:
         """Mark a notification as acknowledged/delivered."""
         ...
-    
+
     async def get_notification(
         self,
         notification_id: str,
-    ) -> Optional[Notification]:
+    ) -> Notification | None:
         """Get a notification by ID."""
         ...
-    
+
     async def update_consent_chain_hop_count(
         self,
         consent_chain_id: str,
@@ -430,19 +431,19 @@ class DatabaseProtocol(Protocol):
 
 class IdentityProtocol(Protocol):
     """Protocol for identity operations required by SharingService."""
-    
-    async def get_public_key(self, did: str) -> Optional[bytes]:
+
+    async def get_public_key(self, did: str) -> bytes | None:
         """Get the X25519 public key for a DID."""
         ...
-    
-    async def get_private_key(self, did: str) -> Optional[bytes]:
+
+    async def get_private_key(self, did: str) -> bytes | None:
         """Get the X25519 private key for a DID (only for local identities)."""
         ...
-    
+
     def sign(self, data: dict) -> bytes:
         """Sign data with the local identity's Ed25519 key."""
         ...
-    
+
     def get_did(self) -> str:
         """Get the local node's DID."""
         ...
@@ -450,30 +451,30 @@ class IdentityProtocol(Protocol):
 
 class DomainServiceProtocol(Protocol):
     """Protocol for domain membership operations required by SharingService.
-    
+
     Domains are logical groupings (e.g., organizations, teams, communities)
     that constrain BOUNDED sharing. Recipients can only reshare within
     allowed domains.
     """
-    
+
     async def is_member(self, did: str, domain: str) -> bool:
         """Check if a DID is a member of a domain.
-        
+
         Args:
             did: The DID to check membership for
             domain: The domain identifier to check
-            
+
         Returns:
             True if the DID is a member of the domain
         """
         ...
-    
-    async def get_domains_for_did(self, did: str) -> List[str]:
+
+    async def get_domains_for_did(self, did: str) -> list[str]:
         """Get all domains a DID is a member of.
-        
+
         Args:
             did: The DID to get domains for
-            
+
         Returns:
             List of domain identifiers the DID belongs to
         """
@@ -483,10 +484,10 @@ class DomainServiceProtocol(Protocol):
 @dataclass
 class ReshareRequest:
     """Request to reshare a previously received belief.
-    
+
     Only valid for BOUNDED shares within allowed domains.
     """
-    
+
     original_share_id: str  # The share that was received
     recipient_did: str  # New recipient to reshare with
 
@@ -494,45 +495,45 @@ class ReshareRequest:
 @dataclass
 class ReshareResult:
     """Result of a successful reshare operation."""
-    
+
     share_id: str
     consent_chain_id: str  # Same as original (extended with new hop)
     encrypted_for: str
     created_at: float
     current_hop: int  # Position in the consent chain
-    hops_remaining: Optional[int] = None  # Remaining hops allowed, or None if unlimited
+    hops_remaining: int | None = None  # Remaining hops allowed, or None if unlimited
 
 
 @dataclass
 class PropagateRequest:
     """Request to propagate a share with composed (tighter) restrictions.
-    
+
     Unlike reshare(), propagate() allows adding additional restrictions
     on top of the original share's policy. The resulting policy is the
     intersection/minimum of both sets of restrictions.
     """
-    
+
     share_id: str  # The share to propagate from
     recipient_did: str  # New recipient
-    additional_restrictions: Optional[PropagationRules] = None  # Extra restrictions to compose
+    additional_restrictions: PropagationRules | None = None  # Extra restrictions to compose
 
 
 @dataclass
 class PropagateResult:
     """Result of a successful propagate operation."""
-    
+
     share_id: str
     consent_chain_id: str
     encrypted_for: str
     created_at: float
     current_hop: int
-    hops_remaining: Optional[int] = None
-    composed_restrictions: Optional[dict] = None  # The final composed restrictions
+    hops_remaining: int | None = None
+    composed_restrictions: dict | None = None  # The final composed restrictions
 
 
 class SharingService:
     """Service for sharing beliefs with specific recipients.
-    
+
     Implements DIRECT and BOUNDED sharing levels with:
     - Cryptographic enforcement (encryption for recipient)
     - Policy enforcement (domain membership validation)
@@ -540,29 +541,29 @@ class SharingService:
     - Revocation propagation to all recipients in consent chain
     - Resharing within BOUNDED domain constraints
     """
-    
+
     def __init__(
         self,
         db: DatabaseProtocol,
         identity_service: IdentityProtocol,
-        domain_service: Optional[DomainServiceProtocol] = None,
+        domain_service: DomainServiceProtocol | None = None,
     ):
         self.db = db
         self.identity = identity_service
         self.domain_service = domain_service
         # In-memory queue for immediate delivery attempts
-        self._revocation_queue: List[tuple[str, RevocationNotification]] = []
-    
+        self._revocation_queue: list[tuple[str, RevocationNotification]] = []
+
     async def share(self, request: ShareRequest, sharer_did: str) -> ShareResult:
         """Share a belief with a specific recipient.
-        
+
         Args:
             request: The share request containing belief_id, recipient, and optional policy
             sharer_did: The DID of the entity sharing the belief
-            
+
         Returns:
             ShareResult with share_id, consent_chain_id, and metadata
-            
+
         Raises:
             ValueError: If validation fails (belief not found, recipient not found, etc.)
         """
@@ -572,75 +573,70 @@ class SharingService:
             enforcement=EnforcementType.CRYPTOGRAPHIC,
             recipients=[request.recipient_did],
         )
-        
+
         # Validate: only DIRECT and BOUNDED supported
         if policy.level not in (ShareLevel.DIRECT, ShareLevel.BOUNDED):
             raise ValueError("Only DIRECT and BOUNDED sharing supported")
-        
+
         # Validate level-specific requirements
         if policy.level == ShareLevel.DIRECT:
             # DIRECT requires cryptographic enforcement
             if policy.enforcement != EnforcementType.CRYPTOGRAPHIC:
                 raise ValueError("DIRECT sharing requires CRYPTOGRAPHIC enforcement")
-            
+
             # Validate: recipient must be in policy recipients
             if policy.recipients is None or request.recipient_did not in policy.recipients:
                 raise ValueError("Recipient not in policy recipients list")
-        
+
         elif policy.level == ShareLevel.BOUNDED:
             # BOUNDED requires policy enforcement (domain membership checks)
-            if policy.enforcement not in (EnforcementType.POLICY, EnforcementType.CRYPTOGRAPHIC):
+            if policy.enforcement not in (
+                EnforcementType.POLICY,
+                EnforcementType.CRYPTOGRAPHIC,
+            ):
                 raise ValueError("BOUNDED sharing requires POLICY or CRYPTOGRAPHIC enforcement")
-            
+
             # Get allowed_domains from policy (empty/None = no restriction)
-            allowed_domains = (
-                policy.propagation.allowed_domains
-                if policy.propagation else None
-            )
-            
+            allowed_domains = policy.propagation.allowed_domains if policy.propagation else None
+
             # If allowed_domains is specified and non-empty, validate domain membership
             if allowed_domains:
                 # Require domain service when domain restrictions are specified
                 if self.domain_service is None:
                     raise ValueError("Domain service required for domain-restricted sharing")
-                
+
                 # Validate: recipient must be member of at least one allowed domain
                 recipient_in_domain = False
                 for domain in allowed_domains:
                     if await self.domain_service.is_member(request.recipient_did, domain):
                         recipient_in_domain = True
                         break
-                
+
                 if not recipient_in_domain:
-                    raise ValueError(
-                        f"Recipient {request.recipient_did} is not a member of any allowed domain"
-                    )
+                    raise ValueError(f"Recipient {request.recipient_did} is not a member of any allowed domain")
             # Empty allowed_domains = no domain restriction (anyone can receive)
-        
+
         # Get the belief
         belief = await self.db.get_belief(request.belief_id)
         if not belief:
             raise ValueError("Belief not found")
-        
+
         # Get belief content - handle both dict and object
-        belief_content = (
-            belief.get("content") if isinstance(belief, dict)
-            else getattr(belief, "content", None)
-        )
+        belief_content = belief.get("content") if isinstance(belief, dict) else getattr(belief, "content", None)
         if not belief_content:
             raise ValueError("Belief has no content")
-        
+
         # Get recipient's public key
         recipient_key = await self.identity.get_public_key(request.recipient_did)
         if not recipient_key:
             raise ValueError("Recipient not found or has no public key")
-        
+
         # Encrypt for recipient
         envelope = EncryptionEnvelope.encrypt(
             content=belief_content.encode("utf-8"),
             recipient_public_key=recipient_key,
         )
-        
+
         # Create consent chain origin
         timestamp = time.time()
         consent_origin = {
@@ -650,14 +646,14 @@ class SharingService:
             "policy": policy.to_dict(),
             "timestamp": timestamp,
         }
-        
+
         # Sign the consent
         signature = self.identity.sign(consent_origin)
-        
+
         # Compute chain hash
         consent_json = json.dumps(consent_origin, sort_keys=True).encode("utf-8")
         chain_hash = hashlib.sha256(consent_json + signature).digest()
-        
+
         # Store consent chain
         consent_chain_id = str(uuid.uuid4())
         await self.db.create_consent_chain(
@@ -669,7 +665,7 @@ class SharingService:
             origin_signature=signature,
             chain_hash=chain_hash,
         )
-        
+
         # Store encrypted share
         share_id = str(uuid.uuid4())
         await self.db.create_share(
@@ -679,37 +675,32 @@ class SharingService:
             recipient_did=request.recipient_did,
             belief_id=request.belief_id,
         )
-        
-        logger.info(
-            f"Shared belief {request.belief_id} with {request.recipient_did} "
-            f"(share_id={share_id}, consent_chain_id={consent_chain_id})"
-        )
-        
+
+        logger.info(f"Shared belief {request.belief_id} with {request.recipient_did} (share_id={share_id}, consent_chain_id={consent_chain_id})")
+
         return ShareResult(
             share_id=share_id,
             consent_chain_id=consent_chain_id,
             encrypted_for=request.recipient_did,
             created_at=timestamp,
         )
-    
-    async def reshare(
-        self, request: ReshareRequest, resharer_did: str
-    ) -> ReshareResult:
+
+    async def reshare(self, request: ReshareRequest, resharer_did: str) -> ReshareResult:
         """Reshare a previously received belief with a new recipient.
-        
+
         This implements max_hops propagation tracking:
         - Validates the resharer received the original share
         - Checks if max_hops allows another hop
         - Increments the hop counter
         - Creates a new share linked to the original consent chain
-        
+
         Args:
             request: The reshare request containing original_share_id and recipient
             resharer_did: The DID of the entity resharing (must have received the share)
-            
+
         Returns:
             ReshareResult with the new share details and hop tracking info
-            
+
         Raises:
             ValueError: If validation fails
             PermissionError: If resharer didn't receive the original share
@@ -718,94 +709,88 @@ class SharingService:
         original_share = await self.db.get_share(request.original_share_id)
         if not original_share:
             raise ValueError("Original share not found")
-        
+
         # Verify resharer received the original share
         if original_share.recipient_did != resharer_did:
             raise PermissionError("Only the recipient of a share can reshare it")
-        
+
         # Verify the share was actually received
         if original_share.received_at is None:
             raise ValueError("Must receive share before resharing")
-        
+
         # Get the consent chain
         consent_chain = await self.db.get_consent_chain(original_share.consent_chain_id)
         if not consent_chain:
             raise ValueError("Consent chain not found")
-        
+
         # Check if revoked
         if consent_chain.revoked:
             raise ValueError("Cannot reshare: original share has been revoked")
-        
+
         # Check policy allows resharing
         policy_level = consent_chain.origin_policy.get("level")
         if policy_level not in ("bounded", "cascading", "public"):
-            raise ValueError(
-                f"Cannot reshare: policy level '{policy_level}' does not allow resharing"
-            )
-        
+            raise ValueError(f"Cannot reshare: policy level '{policy_level}' does not allow resharing")
+
         # Check max_hops
         if not consent_chain.can_reshare():
-            raise ValueError(
-                f"Cannot reshare: max_hops ({consent_chain.max_hops}) exceeded "
-                f"(current_hop={consent_chain.current_hop})"
-            )
-        
+            raise ValueError(f"Cannot reshare: max_hops ({consent_chain.max_hops}) exceeded (current_hop={consent_chain.current_hop})")
+
         # Validate recipient is allowed (check allowed_domains if set)
         propagation = consent_chain.origin_policy.get("propagation", {})
         allowed_domains = propagation.get("allowed_domains")
-        
+
         # If allowed_domains is specified and non-empty, validate domain membership
         if allowed_domains:
             if self.domain_service is None:
                 raise ValueError("Domain service required for domain-restricted resharing")
-            
+
             # Recipient must be member of at least one allowed domain
             recipient_in_domain = False
             for domain in allowed_domains:
                 if await self.domain_service.is_member(request.recipient_did, domain):
                     recipient_in_domain = True
                     break
-            
+
             if not recipient_in_domain:
-                raise ValueError(
-                    f"Recipient {request.recipient_did} is not a member of any allowed domain"
-                )
+                raise ValueError(f"Recipient {request.recipient_did} is not a member of any allowed domain")
         # Empty allowed_domains = no domain restriction
-        
+
         # Check expiration
         expires_at = propagation.get("expires_at")
         if expires_at:
             from datetime import datetime
+
             exp_time = datetime.fromisoformat(expires_at)
             if datetime.now() > exp_time:
                 raise ValueError("Cannot reshare: share has expired")
-        
+
         # Get the original belief content (need to decrypt first)
         recipient_private_key = await self.identity.get_private_key(resharer_did)
         if not recipient_private_key:
             raise ValueError("Resharer private key not available")
-        
+
         envelope = EncryptionEnvelope.from_dict(original_share.encrypted_envelope)
         original_content = EncryptionEnvelope.decrypt(envelope, recipient_private_key)
-        
+
         # Strip fields if configured (supports nested paths like "metadata.source")
         strip_fields = propagation.get("strip_on_forward")
         content_to_share = strip_fields_from_content(original_content, strip_fields or [])
-        
+
         # Get new recipient's public key
         recipient_key = await self.identity.get_public_key(request.recipient_did)
         if not recipient_key:
             raise ValueError("Recipient not found or has no public key")
-        
+
         # Encrypt for new recipient
         new_envelope = EncryptionEnvelope.encrypt(
             content=content_to_share,
             recipient_public_key=recipient_key,
         )
-        
+
         # Calculate new hop count
         new_hop_count = consent_chain.current_hop + 1
-        
+
         # Store new share (linked to same consent chain)
         share_id = str(uuid.uuid4())
         timestamp = time.time()
@@ -816,14 +801,14 @@ class SharingService:
             recipient_did=request.recipient_did,
             belief_id=original_share.belief_id,
         )
-        
+
         # Get recipient's domains for audit/tracking
-        recipient_domains: List[str] = []
+        recipient_domains: list[str] = []
         if self.domain_service and allowed_domains:
             for domain in allowed_domains:
                 if await self.domain_service.is_member(request.recipient_did, domain):
                     recipient_domains.append(domain)
-        
+
         # Add hop to consent chain
         hop = {
             "resharer": resharer_did,
@@ -833,44 +818,44 @@ class SharingService:
             "from_share_id": request.original_share_id,
             "new_share_id": share_id,
             "recipient_domains": recipient_domains,
-            "signature": self.identity.sign({
-                "original_share_id": request.original_share_id,
-                "recipient": request.recipient_did,
-                "reshared_at": timestamp,
-                "hop_number": new_hop_count,
-            }),
+            "signature": self.identity.sign(
+                {
+                    "original_share_id": request.original_share_id,
+                    "recipient": request.recipient_did,
+                    "reshared_at": timestamp,
+                    "hop_number": new_hop_count,
+                }
+            ),
         }
         await self.db.add_consent_chain_hop(
             consent_chain_id=consent_chain.id,
             hop=hop,
         )
-        
+
         # Update hop count in consent chain
         await self.db.update_consent_chain_hop_count(
             consent_chain_id=consent_chain.id,
             current_hop=new_hop_count,
         )
-        
+
         logger.info(
             f"Reshared belief {original_share.belief_id} from {resharer_did} "
             f"to {request.recipient_did} (share_id={share_id}, "
             f"consent_chain_id={consent_chain.id}, hop={new_hop_count})"
         )
-        
+
         return ReshareResult(
             share_id=share_id,
             consent_chain_id=consent_chain.id,
             encrypted_for=request.recipient_did,
             created_at=timestamp,
             current_hop=new_hop_count,
-            hops_remaining=consent_chain.max_hops - new_hop_count if consent_chain.max_hops else None,
+            hops_remaining=(consent_chain.max_hops - new_hop_count if consent_chain.max_hops else None),
         )
-    
-    async def propagate(
-        self, request: PropagateRequest, propagator_did: str
-    ) -> PropagateResult:
+
+    async def propagate(self, request: PropagateRequest, propagator_did: str) -> PropagateResult:
         """Propagate a share with composed (tighter) restrictions.
-        
+
         Unlike reshare(), propagate() allows adding additional restrictions
         on top of the original share's policy. The resulting policy is the
         most restrictive combination of both:
@@ -879,14 +864,14 @@ class SharingService:
         - expires_at: earlier of the two expiration times
         - strip_on_forward: union of fields to strip
         - min_trust_to_receive: maximum of the two thresholds
-        
+
         Args:
             request: The propagate request with share_id, recipient, and additional_restrictions
             propagator_did: The DID of the entity propagating (must have received the share)
-            
+
         Returns:
             PropagateResult with the new share details and composed restrictions
-            
+
         Raises:
             ValueError: If validation fails or propagation not allowed
             PermissionError: If propagator didn't receive the original share
@@ -895,31 +880,29 @@ class SharingService:
         original_share = await self.db.get_share(request.share_id)
         if not original_share:
             raise ValueError("Original share not found")
-        
+
         # Verify propagator received the original share
         if original_share.recipient_did != propagator_did:
             raise PermissionError("Only the recipient of a share can propagate it")
-        
+
         # Verify the share was actually received
         if original_share.received_at is None:
             raise ValueError("Must receive share before propagating")
-        
+
         # Get the consent chain
         consent_chain = await self.db.get_consent_chain(original_share.consent_chain_id)
         if not consent_chain:
             raise ValueError("Consent chain not found")
-        
+
         # Check if revoked
         if consent_chain.revoked:
             raise ValueError("Cannot propagate: original share has been revoked")
-        
+
         # Check policy allows propagation (same rules as resharing)
         policy_level = consent_chain.origin_policy.get("level")
         if policy_level not in ("bounded", "cascading", "public"):
-            raise ValueError(
-                f"Cannot propagate: policy level '{policy_level}' does not allow propagation"
-            )
-        
+            raise ValueError(f"Cannot propagate: policy level '{policy_level}' does not allow propagation")
+
         # Get original propagation rules
         original_propagation = consent_chain.origin_policy.get("propagation", {})
         original_max_hops = original_propagation.get("max_hops")
@@ -927,21 +910,18 @@ class SharingService:
         original_expires = original_propagation.get("expires_at")
         original_strip = original_propagation.get("strip_on_forward") or []
         original_min_trust = original_propagation.get("min_trust_to_receive")
-        
+
         # Compute hops remaining from original policy
         hops_remaining_original = None
         if original_max_hops is not None:
             hops_remaining_original = original_max_hops - consent_chain.current_hop
             if hops_remaining_original <= 0:
-                raise ValueError(
-                    f"Cannot propagate: max_hops ({original_max_hops}) exceeded "
-                    f"(current_hop={consent_chain.current_hop})"
-                )
-        
+                raise ValueError(f"Cannot propagate: max_hops ({original_max_hops}) exceeded (current_hop={consent_chain.current_hop})")
+
         # Compose restrictions with additional_restrictions
         additional = request.additional_restrictions
         composed = {}
-        
+
         # Compose max_hops: take minimum of remaining hops
         if additional and additional.max_hops is not None:
             if hops_remaining_original is not None:
@@ -953,48 +933,44 @@ class SharingService:
             composed["max_hops"] = hops_remaining_original
         else:
             composed["max_hops"] = None
-        
+
         # Check we still have hops available
         if composed["max_hops"] is not None and composed["max_hops"] <= 0:
             raise ValueError("Cannot propagate: no hops remaining after composition")
-        
+
         # Compose allowed_domains: intersection (can only narrow, not widen)
         new_domains = (additional.allowed_domains or []) if additional else []
         if original_domains and new_domains:
             # Intersection
             composed["allowed_domains"] = list(set(original_domains) & set(new_domains))
             if not composed["allowed_domains"]:
-                raise ValueError(
-                    "Cannot propagate: no common domains between original and additional restrictions"
-                )
+                raise ValueError("Cannot propagate: no common domains between original and additional restrictions")
         elif original_domains:
             composed["allowed_domains"] = original_domains
         elif new_domains:
             composed["allowed_domains"] = new_domains
         else:
             composed["allowed_domains"] = None
-        
+
         # Validate recipient is in composed domains
         if composed["allowed_domains"]:
             if self.domain_service is None:
                 raise ValueError("Domain service required for domain-restricted propagation")
-            
+
             recipient_in_domain = False
             for domain in composed["allowed_domains"]:
                 if await self.domain_service.is_member(request.recipient_did, domain):
                     recipient_in_domain = True
                     break
-            
+
             if not recipient_in_domain:
-                raise ValueError(
-                    f"Recipient {request.recipient_did} is not a member of any allowed domain "
-                    f"in composed restrictions"
-                )
-        
+                raise ValueError(f"Recipient {request.recipient_did} is not a member of any allowed domain in composed restrictions")
+
         # Compose expires_at: take earlier expiration
         new_expires = additional.expires_at if additional else None
         if original_expires and new_expires:
             from datetime import datetime
+
             orig_dt = datetime.fromisoformat(original_expires)
             if new_expires < orig_dt:
                 composed["expires_at"] = new_expires.isoformat()
@@ -1006,18 +982,19 @@ class SharingService:
             composed["expires_at"] = new_expires.isoformat()
         else:
             composed["expires_at"] = None
-        
+
         # Check expiration
         if composed["expires_at"]:
             from datetime import datetime
+
             exp_time = datetime.fromisoformat(composed["expires_at"])
             if datetime.now() > exp_time:
                 raise ValueError("Cannot propagate: share has expired")
-        
+
         # Compose strip_on_forward: union of fields
         new_strip = (additional.strip_on_forward or []) if additional else []
         composed["strip_on_forward"] = list(set(original_strip) | set(new_strip))
-        
+
         # Compose min_trust_to_receive: take maximum (more restrictive)
         new_min_trust = additional.min_trust_to_receive if additional else None
         if original_min_trust is not None and new_min_trust is not None:
@@ -1028,34 +1005,32 @@ class SharingService:
             composed["min_trust_to_receive"] = new_min_trust
         else:
             composed["min_trust_to_receive"] = None
-        
+
         # Get the original belief content (need to decrypt first)
         propagator_private_key = await self.identity.get_private_key(propagator_did)
         if not propagator_private_key:
             raise ValueError("Propagator private key not available")
-        
+
         envelope = EncryptionEnvelope.from_dict(original_share.encrypted_envelope)
         original_content = EncryptionEnvelope.decrypt(envelope, propagator_private_key)
-        
+
         # Strip fields based on composed strip_on_forward (supports nested paths)
-        content_to_share = strip_fields_from_content(
-            original_content, composed["strip_on_forward"] or []
-        )
-        
+        content_to_share = strip_fields_from_content(original_content, composed["strip_on_forward"] or [])
+
         # Get new recipient's public key
         recipient_key = await self.identity.get_public_key(request.recipient_did)
         if not recipient_key:
             raise ValueError("Recipient not found or has no public key")
-        
+
         # Encrypt for new recipient
         new_envelope = EncryptionEnvelope.encrypt(
             content=content_to_share,
             recipient_public_key=recipient_key,
         )
-        
+
         # Calculate new hop count
         new_hop_count = consent_chain.current_hop + 1
-        
+
         # Store new share (linked to same consent chain)
         share_id = str(uuid.uuid4())
         timestamp = time.time()
@@ -1066,14 +1041,14 @@ class SharingService:
             recipient_did=request.recipient_did,
             belief_id=original_share.belief_id,
         )
-        
+
         # Get recipient's domains for audit/tracking
-        recipient_domains: List[str] = []
+        recipient_domains: list[str] = []
         if self.domain_service and composed["allowed_domains"]:
             for domain in composed["allowed_domains"]:
                 if await self.domain_service.is_member(request.recipient_did, domain):
                     recipient_domains.append(domain)
-        
+
         # Add hop to consent chain with composed restrictions
         hop = {
             "propagator": propagator_did,
@@ -1084,36 +1059,38 @@ class SharingService:
             "new_share_id": share_id,
             "recipient_domains": recipient_domains,
             "composed_restrictions": composed,
-            "signature": self.identity.sign({
-                "original_share_id": request.share_id,
-                "recipient": request.recipient_did,
-                "propagated_at": timestamp,
-                "hop_number": new_hop_count,
-                "composed_restrictions": composed,
-            }),
+            "signature": self.identity.sign(
+                {
+                    "original_share_id": request.share_id,
+                    "recipient": request.recipient_did,
+                    "propagated_at": timestamp,
+                    "hop_number": new_hop_count,
+                    "composed_restrictions": composed,
+                }
+            ),
         }
         await self.db.add_consent_chain_hop(
             consent_chain_id=consent_chain.id,
             hop=hop,
         )
-        
+
         # Update hop count in consent chain
         await self.db.update_consent_chain_hop_count(
             consent_chain_id=consent_chain.id,
             current_hop=new_hop_count,
         )
-        
+
         # Calculate hops remaining based on composed max_hops
         hops_remaining = None
         if composed["max_hops"] is not None:
             hops_remaining = composed["max_hops"] - 1  # -1 because this propagation uses one hop
-        
+
         logger.info(
             f"Propagated belief {original_share.belief_id} from {propagator_did} "
             f"to {request.recipient_did} with composed restrictions "
             f"(share_id={share_id}, consent_chain_id={consent_chain.id}, hop={new_hop_count})"
         )
-        
+
         return PropagateResult(
             share_id=share_id,
             consent_chain_id=consent_chain.id,
@@ -1123,33 +1100,33 @@ class SharingService:
             hops_remaining=hops_remaining,
             composed_restrictions=composed,
         )
-    
-    async def get_share(self, share_id: str) -> Optional[Share]:
+
+    async def get_share(self, share_id: str) -> Share | None:
         """Get share details by ID.
-        
+
         Args:
             share_id: The share UUID
-            
+
         Returns:
             Share details or None if not found
         """
         return await self.db.get_share(share_id)
-    
+
     async def list_shares(
         self,
-        sharer_did: Optional[str] = None,
-        recipient_did: Optional[str] = None,
+        sharer_did: str | None = None,
+        recipient_did: str | None = None,
         limit: int = 100,
         include_revoked: bool = False,
     ) -> list[Share]:
         """List shares, optionally filtered.
-        
+
         Args:
             sharer_did: Filter by sharer DID
             recipient_did: Filter by recipient DID
             limit: Maximum number of results
             include_revoked: Whether to include revoked shares (default False)
-            
+
         Returns:
             List of Share objects
         """
@@ -1159,28 +1136,28 @@ class SharingService:
             limit=limit,
             include_revoked=include_revoked,
         )
-    
-    async def get_consent_chain(self, chain_id: str) -> Optional[ConsentChainEntry]:
+
+    async def get_consent_chain(self, chain_id: str) -> ConsentChainEntry | None:
         """Get consent chain details.
-        
+
         Args:
             chain_id: The consent chain UUID
-            
+
         Returns:
             ConsentChainEntry or None if not found
         """
         return await self.db.get_consent_chain(chain_id)
-    
+
     async def revoke_share(self, request: RevokeRequest, revoker_did: str) -> RevokeResult:
         """Revoke a previously shared belief.
-        
+
         Args:
             request: The revoke request containing share_id and optional reason
             revoker_did: The DID of the entity revoking the share
-            
+
         Returns:
             RevokeResult with revocation details
-            
+
         Raises:
             ValueError: If share not found, consent chain not found, or already revoked
             PermissionError: If revoker is not the original sharer
@@ -1189,20 +1166,20 @@ class SharingService:
         share = await self.db.get_share(request.share_id)
         if not share:
             raise ValueError("Share not found")
-        
+
         # Get consent chain
         consent_chain = await self.db.get_consent_chain(share.consent_chain_id)
         if not consent_chain:
             raise ValueError("Consent chain not found")
-        
+
         # Verify revoker is the original sharer
         if consent_chain.origin_sharer != revoker_did:
             raise PermissionError("Only original sharer can revoke")
-        
+
         # Check if already revoked
         if consent_chain.revoked:
             raise ValueError("Share already revoked")
-        
+
         # Mark as revoked
         revoked_at = time.time()
         await self.db.revoke_consent_chain(
@@ -1211,46 +1188,41 @@ class SharingService:
             revoked_by=revoker_did,
             reason=request.reason,
         )
-        
+
         # Count affected recipients (for DIRECT, just 1)
         affected = 1
-        
+
         # Trigger revocation propagation (for future BOUNDED/CASCADING)
         # This will notify downstream recipients
         # Note: Pass the reason explicitly since consent_chain was fetched before update
         await self._propagate_revocation(consent_chain, revoker_did, request.reason)
-        
-        logger.info(
-            f"Revoked share {request.share_id} (consent_chain={consent_chain.id}) "
-            f"by {revoker_did}, reason: {request.reason}"
-        )
-        
+
+        logger.info(f"Revoked share {request.share_id} (consent_chain={consent_chain.id}) by {revoker_did}, reason: {request.reason}")
+
         return RevokeResult(
             share_id=request.share_id,
             consent_chain_id=share.consent_chain_id,
             revoked_at=revoked_at,
             affected_recipients=affected,
         )
-    
-    async def receive(
-        self, request: ReceiveRequest, recipient_did: str
-    ) -> ReceiveResult:
+
+    async def receive(self, request: ReceiveRequest, recipient_did: str) -> ReceiveResult:
         """Receive and acknowledge a shared belief.
-        
+
         This method:
         1. Validates the recipient is the intended recipient
         2. Checks the share hasn't been revoked or already received
         3. Decrypts the content using the recipient's private key
         4. Records the acknowledgment
         5. Adds a hop to the consent chain
-        
+
         Args:
             request: The receive request containing share_id
             recipient_did: The DID of the recipient receiving the share
-            
+
         Returns:
             ReceiveResult with decrypted content and metadata
-            
+
         Raises:
             ValueError: If share not found, already received, or revoked
             PermissionError: If caller is not the intended recipient
@@ -1259,58 +1231,57 @@ class SharingService:
         share = await self.db.get_share(request.share_id)
         if not share:
             raise ValueError("Share not found")
-        
+
         # Verify recipient
         if share.recipient_did != recipient_did:
             raise PermissionError("Not the intended recipient")
-        
+
         # Check if already received
         if share.received_at:
             raise ValueError("Already received")
-        
+
         # Get consent chain and check if revoked
         consent_chain = await self.db.get_consent_chain(share.consent_chain_id)
         if not consent_chain:
             raise ValueError("Consent chain not found")
-        
+
         if consent_chain.revoked:
             raise ValueError("Share has been revoked")
-        
+
         # Decrypt content
         recipient_private_key = await self.identity.get_private_key(recipient_did)
         if not recipient_private_key:
             raise ValueError("Recipient private key not available")
-        
+
         envelope = EncryptionEnvelope.from_dict(share.encrypted_envelope)
         content = EncryptionEnvelope.decrypt(envelope, recipient_private_key)
-        
+
         # Record acknowledgment
         received_at = time.time()
         await self.db.acknowledge_share(
             share_id=request.share_id,
             received_at=received_at,
         )
-        
+
         # Add hop to consent chain
         hop = {
             "recipient": recipient_did,
             "received_at": received_at,
             "acknowledged": True,
-            "signature": self.identity.sign({
-                "share_id": request.share_id,
-                "received_at": received_at,
-            }),
+            "signature": self.identity.sign(
+                {
+                    "share_id": request.share_id,
+                    "received_at": received_at,
+                }
+            ),
         }
         await self.db.add_consent_chain_hop(
             consent_chain_id=share.consent_chain_id,
             hop=hop,
         )
-        
-        logger.info(
-            f"Received share {request.share_id} by {recipient_did} "
-            f"(consent_chain={share.consent_chain_id})"
-        )
-        
+
+        logger.info(f"Received share {request.share_id} by {recipient_did} (consent_chain={share.consent_chain_id})")
+
         return ReceiveResult(
             share_id=request.share_id,
             belief_id=share.belief_id or consent_chain.belief_id,
@@ -1319,28 +1290,26 @@ class SharingService:
             received_at=received_at,
             consent_chain_id=share.consent_chain_id,
         )
-    
+
     async def list_pending_shares(self, recipient_did: str) -> list[Share]:
         """List shares waiting to be received by a recipient.
-        
+
         Args:
             recipient_did: The DID of the recipient
-            
+
         Returns:
             List of shares that haven't been received yet
         """
         return await self.db.get_pending_shares(recipient_did)
-    
-    def _get_domain_constraints_from_chain(
-        self, consent_chain: ConsentChainEntry
-    ) -> Optional[List[str]]:
+
+    def _get_domain_constraints_from_chain(self, consent_chain: ConsentChainEntry) -> list[str] | None:
         """Extract domain constraints from a consent chain.
-        
+
         Returns the allowed_domains from the original policy's propagation rules.
-        
+
         Args:
             consent_chain: The consent chain to extract domains from
-            
+
         Returns:
             List of allowed domain identifiers, or None if not a BOUNDED share
         """
@@ -1350,33 +1319,36 @@ class SharingService:
         if policy.propagation is None:
             return None
         return policy.propagation.allowed_domains
-    
+
     async def _propagate_revocation(
-        self, consent_chain: ConsentChainEntry, revoker_did: str, reason: Optional[str] = None
+        self,
+        consent_chain: ConsentChainEntry,
+        revoker_did: str,
+        reason: str | None = None,
     ) -> int:
         """Propagate revocation to all downstream recipients.
-        
+
         For DIRECT shares, notifies the single recipient.
         For BOUNDED/CASCADING, traverses hops and notifies all downstream recipients.
-        
+
         Args:
             consent_chain: The consent chain being revoked
             revoker_did: The DID of the revoker
             reason: The revocation reason (passed explicitly since consent_chain
                     may have been fetched before the update)
-            
+
         Returns:
             Number of notifications sent
         """
         # Get all shares from this consent chain
         shares = await self.db.get_shares_by_consent_chain(consent_chain.id)
-        
+
         notifications_sent = 0
         revoked_at = time.time()
-        
+
         # Track recipients to avoid duplicate notifications
         notified_recipients: set[str] = set()
-        
+
         # Notify direct share recipients
         for share in shares:
             if share.recipient_did not in notified_recipients:
@@ -1388,14 +1360,14 @@ class SharingService:
                     revoked_at=revoked_at,
                     reason=reason,
                 )
-                
+
                 await self._queue_revocation_notification(
                     recipient_did=share.recipient_did,
                     notification=notification,
                 )
                 notified_recipients.add(share.recipient_did)
                 notifications_sent += 1
-        
+
         # For BOUNDED/CASCADING shares, traverse hops and notify downstream
         for hop in consent_chain.hops:
             # Notify the hop recipient if not already notified
@@ -1409,14 +1381,14 @@ class SharingService:
                     revoked_at=revoked_at,
                     reason=reason,
                 )
-                
+
                 await self._queue_revocation_notification(
                     recipient_did=hop_recipient,
                     notification=notification,
                 )
                 notified_recipients.add(hop_recipient)
                 notifications_sent += 1
-            
+
             # Handle reshared_to for future BOUNDED/CASCADING support
             reshared_to = hop.get("reshared_to", [])
             for downstream_recipient in reshared_to:
@@ -1429,31 +1401,28 @@ class SharingService:
                         revoked_at=revoked_at,
                         reason=reason,
                     )
-                    
+
                     await self._queue_revocation_notification(
                         recipient_did=downstream_recipient,
                         notification=notification,
                     )
                     notified_recipients.add(downstream_recipient)
                     notifications_sent += 1
-        
-        logger.info(
-            f"Propagated revocation for consent_chain={consent_chain.id}: "
-            f"{notifications_sent} notifications queued"
-        )
-        
+
+        logger.info(f"Propagated revocation for consent_chain={consent_chain.id}: {notifications_sent} notifications queued")
+
         return notifications_sent
-    
+
     async def _queue_revocation_notification(
         self,
         recipient_did: str,
         notification: RevocationNotification,
     ) -> None:
         """Queue a revocation notification for delivery.
-        
+
         Stores notification in database for persistence (survives restarts)
         and adds to in-memory queue for immediate delivery attempt.
-        
+
         Args:
             recipient_did: The DID of the notification recipient
             notification: The revocation notification to deliver
@@ -1466,70 +1435,69 @@ class SharingService:
             payload=asdict(notification),
             created_at=notification.revoked_at,
         )
-        
+
         # Add to in-memory queue for immediate delivery attempt
         self._revocation_queue.append((recipient_did, notification))
-        
+
         logger.debug(
             f"Queued revocation notification: recipient={recipient_did}, "
             f"notification_id={notification.id}, "
             f"consent_chain={notification.consent_chain_id}"
         )
-    
-    async def process_revocation_queue(self) -> AsyncIterator[tuple[str, RevocationNotification]]:
+
+    async def process_revocation_queue(
+        self,
+    ) -> AsyncIterator[tuple[str, RevocationNotification]]:
         """Process queued revocation notifications.
-        
+
         Called by the network layer to get pending notifications for delivery.
-        
+
         Yields:
             Tuples of (recipient_did, notification) for each queued notification
         """
         while self._revocation_queue:
             recipient_did, notification = self._revocation_queue.pop(0)
             yield recipient_did, notification
-    
+
     async def get_pending_notifications(self, recipient_did: str) -> list[Notification]:
         """Get pending notifications for a recipient.
-        
+
         Used by recipients to poll for notifications (e.g., when they come online).
-        
+
         Args:
             recipient_did: The DID of the recipient
-            
+
         Returns:
             List of pending notifications
         """
         return await self.db.get_pending_notifications(recipient_did)
-    
+
     async def acknowledge_notification(self, notification_id: str, recipient_did: str) -> bool:
         """Mark a notification as acknowledged/delivered.
-        
+
         Args:
             notification_id: The ID of the notification
             recipient_did: The DID of the recipient (for authorization)
-            
+
         Returns:
             True if acknowledged successfully, False if not found or unauthorized
-            
+
         Raises:
             PermissionError: If recipient is not the notification recipient
         """
         notification = await self.db.get_notification(notification_id)
         if not notification:
             return False
-        
+
         if notification.recipient_did != recipient_did:
             raise PermissionError("Not the notification recipient")
-        
+
         if notification.acknowledged_at is not None:
             # Already acknowledged
             return True
-        
+
         await self.db.acknowledge_notification(notification_id, time.time())
-        
-        logger.debug(
-            f"Acknowledged notification: id={notification_id}, "
-            f"recipient={recipient_did}"
-        )
-        
+
+        logger.debug(f"Acknowledged notification: id={notification_id}, recipient={recipient_did}")
+
         return True

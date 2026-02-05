@@ -6,25 +6,27 @@ They use dataclasses for simplicity and can be serialized to/from JSON.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from .confidence import DimensionalConfidence
 
 
-class BeliefStatus(str, Enum):
+class BeliefStatus(StrEnum):
     """Status of a belief."""
+
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     DISPUTED = "disputed"
     ARCHIVED = "archived"
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     """Types of entities."""
+
     PERSON = "person"
     ORGANIZATION = "organization"
     TOOL = "tool"
@@ -34,62 +36,70 @@ class EntityType(str, Enum):
     SERVICE = "service"
 
 
-class EntityRole(str, Enum):
+class EntityRole(StrEnum):
     """Role of an entity in a belief."""
+
     SUBJECT = "subject"
     OBJECT = "object"
     CONTEXT = "context"
     SOURCE = "source"
 
 
-class SessionStatus(str, Enum):
+class SessionStatus(StrEnum):
     """Status of a session."""
+
     ACTIVE = "active"
     COMPLETED = "completed"
     ABANDONED = "abandoned"
 
 
-class Platform(str, Enum):
+class Platform(StrEnum):
     """Supported platforms."""
+
     CLAUDE_CODE = "claude-code"
     MATRIX = "matrix"
     API = "api"
     SLACK = "slack"
 
 
-class ExchangeRole(str, Enum):
+class ExchangeRole(StrEnum):
     """Role in a conversation exchange."""
+
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
 
 
-class PatternStatus(str, Enum):
+class PatternStatus(StrEnum):
     """Status of a behavioral pattern."""
+
     EMERGING = "emerging"
     ESTABLISHED = "established"
     FADING = "fading"
     ARCHIVED = "archived"
 
 
-class TensionType(str, Enum):
+class TensionType(StrEnum):
     """Types of tensions between beliefs."""
+
     CONTRADICTION = "contradiction"
     TEMPORAL_CONFLICT = "temporal_conflict"
     SCOPE_CONFLICT = "scope_conflict"
     PARTIAL_OVERLAP = "partial_overlap"
 
 
-class TensionSeverity(str, Enum):
+class TensionSeverity(StrEnum):
     """Severity of a tension."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class TensionStatus(str, Enum):
+class TensionStatus(StrEnum):
     """Status of a tension."""
+
     DETECTED = "detected"
     INVESTIGATING = "investigating"
     RESOLVED = "resolved"
@@ -208,16 +218,13 @@ class Belief:
             "source_id": str(self.source_id) if self.source_id else None,
             "extraction_method": self.extraction_method,
             "supersedes_id": str(self.supersedes_id) if self.supersedes_id else None,
-            "superseded_by_id": str(self.superseded_by_id) if self.superseded_by_id else None,
+            "superseded_by_id": (str(self.superseded_by_id) if self.superseded_by_id else None),
             "status": self.status.value,
         }
         if self.source:
             result["source"] = self.source.to_dict()
         if self.entities:
-            result["entities"] = [
-                {"entity": e.to_dict(), "role": r.value}
-                for e, r in self.entities
-            ]
+            result["entities"] = [{"entity": e.to_dict(), "role": r.value} for e, r in self.entities]
         return result
 
     @classmethod
@@ -226,6 +233,7 @@ class Belief:
         confidence_data = row.get("confidence", {"overall": 0.7})
         if isinstance(confidence_data, str):
             import json
+
             confidence_data = json.loads(confidence_data)
 
         return cls(
@@ -240,7 +248,7 @@ class Belief:
             source_id=row["source_id"] if row.get("source_id") else None,
             extraction_method=row.get("extraction_method"),
             supersedes_id=row["supersedes_id"] if row.get("supersedes_id") else None,
-            superseded_by_id=row["superseded_by_id"] if row.get("superseded_by_id") else None,
+            superseded_by_id=(row["superseded_by_id"] if row.get("superseded_by_id") else None),
             status=BeliefStatus(row.get("status", "active")),
         )
 
@@ -308,8 +316,8 @@ class Tension:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_a_id=row["belief_a_id"] if isinstance(row["belief_a_id"], UUID) else UUID(row["belief_a_id"]),
-            belief_b_id=row["belief_b_id"] if isinstance(row["belief_b_id"], UUID) else UUID(row["belief_b_id"]),
+            belief_a_id=(row["belief_a_id"] if isinstance(row["belief_a_id"], UUID) else UUID(row["belief_a_id"])),
+            belief_b_id=(row["belief_b_id"] if isinstance(row["belief_b_id"], UUID) else UUID(row["belief_b_id"])),
             type=TensionType(row.get("type", "contradiction")),
             description=row.get("description"),
             severity=TensionSeverity(row.get("severity", "medium")),
@@ -409,7 +417,7 @@ class Exchange:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            session_id=row["session_id"] if isinstance(row["session_id"], UUID) else UUID(row["session_id"]),
+            session_id=(row["session_id"] if isinstance(row["session_id"], UUID) else UUID(row["session_id"])),
             sequence=row["sequence"],
             role=ExchangeRole(row["role"]),
             content=row["content"],

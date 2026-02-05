@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,6 +16,7 @@ from starlette.testclient import TestClient
 def clean_server_settings():
     """Reset server settings between tests."""
     import valence.server.config as config_module
+
     config_module._settings = None
     yield
     config_module._settings = None
@@ -25,6 +26,7 @@ def clean_server_settings():
 def clean_token_store():
     """Reset token store between tests."""
     import valence.server.auth as auth_module
+
     auth_module._token_store = None
     yield
     auth_module._token_store = None
@@ -34,6 +36,7 @@ def clean_token_store():
 def clean_oauth_stores():
     """Reset OAuth stores between tests."""
     import valence.server.oauth_models as oauth_module
+
     oauth_module._client_store = None
     oauth_module._code_store = None
     oauth_module._refresh_store = None
@@ -79,19 +82,21 @@ def server_env(monkeypatch, temp_token_file, temp_clients_file):
 def mock_db_for_server():
     """Mock database calls for server testing."""
     mock_cursor = MagicMock()
-    
+
     def mock_context(*args, **kwargs):
         class CM:
             def __enter__(self):
                 return mock_cursor
+
             def __exit__(self, *args):
                 pass
+
         return CM()
-    
+
     with patch("valence.core.db.get_cursor", mock_context):
         with patch("valence.server.app.get_settings") as mock_get_settings:
             from valence.server.config import ServerSettings
-            
+
             # Create mock settings
             settings = MagicMock(spec=ServerSettings)
             settings.host = "127.0.0.1"
@@ -105,7 +110,7 @@ def mock_db_for_server():
             settings.allowed_origins = ["*"]
             settings.token_file = Path("/tmp/test-tokens.json")
             settings.federation_enabled = False
-            
+
             mock_get_settings.return_value = settings
             yield {
                 "cursor": mock_cursor,
@@ -130,7 +135,7 @@ def test_client_with_mocks(
     """Create a test client with mocked dependencies."""
     # Import after patching settings
     from valence.server.app import create_app
-    
+
     app = create_app()
     return TestClient(app, raise_server_exceptions=False)
 
@@ -140,15 +145,17 @@ def mock_db_for_health():
     """Mock database for health check."""
     mock_cursor = MagicMock()
     mock_cursor.execute.return_value = None
-    
+
     def mock_context(*args, **kwargs):
         class CM:
             def __enter__(self):
                 return mock_cursor
+
             def __exit__(self, *args):
                 pass
+
         return CM()
-    
+
     with patch("valence.server.app.get_cursor", mock_context):
         yield mock_cursor
 

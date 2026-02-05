@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 import pytest
-
 
 # ============================================================================
 # EmbeddingType Tests
 # ============================================================================
+
 
 class TestEmbeddingType:
     """Tests for EmbeddingType dataclass."""
@@ -94,6 +93,7 @@ class TestEmbeddingType:
 # get_embedding_type Tests
 # ============================================================================
 
+
 class TestGetEmbeddingType:
     """Tests for get_embedding_type function."""
 
@@ -172,6 +172,7 @@ class TestGetEmbeddingType:
 # list_embedding_types Tests
 # ============================================================================
 
+
 class TestListEmbeddingTypes:
     """Tests for list_embedding_types function."""
 
@@ -228,7 +229,7 @@ class TestListEmbeddingTypes:
 
         mock_get_cursor.fetchall.return_value = []
 
-        result = list_embedding_types(status="active")
+        list_embedding_types(status="active")
 
         # Should include status in query
         call_args = mock_get_cursor.execute.call_args[0]
@@ -238,6 +239,7 @@ class TestListEmbeddingTypes:
 # ============================================================================
 # register_embedding_type Tests
 # ============================================================================
+
 
 class TestRegisterEmbeddingType:
     """Tests for register_embedding_type function."""
@@ -338,6 +340,7 @@ class TestRegisterEmbeddingType:
 # ensure_default_type Tests
 # ============================================================================
 
+
 class TestEnsureDefaultType:
     """Tests for ensure_default_type function."""
 
@@ -375,6 +378,7 @@ class TestEnsureDefaultType:
 
         with patch("valence.embeddings.registry.get_embedding_type") as mock_get:
             from valence.embeddings.registry import EmbeddingType
+
             mock_get.return_value = EmbeddingType(
                 id="existing_default",
                 provider="openai",
@@ -410,6 +414,7 @@ class TestEnsureDefaultType:
 
             with patch("valence.embeddings.registry.register_embedding_type") as mock_register:
                 from valence.embeddings.registry import EmbeddingType
+
                 mock_register.return_value = EmbeddingType(
                     id="openai_text3_small",
                     provider="openai",
@@ -433,6 +438,7 @@ class TestEnsureDefaultType:
 # ============================================================================
 # KNOWN_EMBEDDINGS Tests
 # ============================================================================
+
 
 class TestKnownEmbeddings:
     """Tests for KNOWN_EMBEDDINGS constant."""

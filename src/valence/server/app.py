@@ -54,7 +54,12 @@ from .oauth import (
     register_client,
     token,
 )
-from .oauth_models import get_client_store, get_code_store, get_refresh_store, verify_access_token
+from .oauth_models import (
+    get_client_store,
+    get_code_store,
+    get_refresh_store,
+    verify_access_token,
+)
 from .sharing_endpoints import (
     get_share_endpoint,
     list_shares_endpoint,
@@ -240,7 +245,7 @@ async def mcp_endpoint(request: Request) -> Response:
             },
             status_code=400,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error handling MCP request")
         return JSONResponse(
             {
@@ -282,7 +287,10 @@ async def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any] | None:
     if not method or not isinstance(method, str):
         return {
             "jsonrpc": "2.0",
-            "error": {"code": -32600, "message": "Invalid Request: missing or invalid method"},
+            "error": {
+                "code": -32600,
+                "message": "Invalid Request: missing or invalid method",
+            },
             "id": request_id,
         }
 
@@ -310,7 +318,7 @@ async def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any] | None:
             "error": {"code": -32602, "message": str(e)},
             "id": request_id,
         }
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error in method {method}")
         if is_notification:
             return None
@@ -819,9 +827,7 @@ async def lifespan(app: Starlette):
         logger.info(f"OAuth stores initialized (clients file: {settings.oauth_clients_file})")
 
         if not settings.oauth_password:
-            logger.warning(
-                "OAuth password not configured! Set VALENCE_OAUTH_PASSWORD environment variable."
-            )
+            logger.warning("OAuth password not configured! Set VALENCE_OAUTH_PASSWORD environment variable.")
 
     yield
 
@@ -833,7 +839,7 @@ def create_app() -> Starlette:
     settings = get_settings()
 
     # API version prefix for all REST endpoints
-    API_V1 = "/api/v1"
+    API_V1 = "/api/v1"  # noqa: N806 - intentionally constant-style naming
 
     # Define routes
     routes = [
@@ -847,7 +853,9 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/docs", swagger_ui_endpoint, methods=["GET"]),
         # OAuth 2.1 endpoints (well-known paths per RFC, no version prefix)
         Route(
-            "/.well-known/oauth-protected-resource", protected_resource_metadata, methods=["GET"]
+            "/.well-known/oauth-protected-resource",
+            protected_resource_metadata,
+            methods=["GET"],
         ),
         Route(
             "/.well-known/oauth-authorization-server",

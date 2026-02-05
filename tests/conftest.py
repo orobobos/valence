@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from valence.core.config import clear_config_cache
 
 # ============================================================================
 # Environment Fixtures
@@ -25,6 +26,9 @@ def clean_env(monkeypatch):
     for key in list(os.environ.keys()):
         if any(key.startswith(prefix) for prefix in env_prefixes):
             monkeypatch.delenv(key, raising=False)
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
@@ -35,6 +39,9 @@ def env_with_db_vars(monkeypatch):
     monkeypatch.setenv("VKB_DB_NAME", "valence_test")
     monkeypatch.setenv("VKB_DB_USER", "valence")
     monkeypatch.setenv("VKB_DB_PASSWORD", "testpass")
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
@@ -42,12 +49,18 @@ def env_without_db_vars(monkeypatch):
     """Remove database environment variables."""
     for var in ["VKB_DB_HOST", "VKB_DB_NAME", "VKB_DB_USER", "VKB_DB_PASSWORD"]:
         monkeypatch.delenv(var, raising=False)
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
 def env_with_openai_key(monkeypatch):
     """Set up OpenAI API key."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-api-key-12345")
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 # ============================================================================
@@ -231,7 +244,10 @@ def entity_row_factory():
     """Factory for creating entity database rows."""
 
     def factory(
-        id: UUID | None = None, name: str = "Test Entity", type: str = "concept", **kwargs
+        id: UUID | None = None,
+        name: str = "Test Entity",
+        type: str = "concept",
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -253,7 +269,10 @@ def session_row_factory():
     """Factory for creating session database rows."""
 
     def factory(
-        id: UUID | None = None, platform: str = "claude-code", status: str = "active", **kwargs
+        id: UUID | None = None,
+        platform: str = "claude-code",
+        status: str = "active",
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {

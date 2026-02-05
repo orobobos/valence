@@ -1365,7 +1365,11 @@ class TestCrossFederationHopValidation:
         # Should be accepted and include both hops
         assert chain.get_hop_count() == 2
         assert chain.origin_federation_id == "federation-a"
-        assert chain.get_federation_path() == ["federation-a", "federation-b", "federation-c"]
+        assert chain.get_federation_path() == [
+            "federation-a",
+            "federation-b",
+            "federation-c",
+        ]
 
     @pytest.mark.asyncio
     async def test_receive_hop_incomplete_provenance_rejected(
@@ -1712,7 +1716,7 @@ class TestUnknownChainTrustThreshold:
     """Tests for federation trust threshold when accepting unknown chains (Issue #176)."""
 
     @pytest.fixture
-    def mock_trust_service(self) -> "MockTrustService":
+    def mock_trust_service(self) -> MockTrustService:
         """Create a mock trust service."""
         return MockTrustService()
 
@@ -1722,7 +1726,7 @@ class TestUnknownChainTrustThreshold:
         gateway_signer_b: MockGatewaySigner,
         chain_store_b: InMemoryConsentChainStore,
         policy_store: InMemoryPolicyStore,
-        mock_trust_service: "MockTrustService",
+        mock_trust_service: MockTrustService,
     ) -> CrossFederationConsentService:
         """Consent service with trust service enabled."""
         return CrossFederationConsentService(
@@ -1738,7 +1742,7 @@ class TestUnknownChainTrustThreshold:
         self,
         consent_service_with_trust: CrossFederationConsentService,
         policy_store: InMemoryPolicyStore,
-        mock_trust_service: "MockTrustService",
+        mock_trust_service: MockTrustService,
     ) -> None:
         """Test that trust threshold is enforced for unknown chains."""
         # Set up policy with trust threshold
@@ -1772,7 +1776,7 @@ class TestUnknownChainTrustThreshold:
         self,
         consent_service_with_trust: CrossFederationConsentService,
         policy_store: InMemoryPolicyStore,
-        mock_trust_service: "MockTrustService",
+        mock_trust_service: MockTrustService,
     ) -> None:
         """Test that unknown chains are accepted with sufficient trust."""
         # Set up policy with trust threshold
@@ -1805,7 +1809,7 @@ class TestUnknownChainTrustThreshold:
     async def test_trust_threshold_uses_default_when_no_policy(
         self,
         consent_service_with_trust: CrossFederationConsentService,
-        mock_trust_service: "MockTrustService",
+        mock_trust_service: MockTrustService,
     ) -> None:
         """Test that default trust threshold (0.7) is used when no policy exists."""
         # Set trust below default threshold of 0.7
@@ -1832,7 +1836,7 @@ class TestUnknownChainTrustThreshold:
         self,
         consent_service_with_trust: CrossFederationConsentService,
         policy_store: InMemoryPolicyStore,
-        mock_trust_service: "MockTrustService",
+        mock_trust_service: MockTrustService,
         chain_store_b: InMemoryConsentChainStore,
     ) -> None:
         """Test that trust check is only for NEW chains, not existing ones."""

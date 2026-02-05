@@ -12,15 +12,16 @@ import json
 import logging
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from .db import init_schema
 from .exceptions import DatabaseException, ValidationException
-from .health import startup_checks, cli_health_check
+from .health import cli_health_check, startup_checks
 
 logger = logging.getLogger(__name__)
 
@@ -74,40 +75,54 @@ class MCPServerBase(ABC):
         async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return await self._handle_tool_call(name, arguments)
 
-    async def _handle_tool_call(
-        self,
-        name: str,
-        arguments: dict[str, Any]
-    ) -> list[TextContent]:
+    async def _handle_tool_call(self, name: str, arguments: dict[str, Any]) -> list[TextContent]:
         """Handle a tool call with consistent error handling."""
         try:
             result = self.handle_tool(name, arguments)
-            return [TextContent(
-                type="text",
-                text=json.dumps(result, indent=2, default=str)
-            )]
+            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
         except ValidationException as e:
             logger.warning(f"Validation error in tool {name}: {e}")
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Validation error: {e.message}",
-                "details": e.details,
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Validation error: {e.message}",
+                            "details": e.details,
+                        }
+                    ),
+                )
+            ]
 
         except DatabaseException as e:
             logger.error(f"Database error in tool {name}: {e}")
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Database error: {e.message}",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Database error: {e.message}",
+                        }
+                    ),
+                )
+            ]
 
         except Exception as e:
             logger.exception(f"Unexpected error in tool {name}")
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Internal error: {str(e)}",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Internal error: {str(e)}",
+                        }
+                    ),
+                )
+            ]
 
     @abstractmethod
     def get_tools(self) -> list[Tool]:
@@ -135,15 +150,11 @@ class MCPServerBase(ABC):
     def parse_args(self) -> argparse.Namespace:
         """Parse command line arguments."""
         parser = argparse.ArgumentParser(description=self.server_description)
-        parser.add_argument(
-            "--health-check",
-            action="store_true",
-            help="Run health check and exit"
-        )
+        parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
         parser.add_argument(
             "--skip-health-check",
             action="store_true",
-            help="Skip startup health checks"
+            help="Skip startup health checks",
         )
         return parser.parse_args()
 
@@ -174,7 +185,7 @@ class MCPServerBase(ABC):
                 await self.server.run(
                     read_stream,
                     write_stream,
-                    self.server.create_initialization_options()
+                    self.server.create_initialization_options(),
                 )
 
         asyncio.run(main())
@@ -243,16 +254,14 @@ class ToolRouter:
         Args:
             name: Tool name to register
         """
+
         def decorator(func: Callable) -> Callable:
             self._handlers[name] = func
             return func
+
         return decorator
 
-    def dispatch(
-        self,
-        name: str,
-        arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    def dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Dispatch to the appropriate handler.
 
         Args:

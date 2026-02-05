@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-
 # ============================================================================
 # get_openai_client Tests
 # ============================================================================
+
 
 class TestGetOpenaiClient:
     """Tests for get_openai_client function."""
@@ -56,6 +55,7 @@ class TestGetOpenaiClient:
 # ============================================================================
 # generate_embedding Tests
 # ============================================================================
+
 
 class TestGenerateEmbedding:
     """Tests for generate_embedding function."""
@@ -102,6 +102,7 @@ class TestGenerateEmbedding:
 # vector_to_pgvector Tests
 # ============================================================================
 
+
 class TestVectorToPgvector:
     """Tests for vector_to_pgvector function."""
 
@@ -134,6 +135,7 @@ class TestVectorToPgvector:
 # ============================================================================
 # embed_content Tests
 # ============================================================================
+
 
 class TestEmbedContent:
     """Tests for embed_content function."""
@@ -213,6 +215,7 @@ class TestEmbedContent:
 # search_similar Tests
 # ============================================================================
 
+
 class TestSearchSimilar:
     """Tests for search_similar function."""
 
@@ -265,7 +268,7 @@ class TestSearchSimilar:
             mock_type.model = "text-embedding-3-small"
             mock_get_type.return_value = mock_type
 
-            result = service.search_similar("test", content_type="belief")
+            service.search_similar("test", content_type="belief")
 
             # Should only search beliefs
             assert mock_get_cursor.execute.call_count == 1
@@ -312,6 +315,7 @@ class TestSearchSimilar:
 # backfill_embeddings Tests
 # ============================================================================
 
+
 class TestBackfillEmbeddings:
     """Tests for backfill_embeddings function."""
 
@@ -339,9 +343,7 @@ class TestBackfillEmbeddings:
         from valence.embeddings import service
 
         belief_id = uuid4()
-        mock_get_cursor.fetchall.return_value = [
-            {"id": belief_id, "content": "Test belief"}
-        ]
+        mock_get_cursor.fetchall.return_value = [{"id": belief_id, "content": "Test belief"}]
 
         with patch("valence.embeddings.service.get_embedding_type") as mock_get_type:
             mock_type = MagicMock()
@@ -357,8 +359,8 @@ class TestBackfillEmbeddings:
 
     def test_handles_errors(self, env_with_openai_key, mock_get_cursor):
         """Should continue on individual embedding errors."""
-        from valence.embeddings import service
         from valence.core.exceptions import EmbeddingException
+        from valence.embeddings import service
 
         mock_get_cursor.fetchall.return_value = [
             {"id": uuid4(), "content": "Test 1"},
@@ -401,6 +403,7 @@ class TestBackfillEmbeddings:
 # Async Function Tests
 # ============================================================================
 
+
 class TestAsyncFunctions:
     """Tests for async wrapper functions."""
 
@@ -412,9 +415,7 @@ class TestAsyncFunctions:
         with patch("valence.embeddings.service.embed_content") as mock_embed:
             mock_embed.return_value = {"content_type": "belief"}
 
-            result = await service.embed_content_async(
-                "belief", str(uuid4()), "test"
-            )
+            result = await service.embed_content_async("belief", str(uuid4()), "test")
 
             assert result["content_type"] == "belief"
 

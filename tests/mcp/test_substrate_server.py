@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-
 # ============================================================================
 # Test Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_cursor():
@@ -39,6 +38,7 @@ def mock_get_cursor(mock_cursor):
 # ============================================================================
 # belief_query Tests
 # ============================================================================
+
 
 class TestBeliefQuery:
     """Tests for belief_query function."""
@@ -132,6 +132,7 @@ class TestBeliefQuery:
 # belief_create Tests
 # ============================================================================
 
+
 class TestBeliefCreate:
     """Tests for belief_create function."""
 
@@ -184,10 +185,7 @@ class TestBeliefCreate:
             "status": "active",
         }
 
-        result = belief_create(
-            "Test",
-            confidence={"overall": 0.9, "source_reliability": 0.95}
-        )
+        result = belief_create("Test", confidence={"overall": 0.9, "source_reliability": 0.95})
 
         assert result["success"] is True
 
@@ -219,11 +217,7 @@ class TestBeliefCreate:
             },
         ]
 
-        result = belief_create(
-            "Test",
-            source_type="document",
-            source_ref="https://example.com"
-        )
+        result = belief_create("Test", source_type="document", source_ref="https://example.com")
 
         assert result["success"] is True
 
@@ -258,7 +252,7 @@ class TestBeliefCreate:
 
         result = belief_create(
             "Test about Python",
-            entities=[{"name": "Python", "type": "tool", "role": "subject"}]
+            entities=[{"name": "Python", "type": "tool", "role": "subject"}],
         )
 
         assert result["success"] is True
@@ -267,6 +261,7 @@ class TestBeliefCreate:
 # ============================================================================
 # belief_supersede Tests
 # ============================================================================
+
 
 class TestBeliefSupersede:
     """Tests for belief_supersede function."""
@@ -315,11 +310,7 @@ class TestBeliefSupersede:
             },
         ]
 
-        result = belief_supersede(
-            str(old_id),
-            "Updated content",
-            "Updated information"
-        )
+        result = belief_supersede(str(old_id), "Updated content", "Updated information")
 
         assert result["success"] is True
         assert result["old_belief_id"] == str(old_id)
@@ -331,11 +322,7 @@ class TestBeliefSupersede:
 
         mock_get_cursor.fetchone.return_value = None
 
-        result = belief_supersede(
-            str(uuid4()),
-            "New content",
-            "Reason"
-        )
+        result = belief_supersede(str(uuid4()), "New content", "Reason")
 
         assert result["success"] is False
         assert "not found" in result["error"]
@@ -381,12 +368,7 @@ class TestBeliefSupersede:
             },
         ]
 
-        result = belief_supersede(
-            str(old_id),
-            "New",
-            "Better source",
-            confidence={"overall": 0.95}
-        )
+        result = belief_supersede(str(old_id), "New", "Better source", confidence={"overall": 0.95})
 
         assert result["success"] is True
 
@@ -394,6 +376,7 @@ class TestBeliefSupersede:
 # ============================================================================
 # belief_get Tests
 # ============================================================================
+
 
 class TestBeliefGet:
     """Tests for belief_get function."""
@@ -541,6 +524,7 @@ class TestBeliefGet:
 # entity_get Tests
 # ============================================================================
 
+
 class TestEntityGet:
     """Tests for entity_get function."""
 
@@ -627,6 +611,7 @@ class TestEntityGet:
 # entity_search Tests
 # ============================================================================
 
+
 class TestEntitySearch:
     """Tests for entity_search function."""
 
@@ -685,6 +670,7 @@ class TestEntitySearch:
 # ============================================================================
 # tension_list Tests
 # ============================================================================
+
 
 class TestTensionList:
     """Tests for tension_list function."""
@@ -755,6 +741,7 @@ class TestTensionList:
 # tension_resolve Tests
 # ============================================================================
 
+
 class TestTensionResolve:
     """Tests for tension_resolve function."""
 
@@ -814,11 +801,7 @@ class TestTensionResolve:
             },
         ]
 
-        result = tension_resolve(
-            str(tension_id),
-            "Belief B is more accurate",
-            "supersede_a"
-        )
+        result = tension_resolve(str(tension_id), "Belief B is more accurate", "supersede_a")
 
         assert result["success"] is True
         assert result["action"] == "supersede_a"
@@ -840,11 +823,7 @@ class TestTensionResolve:
             "detected_at": now,
         }
 
-        result = tension_resolve(
-            str(tension_id),
-            "Both beliefs are valid in different contexts",
-            "keep_both"
-        )
+        result = tension_resolve(str(tension_id), "Both beliefs are valid in different contexts", "keep_both")
 
         assert result["success"] is True
         assert result["action"] == "keep_both"
@@ -855,11 +834,7 @@ class TestTensionResolve:
 
         mock_get_cursor.fetchone.return_value = None
 
-        result = tension_resolve(
-            str(uuid4()),
-            "Resolution",
-            "keep_both"
-        )
+        result = tension_resolve(str(uuid4()), "Resolution", "keep_both")
 
         assert result["success"] is False
         assert "not found" in result["error"]

@@ -10,15 +10,14 @@ Covers:
 
 from __future__ import annotations
 
-import argparse
-import json
 import tempfile
 import time
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import pytest
 
+from valence.server.auth import TokenStore, hash_token
 from valence.server.cli import (
     cmd_create,
     cmd_list,
@@ -26,12 +25,11 @@ from valence.server.cli import (
     cmd_verify,
     main,
 )
-from valence.server.auth import TokenStore, hash_token
-
 
 # ============================================================================
 # Test Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_token_file():
@@ -45,20 +43,20 @@ def temp_token_file():
 def populated_token_store(temp_token_file):
     """Create a token store with some test tokens."""
     store = TokenStore(temp_token_file)
-    
+
     # Create a few test tokens
     token1 = store.create(
         client_id="test-client-1",
         description="First test token",
         scopes=["mcp:access"],
     )
-    
+
     token2 = store.create(
         client_id="test-client-2",
         description="Second test token with longer description that might get truncated",
         scopes=["mcp:access", "mcp:admin"],
     )
-    
+
     # Create an expired token
     expired_time = time.time() - 3600  # 1 hour ago
     token3 = store.create(
@@ -66,7 +64,7 @@ def populated_token_store(temp_token_file):
         description="Expired token",
         expires_at=expired_time,
     )
-    
+
     return store, {
         "token1": token1,
         "token2": token2,
@@ -76,12 +74,14 @@ def populated_token_store(temp_token_file):
 
 class MockArgs:
     """Mock argparse.Namespace for testing."""
+
     pass
 
 
 # ============================================================================
 # Test cmd_list
 # ============================================================================
+
 
 class TestCmdList:
     """Test the list tokens command."""
@@ -90,9 +90,9 @@ class TestCmdList:
         """List with no tokens."""
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         result = cmd_list(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "No tokens found" in captured.out
@@ -103,12 +103,12 @@ class TestCmdList:
         store = TokenStore(temp_token_file)
         store.create(client_id="client-a", description="Test A")
         store.create(client_id="client-b", description="Test B")
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         result = cmd_list(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "client-a" in captured.out
@@ -122,18 +122,18 @@ class TestCmdList:
         store = TokenStore(temp_token_file)
         # Non-expiring token
         store.create(client_id="permanent", description="Never expires")
-        # Expiring token  
+        # Expiring token
         store.create(
-            client_id="temporary", 
+            client_id="temporary",
             description="Expires soon",
             expires_at=time.time() + 86400,
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         result = cmd_list(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Never" in captured.out
@@ -144,16 +144,16 @@ class TestCmdList:
         """List marks expired tokens."""
         store = TokenStore(temp_token_file)
         store.create(
-            client_id="expired", 
+            client_id="expired",
             description="Old token",
             expires_at=time.time() - 3600,  # 1 hour ago
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         result = cmd_list(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "(EXPIRED)" in captured.out
@@ -163,12 +163,12 @@ class TestCmdList:
         store = TokenStore(temp_token_file)
         long_desc = "This is a very long description that should be truncated in the output display"
         store.create(client_id="verbose", description=long_desc)
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         result = cmd_list(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         # Should be truncated with "..."
@@ -181,6 +181,7 @@ class TestCmdList:
 # Test cmd_revoke
 # ============================================================================
 
+
 class TestCmdRevoke:
     """Test the revoke token command."""
 
@@ -188,20 +189,20 @@ class TestCmdRevoke:
         """Revoke tokens by client ID."""
         store = TokenStore(temp_token_file)
         store.create(client_id="revoke-me", description="To be revoked")
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.client_id = "revoke-me"
         args.hash = None
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Revoked" in captured.out
         assert "revoke-me" in captured.out
-        
+
         # Reload the store from file to verify token is gone
         store2 = TokenStore(temp_token_file)
         assert len(store2.get_by_client_id("revoke-me")) == 0
@@ -213,9 +214,9 @@ class TestCmdRevoke:
         args.client_id = "nonexistent"
         args.hash = None
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "No tokens found" in captured.out
@@ -225,15 +226,15 @@ class TestCmdRevoke:
         store = TokenStore(temp_token_file)
         raw_token = store.create(client_id="hash-test", description="Test")
         token_hash = hash_token(raw_token)
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.client_id = None
         args.hash = token_hash
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "revoked" in captured.out.lower()
@@ -245,9 +246,9 @@ class TestCmdRevoke:
         args.client_id = None
         args.hash = "nonexistent_hash_value_12345"
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "not found" in captured.out.lower()
@@ -256,15 +257,15 @@ class TestCmdRevoke:
         """Revoke by raw token string."""
         store = TokenStore(temp_token_file)
         raw_token = store.create(client_id="raw-test", description="Test")
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.client_id = None
         args.hash = None
         args.token = raw_token
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "revoked" in captured.out.lower()
@@ -276,9 +277,9 @@ class TestCmdRevoke:
         args.client_id = None
         args.hash = None
         args.token = "invalid_token_12345"
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "not found" in captured.out.lower() or "invalid" in captured.out.lower()
@@ -290,9 +291,9 @@ class TestCmdRevoke:
         args.client_id = None
         args.hash = None
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "Must provide" in captured.out
@@ -303,17 +304,17 @@ class TestCmdRevoke:
         store.create(client_id="multi-client", description="Token 1")
         store.create(client_id="multi-client", description="Token 2")
         store.create(client_id="multi-client", description="Token 3")
-        
+
         assert len(store.get_by_client_id("multi-client")) == 3
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.client_id = "multi-client"
         args.hash = None
         args.token = None
-        
+
         result = cmd_revoke(args)
-        
+
         assert result == 0
         # Reload store to verify
         store = TokenStore(temp_token_file)
@@ -323,6 +324,7 @@ class TestCmdRevoke:
 # ============================================================================
 # Test cmd_verify
 # ============================================================================
+
 
 class TestCmdVerify:
     """Test the verify token command."""
@@ -335,13 +337,13 @@ class TestCmdVerify:
             description="Verification test",
             scopes=["mcp:access", "mcp:admin"],
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = raw_token
-        
+
         result = cmd_verify(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "VALID" in captured.out
@@ -354,9 +356,9 @@ class TestCmdVerify:
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = "invalid_token_12345"
-        
+
         result = cmd_verify(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "INVALID" in captured.out
@@ -369,13 +371,13 @@ class TestCmdVerify:
             description="Expired",
             expires_at=time.time() - 3600,
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = raw_token
-        
+
         result = cmd_verify(args)
-        
+
         # Expired tokens should be invalid
         assert result == 1
         captured = capsys.readouterr()
@@ -389,13 +391,13 @@ class TestCmdVerify:
             client_id="no-expire",
             description="Never expires",
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = raw_token
-        
+
         result = cmd_verify(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Never" in captured.out
@@ -409,13 +411,13 @@ class TestCmdVerify:
             description="Expires in 30 days",
             expires_at=future_time,
         )
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = raw_token
-        
+
         result = cmd_verify(args)
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Expires:" in captured.out
@@ -427,21 +429,28 @@ class TestCmdVerify:
 # Test main() entry point
 # ============================================================================
 
+
 class TestMain:
     """Test the main CLI entry point."""
 
     def test_main_create_command(self, temp_token_file, capsys):
         """Main dispatches to create command."""
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "create",
-            "--client-id", "main-test",
-            "--description", "Test token",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "create",
+                "--client-id",
+                "main-test",
+                "--description",
+                "Test token",
+            ],
+        ):
             with patch.object(Path, "home", return_value=temp_token_file.parent):
                 result = main()
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Token created" in captured.out
@@ -451,14 +460,18 @@ class TestMain:
         # Create a token first
         store = TokenStore(temp_token_file)
         store.create(client_id="list-test", description="Test")
-        
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "list",
-        ]):
+
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "list",
+            ],
+        ):
             result = main()
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "list-test" in captured.out
@@ -467,15 +480,20 @@ class TestMain:
         """Main dispatches to revoke command."""
         store = TokenStore(temp_token_file)
         store.create(client_id="revoke-test", description="Test")
-        
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "revoke",
-            "--client-id", "revoke-test",
-        ]):
+
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "revoke",
+                "--client-id",
+                "revoke-test",
+            ],
+        ):
             result = main()
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "Revoked" in captured.out
@@ -484,15 +502,19 @@ class TestMain:
         """Main dispatches to verify command."""
         store = TokenStore(temp_token_file)
         raw_token = store.create(client_id="verify-test", description="Test")
-        
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "verify",
-            raw_token,
-        ]):
+
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "verify",
+                raw_token,
+            ],
+        ):
             result = main()
-        
+
         assert result == 0
         captured = capsys.readouterr()
         assert "VALID" in captured.out
@@ -510,12 +532,12 @@ class TestMain:
         # This tests that the default path is used when not specified
         with patch("sys.argv", ["valence-token", "list"]):
             # Mock the TokenStore to avoid file system issues
-            with patch("valence.server.cli.TokenStore") as MockStore:
+            with patch("valence.server.cli.TokenStore") as MockStore:  # noqa: N806
                 mock_instance = MockStore.return_value
                 mock_instance.list_tokens.return_value = []
-                
-                result = main()
-        
+
+                main()
+
         # Should use default path
         MockStore.assert_called_once()
         call_args = MockStore.call_args[0][0]
@@ -525,6 +547,7 @@ class TestMain:
 # ============================================================================
 # Test argument validation
 # ============================================================================
+
 
 class TestArgumentValidation:
     """Test CLI argument validation."""
@@ -545,18 +568,24 @@ class TestArgumentValidation:
 
     def test_create_with_expires_days(self, temp_token_file, capsys):
         """Create with expiration days."""
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "create",
-            "--client-id", "expiring",
-            "--expires-days", "30",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "create",
+                "--client-id",
+                "expiring",
+                "--expires-days",
+                "30",
+            ],
+        ):
             with patch.object(Path, "home", return_value=temp_token_file.parent):
                 result = main()
-        
+
         assert result == 0
-        
+
         # Verify the token has expiration
         store = TokenStore(temp_token_file)
         tokens = store.get_by_client_id("expiring")
@@ -565,18 +594,24 @@ class TestArgumentValidation:
 
     def test_create_with_custom_scopes(self, temp_token_file, capsys):
         """Create with custom scopes."""
-        with patch("sys.argv", [
-            "valence-token",
-            "--token-file", str(temp_token_file),
-            "create",
-            "--client-id", "scoped",
-            "--scopes", "mcp:access,mcp:admin,custom:scope",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "valence-token",
+                "--token-file",
+                str(temp_token_file),
+                "create",
+                "--client-id",
+                "scoped",
+                "--scopes",
+                "mcp:access,mcp:admin,custom:scope",
+            ],
+        ):
             with patch.object(Path, "home", return_value=temp_token_file.parent):
                 result = main()
-        
+
         assert result == 0
-        
+
         # Verify the scopes
         store = TokenStore(temp_token_file)
         tokens = store.get_by_client_id("scoped")
@@ -588,6 +623,7 @@ class TestArgumentValidation:
 # Test error handling
 # ============================================================================
 
+
 class TestErrorHandling:
     """Test error handling in CLI commands."""
 
@@ -595,17 +631,17 @@ class TestErrorHandling:
         """Create handles file permission errors gracefully."""
         # This test verifies behavior when token file creation fails
         # We'll mock save_token_securely to raise an exception
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
         args.client_id = "error-test"
         args.description = "Test"
         args.scopes = "mcp:access"
         args.expires_days = None
-        
+
         with patch("valence.server.cli.save_token_securely") as mock_save:
             mock_save.side_effect = PermissionError("Access denied")
-            
+
             with pytest.raises(PermissionError):
                 cmd_create(args)
 
@@ -614,14 +650,14 @@ class TestErrorHandling:
         # Write invalid JSON
         with open(temp_token_file, "w") as f:
             f.write("not valid json {{{")
-        
+
         args = MockArgs()
         args.token_file = temp_token_file
-        
+
         # Should not crash, store loads empty on error
         result = cmd_list(args)
         assert result == 0
-        
+
         captured = capsys.readouterr()
         assert "No tokens found" in captured.out
 
@@ -630,9 +666,9 @@ class TestErrorHandling:
         args = MockArgs()
         args.token_file = temp_token_file
         args.token = ""
-        
+
         result = cmd_verify(args)
-        
+
         assert result == 1
         captured = capsys.readouterr()
         assert "INVALID" in captured.out

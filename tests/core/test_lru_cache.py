@@ -5,6 +5,7 @@ import threading
 import time
 from unittest.mock import patch
 
+from valence.core.config import clear_config_cache
 from valence.core.lru_cache import (
     DEFAULT_CACHE_MAX_SIZE,
     BoundedList,
@@ -21,16 +22,19 @@ class TestGetCacheMaxSize:
         with patch.dict(os.environ, {}, clear=True):
             # Clear VALENCE_CACHE_MAX_SIZE if present
             os.environ.pop("VALENCE_CACHE_MAX_SIZE", None)
+            clear_config_cache()
             assert get_cache_max_size() == DEFAULT_CACHE_MAX_SIZE
 
     def test_env_var_override(self):
         """Should return env var value when set."""
         with patch.dict(os.environ, {"VALENCE_CACHE_MAX_SIZE": "500"}):
+            clear_config_cache()
             assert get_cache_max_size() == 500
 
     def test_invalid_env_var(self):
         """Should return default for invalid env var."""
         with patch.dict(os.environ, {"VALENCE_CACHE_MAX_SIZE": "not_a_number"}):
+            clear_config_cache()
             assert get_cache_max_size() == DEFAULT_CACHE_MAX_SIZE
 
 

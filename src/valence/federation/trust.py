@@ -22,29 +22,24 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from ..core.db import get_cursor
 from .models import (
-    FederationNode,
-    NodeTrust,
-    UserNodeTrust,
-    TrustPhase,
-    TrustPreference,
-    ThreatLevel,
     AnnotationType,
     BeliefTrustAnnotation,
+    FederationNode,
+    NodeTrust,
+    ThreatLevel,
     TrustAttestation,
-    TRUST_WEIGHTS,
+    TrustPhase,
+    TrustPreference,
+    UserNodeTrust,
 )
-from .trust_registry import TrustRegistry
-from .threat_detector import ThreatDetector, THREAT_THRESHOLDS
+from .threat_detector import ThreatDetector
 from .trust_policy import (
-    TrustPolicy,
     DECAY_HALF_LIFE_DAYS,
     DECAY_MIN_THRESHOLD,
-    PHASE_TRANSITION,
-    PREFERENCE_MULTIPLIERS,
-    CONCENTRATION_THRESHOLDS,
+    TrustPolicy,
 )
+from .trust_registry import TrustRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +51,11 @@ logger = logging.getLogger(__name__)
 
 # Trust signal impact weights
 SIGNAL_WEIGHTS = {
-    "corroboration": 0.02,      # Per corroborated belief
-    "dispute": -0.05,           # Per disputed belief
-    "endorsement": 0.10,        # Per endorsement received
-    "sync_success": 0.005,      # Per successful sync
-    "sync_failure": -0.01,      # Per failed sync
+    "corroboration": 0.02,  # Per corroborated belief
+    "dispute": -0.05,  # Per disputed belief
+    "endorsement": 0.10,  # Per endorsement received
+    "sync_success": 0.005,  # Per successful sync
+    "sync_failure": -0.01,  # Per failed sync
     "aggregation_participation": 0.01,  # Per aggregation contribution
 }
 
@@ -101,7 +96,7 @@ class TrustManager:
     - Managing trust phase transitions
     - Applying trust decay over time
     - Handling threat assessment
-    
+
     Internally delegates to:
     - TrustRegistry: CRUD operations
     - ThreatDetector: Threat analysis
@@ -121,7 +116,7 @@ class TrustManager:
         """
         self.decay_half_life_days = decay_half_life_days
         self.decay_min_threshold = decay_min_threshold
-        
+
         # Initialize delegate components
         self._registry = TrustRegistry()
         self._threat_detector = ThreatDetector(self._registry)
@@ -340,12 +335,12 @@ class TrustManager:
         thresholds: dict[str, float] | None = None,
     ):
         """Check for trust concentration issues in the network.
-        
+
         Detects when trust is too concentrated in few nodes.
-        
+
         Args:
             thresholds: Optional custom thresholds
-            
+
         Returns:
             TrustConcentrationReport with warnings and metrics
         """
@@ -457,7 +452,7 @@ _default_manager_lock = threading.Lock()
 
 def get_trust_manager() -> TrustManager:
     """Get the default TrustManager instance.
-    
+
     Thread-safe initialization using double-checked locking pattern.
     """
     global _default_manager
@@ -510,10 +505,10 @@ def check_trust_concentration(
     thresholds: dict[str, float] | None = None,
 ):
     """Check for trust concentration issues in the network (convenience function).
-    
+
     Args:
         thresholds: Optional custom thresholds
-        
+
     Returns:
         TrustConcentrationReport with warnings and metrics
     """

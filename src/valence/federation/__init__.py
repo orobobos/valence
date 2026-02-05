@@ -16,386 +16,381 @@ Key components:
 - server: Lightweight federation server (MVP)
 """
 
-from .models import (
-    # Enums
-    NodeStatus,
-    TrustPhase,
-    Visibility,
-    ShareLevel,
-    SyncStatus,
-    ThreatLevel,
-    ResolutionProposal,
-    ResolutionStatus,
-    ConsensusMethod,
-    Vote,
-    TrustPreference,
-    AnnotationType,
-    WarningSeverity,
-    # Dataclasses
-    FederationNode,
-    FederatedBelief,
-    BeliefProvenance,
-    NodeTrust,
-    UserNodeTrust,
-    BeliefTrustAnnotation,
-    AggregatedBelief,
-    AggregationSource,
-    TensionResolution,
-    ConsensusVote,
-    SyncState,
-    SyncEvent,
-    SyncOutboundItem,
-    PrivacyParameters,
-    CorroborationAttestation,
-    TrustAttestation,
-    AggregationQuery,
-    AggregationResult,
-    LocalSummary,
-    TrustConcentrationWarning,
-    TrustConcentrationReport,
-)
-
-from .identity import (
-    DIDMethod,
-    DID,
-    DIDDocument,
-    VerificationMethod,
-    ServiceEndpoint,
-    generate_keypair,
-    create_web_did,
-    create_key_did,
-    create_user_did,
-    parse_did,
-    resolve_did,
-)
-
-from .protocol import (
-    MessageType,
-    ErrorCode,
-    create_auth_challenge,
-    verify_auth_challenge,
-    handle_share_belief,
-    handle_request_beliefs,
-    handle_sync_request,
-    parse_message,
-    handle_message,
-)
-
-from .discovery import (
-    discover_node,
-    discover_node_sync,
-    register_node,
-    get_node_by_did,
-    get_node_by_id,
-    get_node_trust,
-    update_node_status,
-    mark_node_active,
-    mark_node_unreachable,
-    bootstrap_federation,
-    bootstrap_federation_sync,
-    check_node_health,
-    check_all_nodes_health,
-    list_nodes,
-    list_active_nodes,
-    list_nodes_with_trust,
-    get_known_peers,
-    exchange_peers,
-)
-
-from .sync import (
-    SyncManager,
-    get_sync_state,
-    update_sync_state,
-    queue_belief_for_sync,
-    get_pending_sync_items,
-    mark_sync_item_sent,
-    mark_sync_item_failed,
-    compare_vector_clocks,
-    update_vector_clock,
-    trigger_sync,
-    get_sync_status,
-)
-
-from .trust import (
-    TrustSignal,
-    TrustManager,
-    get_trust_manager,
-    get_effective_trust,
-    process_corroboration,
-    process_dispute,
-    assess_and_respond_to_threat,
-    check_trust_concentration,
-    SIGNAL_WEIGHTS,
-    DECAY_HALF_LIFE_DAYS,
-    PHASE_TRANSITION,
-    THREAT_THRESHOLDS,
-    PREFERENCE_MULTIPLIERS,
-    CONCENTRATION_THRESHOLDS,
-)
-
-from .trust_propagation import (
-    TrustPropagation,
-    TrustCache,
-    TransitiveTrustResult,
-    TrustEdge,
-    get_trust_propagation,
-    compute_transitive_trust,
-    invalidate_trust_cache,
-    weight_query_results_by_trust,
-    DEFAULT_DECAY_FACTOR,
-    DEFAULT_MAX_HOPS,
-    DEFAULT_CACHE_TTL,
-    DEFAULT_APPLY_RING_COEFFICIENT,
-)
-
-from .ring_coefficient import (
-    RingDetector,
-    RingDetectionResult,
-    RingCoefficientCalculator,
-    TrustVelocityAnalyzer,
-    TrustVelocityResult,
-    SybilClusterDetector,
-    SybilCluster,
-    GraphAnalysisResult,
-    get_ring_coefficient_calculator,
-    calculate_ring_coefficient,
-    record_trust_change,
-    analyze_trust_graph,
-    DEFAULT_RING_DAMPENING,
-    MIN_RING_COEFFICIENT,
-    VELOCITY_ANOMALY_THRESHOLD,
-)
-
-from .tools import (
-    FEDERATION_TOOLS,
-    FEDERATION_TOOL_HANDLERS,
-    handle_federation_tool,
-)
-
-from .privacy import (
-    # Constants
-    MIN_EPSILON,
-    MAX_EPSILON,
-    DEFAULT_EPSILON,
-    DEFAULT_DELTA,
-    DEFAULT_MIN_CONTRIBUTORS,
-    SENSITIVE_MIN_CONTRIBUTORS,
-    HISTOGRAM_SUPPRESSION_THRESHOLD,
-    MAX_QUERIES_PER_TOPIC_PER_DAY,
-    MAX_QUERIES_PER_FEDERATION_PER_DAY,
-    SENSITIVE_DOMAINS,
-    # Enums
-    PrivacyLevel,
-    NoiseMechanism,
-    BudgetCheckResult,
-    # Config
-    PrivacyConfig,
-    # Budget tracking
-    TopicBudget,
-    RequesterBudget,
-    PrivacyBudget,
-    # Budget storage (Issue #144 - Persist privacy budget)
-    BudgetStore,
-    InMemoryBudgetStore,
-    FileBudgetStore,
-    DatabaseBudgetStore,
-    # Temporal smoothing
-    MembershipEvent,
-    TemporalSmoother,
-    # Functions
-    add_laplace_noise,
-    add_gaussian_noise,
-    add_noise,
-    should_include_histogram,
-    build_noisy_histogram,
-    is_sensitive_domain,
-    compute_topic_hash,
-    compute_private_aggregate,
-    PrivateAggregateResult,
-)
-
-from .challenges import (
-    # Configuration
-    ReviewerConfig,
-    DEFAULT_REVIEWER_CONFIG,
-    # Enums
-    ChallengeType,
-    ChallengeStatus,
-    ReviewDecision,
-    ReviewerStatus,
-    # Data classes
-    Challenge,
-    ChallengeReview,
-    ChallengeResolution,
-    ReviewerReputation,
-    EligibleReviewer,
-    # Selection & Resolution
-    ReviewerSelector,
-    ChallengeResolver,
-    AppealHandler,
-    # Exceptions
-    ChallengeError,
-    InsufficientReviewersError,
-    AppealNotAllowedError,
-    InvalidChallengeError,
-    # Validation
-    validate_challenge,
-)
-
 from .aggregation import (
+    CONFLICT_CONFIDENCE_DIVERGENCE,
     # Constants
     CONFLICT_SEMANTIC_THRESHOLD,
-    CONFLICT_CONFIDENCE_DIVERGENCE,
-    MIN_FEDERATION_TRUST,
     DEFAULT_TRUST_WEIGHT,
+    MIN_FEDERATION_TRUST,
     MIN_FEDERATIONS_FOR_AGGREGATE,
-    # Enums
-    ConflictType,
-    ConflictResolution,
-    AggregationStrategy,
-    # Data classes
-    FederationContribution,
-    DetectedConflict,
     AggregationConfig,
-    CrossFederationAggregateResult,
+    AggregationStrategy,
     # Classes
     ConflictDetector,
-    TrustWeightedAggregator,
-    PrivacyPreservingAggregator,
+    ConflictResolution,
+    # Enums
+    ConflictType,
+    CrossFederationAggregateResult,
+    DetectedConflict,
     FederationAggregator,
+    # Data classes
+    FederationContribution,
+    PrivacyPreservingAggregator,
+    TrustWeightedAggregator,
     # Functions
     aggregate_cross_federation,
     create_contribution,
 )
-
-from .groups import (
-    # Constants
-    KDF_INFO_EPOCH_SECRET,
-    KDF_INFO_ENCRYPTION_KEY,
-    KDF_INFO_WELCOME_KEY,
-    KDF_INFO_MEMBER_SECRET,
-    AES_KEY_SIZE,
-    NONCE_SIZE,
-    MAX_EPOCH_HISTORY,
-    # Enums
-    GroupRole,
-    MemberStatus,
-    GroupStatus,
-    # Classes
-    KeyPackage,
-    GroupMember,
-    EpochSecrets,
-    WelcomeMessage,
-    CommitMessage,
-    GroupState,
-    RemovalAuditEntry,
-    # Functions
-    create_group,
-    add_member,
-    remove_member,
-    process_welcome,
-    process_commit,
-    encrypt_group_content,
-    decrypt_group_content,
-    can_decrypt_at_epoch,
-    get_removal_history,
-    rotate_keys,
-)
-
-from .verification import (
-    # Constants
-    DNS_TXT_PREFIX,
-    DOMAIN_CLAIM_SERVICE_TYPE,
-    DEFAULT_CACHE_TTL_SECONDS,
-    FAILED_VERIFICATION_TTL_SECONDS,
-    # Enums
-    VerificationMethod as DomainVerifyMethod,  # Renamed to avoid conflict with identity.VerificationMethod
-    VerificationStatus,
+from .challenges import (
+    DEFAULT_REVIEWER_CONFIG,
+    AppealHandler,
+    AppealNotAllowedError,
     # Data classes
-    VerificationResult,
-    DomainClaim,
-    # Cache
-    VerificationCache,
-    # Functions
-    verify_dns_txt_record,
-    verify_dns_txt_record_sync,
-    verify_did_document_claim,
-    verify_did_document_claim_sync,
-    verify_cross_federation_domain,
-    verify_cross_federation_domain_sync,
-    verify_multiple_domains,
-    get_verification_cache,
-    invalidate_domain_cache,
-    get_verification_cache_stats,
+    Challenge,
+    # Exceptions
+    ChallengeError,
+    ChallengeResolution,
+    ChallengeResolver,
+    ChallengeReview,
+    ChallengeStatus,
+    # Enums
+    ChallengeType,
+    EligibleReviewer,
+    InsufficientReviewersError,
+    InvalidChallengeError,
+    ReviewDecision,
+    # Configuration
+    ReviewerConfig,
+    ReviewerReputation,
+    # Selection & Resolution
+    ReviewerSelector,
+    ReviewerStatus,
+    # Validation
+    validate_challenge,
 )
-
-from .domain_verification import (
-    # Enums (Issue #87 - Domain Verification)
-    DomainVerificationMethod,
-    ChallengeStatus as DomainChallengeStatus,
-    AttestationType,
-    # Data classes
-    VerificationEvidence,
-    DomainVerificationResult,
-    DomainChallenge,
-    DomainAttestation,
-    # Stores
-    ChallengeStore,
-    AttestationStore,
-    get_challenge_store,
-    get_attestation_store,
-    # External authority
-    ExternalAuthorityClient,
-    DefaultExternalAuthorityClient,
-    get_external_client,
-    set_external_client,
-    # Main functions
-    create_challenge,
-    check_challenge,
-    verify_domain,
-    # Attestation functions
-    create_attestation,
-    revoke_attestation,
-    # Batch operations
-    verify_multiple_domains as verify_domains_batch,
-    # Sync wrappers
-    create_challenge_sync,
-    check_challenge_sync,
-    verify_domain_sync,
-    # Utilities
-    cleanup_expired_challenges,
-    get_challenge_stats,
-    get_attestation_stats,
-    # Constants
-    CHALLENGE_TOKEN_LENGTH,
-    CHALLENGE_TTL_HOURS,
-    DNS_CHALLENGE_SUBDOMAIN,
-    CHALLENGE_PREFIX,
-    MIN_ATTESTATION_TRUST,
-)
-
 from .consent import (
-    # Enums (Issue #89)
-    CrossFederationPolicy,
+    ConsentChainStoreProtocol,
+    ConsentValidation,
     ConsentValidationResult,
-    RevocationScope,
+    CrossFederationConsentChain,
+    # Service
+    CrossFederationConsentService,
     # Data classes
     CrossFederationHop,
-    FederationConsentPolicy,
-    CrossFederationConsentChain,
+    # Enums (Issue #89)
+    CrossFederationPolicy,
     CrossFederationRevocation,
-    ConsentValidation,
+    FederationConsentPolicy,
     # Protocols
     FederationTrustProtocol,
     GatewaySigningProtocol,
-    ConsentChainStoreProtocol,
-    PolicyStoreProtocol,
-    # Service
-    CrossFederationConsentService,
     # In-memory implementations (testing)
     InMemoryConsentChainStore,
     InMemoryPolicyStore,
     MockGatewaySigner,
+    PolicyStoreProtocol,
+    RevocationScope,
+)
+from .discovery import (
+    bootstrap_federation,
+    bootstrap_federation_sync,
+    check_all_nodes_health,
+    check_node_health,
+    discover_node,
+    discover_node_sync,
+    exchange_peers,
+    get_known_peers,
+    get_node_by_did,
+    get_node_by_id,
+    get_node_trust,
+    list_active_nodes,
+    list_nodes,
+    list_nodes_with_trust,
+    mark_node_active,
+    mark_node_unreachable,
+    register_node,
+    update_node_status,
+)
+from .domain_verification import (
+    CHALLENGE_PREFIX,
+    # Constants
+    CHALLENGE_TOKEN_LENGTH,
+    CHALLENGE_TTL_HOURS,
+    DNS_CHALLENGE_SUBDOMAIN,
+    MIN_ATTESTATION_TRUST,
+    AttestationStore,
+    AttestationType,
+    # Stores
+    ChallengeStore,
+    DefaultExternalAuthorityClient,
+    DomainAttestation,
+    DomainChallenge,
+    # Enums (Issue #87 - Domain Verification)
+    DomainVerificationMethod,
+    DomainVerificationResult,
+    # External authority
+    ExternalAuthorityClient,
+    # Data classes
+    VerificationEvidence,
+    check_challenge,
+    check_challenge_sync,
+    # Utilities
+    cleanup_expired_challenges,
+    # Attestation functions
+    create_attestation,
+    # Main functions
+    create_challenge,
+    # Sync wrappers
+    create_challenge_sync,
+    get_attestation_stats,
+    get_attestation_store,
+    get_challenge_stats,
+    get_challenge_store,
+    get_external_client,
+    revoke_attestation,
+    set_external_client,
+    verify_domain,
+    verify_domain_sync,
+)
+from .domain_verification import (
+    ChallengeStatus as DomainChallengeStatus,
+)
+from .domain_verification import (
+    # Batch operations
+    verify_multiple_domains as verify_domains_batch,
+)
+from .groups import (
+    AES_KEY_SIZE,
+    KDF_INFO_ENCRYPTION_KEY,
+    # Constants
+    KDF_INFO_EPOCH_SECRET,
+    KDF_INFO_MEMBER_SECRET,
+    KDF_INFO_WELCOME_KEY,
+    MAX_EPOCH_HISTORY,
+    NONCE_SIZE,
+    CommitMessage,
+    EpochSecrets,
+    GroupMember,
+    # Enums
+    GroupRole,
+    GroupState,
+    GroupStatus,
+    # Classes
+    KeyPackage,
+    MemberStatus,
+    RemovalAuditEntry,
+    WelcomeMessage,
+    add_member,
+    can_decrypt_at_epoch,
+    # Functions
+    create_group,
+    decrypt_group_content,
+    encrypt_group_content,
+    get_removal_history,
+    process_commit,
+    process_welcome,
+    remove_member,
+    rotate_keys,
+)
+from .identity import (
+    DID,
+    DIDDocument,
+    DIDMethod,
+    ServiceEndpoint,
+    VerificationMethod,
+    create_key_did,
+    create_user_did,
+    create_web_did,
+    generate_keypair,
+    parse_did,
+    resolve_did,
+)
+from .models import (
+    AggregatedBelief,
+    AggregationQuery,
+    AggregationResult,
+    AggregationSource,
+    AnnotationType,
+    BeliefProvenance,
+    BeliefTrustAnnotation,
+    ConsensusMethod,
+    ConsensusVote,
+    CorroborationAttestation,
+    FederatedBelief,
+    # Dataclasses
+    FederationNode,
+    LocalSummary,
+    # Enums
+    NodeStatus,
+    NodeTrust,
+    PrivacyParameters,
+    ResolutionProposal,
+    ResolutionStatus,
+    ShareLevel,
+    SyncEvent,
+    SyncOutboundItem,
+    SyncState,
+    SyncStatus,
+    TensionResolution,
+    ThreatLevel,
+    TrustAttestation,
+    TrustConcentrationReport,
+    TrustConcentrationWarning,
+    TrustPhase,
+    TrustPreference,
+    UserNodeTrust,
+    Visibility,
+    Vote,
+    WarningSeverity,
+)
+from .privacy import (
+    DEFAULT_DELTA,
+    DEFAULT_EPSILON,
+    DEFAULT_MIN_CONTRIBUTORS,
+    HISTOGRAM_SUPPRESSION_THRESHOLD,
+    MAX_EPSILON,
+    MAX_QUERIES_PER_FEDERATION_PER_DAY,
+    MAX_QUERIES_PER_TOPIC_PER_DAY,
+    # Constants
+    MIN_EPSILON,
+    SENSITIVE_DOMAINS,
+    SENSITIVE_MIN_CONTRIBUTORS,
+    BudgetCheckResult,
+    # Budget storage (Issue #144 - Persist privacy budget)
+    BudgetStore,
+    DatabaseBudgetStore,
+    FileBudgetStore,
+    InMemoryBudgetStore,
+    # Temporal smoothing
+    MembershipEvent,
+    NoiseMechanism,
+    PrivacyBudget,
+    # Config
+    PrivacyConfig,
+    # Enums
+    PrivacyLevel,
+    PrivateAggregateResult,
+    RequesterBudget,
+    TemporalSmoother,
+    # Budget tracking
+    TopicBudget,
+    add_gaussian_noise,
+    # Functions
+    add_laplace_noise,
+    add_noise,
+    build_noisy_histogram,
+    compute_private_aggregate,
+    compute_topic_hash,
+    is_sensitive_domain,
+    should_include_histogram,
+)
+from .protocol import (
+    ErrorCode,
+    MessageType,
+    create_auth_challenge,
+    handle_message,
+    handle_request_beliefs,
+    handle_share_belief,
+    handle_sync_request,
+    parse_message,
+    verify_auth_challenge,
+)
+from .ring_coefficient import (
+    DEFAULT_RING_DAMPENING,
+    MIN_RING_COEFFICIENT,
+    VELOCITY_ANOMALY_THRESHOLD,
+    GraphAnalysisResult,
+    RingCoefficientCalculator,
+    RingDetectionResult,
+    RingDetector,
+    SybilCluster,
+    SybilClusterDetector,
+    TrustVelocityAnalyzer,
+    TrustVelocityResult,
+    analyze_trust_graph,
+    calculate_ring_coefficient,
+    get_ring_coefficient_calculator,
+    record_trust_change,
+)
+from .sync import (
+    SyncManager,
+    compare_vector_clocks,
+    get_pending_sync_items,
+    get_sync_state,
+    get_sync_status,
+    mark_sync_item_failed,
+    mark_sync_item_sent,
+    queue_belief_for_sync,
+    trigger_sync,
+    update_sync_state,
+    update_vector_clock,
+)
+from .threat_detector import (
+    THREAT_THRESHOLDS,
+)
+from .tools import (
+    FEDERATION_TOOL_HANDLERS,
+    FEDERATION_TOOLS,
+    handle_federation_tool,
+)
+from .trust import (
+    DECAY_HALF_LIFE_DAYS,
+    SIGNAL_WEIGHTS,
+    TrustManager,
+    TrustSignal,
+    assess_and_respond_to_threat,
+    check_trust_concentration,
+    get_effective_trust,
+    get_trust_manager,
+    process_corroboration,
+    process_dispute,
+)
+from .trust_policy import (
+    CONCENTRATION_THRESHOLDS,
+    PHASE_TRANSITION,
+    PREFERENCE_MULTIPLIERS,
+)
+from .trust_propagation import (
+    DEFAULT_APPLY_RING_COEFFICIENT,
+    DEFAULT_CACHE_TTL,
+    DEFAULT_DECAY_FACTOR,
+    DEFAULT_MAX_HOPS,
+    TransitiveTrustResult,
+    TrustCache,
+    TrustEdge,
+    TrustPropagation,
+    compute_transitive_trust,
+    get_trust_propagation,
+    invalidate_trust_cache,
+    weight_query_results_by_trust,
+)
+from .verification import (
+    DEFAULT_CACHE_TTL_SECONDS,
+    # Constants
+    DNS_TXT_PREFIX,
+    DOMAIN_CLAIM_SERVICE_TYPE,
+    FAILED_VERIFICATION_TTL_SECONDS,
+    DomainClaim,
+    # Cache
+    VerificationCache,
+    # Data classes
+    VerificationResult,
+    VerificationStatus,
+    get_verification_cache,
+    get_verification_cache_stats,
+    invalidate_domain_cache,
+    verify_cross_federation_domain,
+    verify_cross_federation_domain_sync,
+    verify_did_document_claim,
+    verify_did_document_claim_sync,
+    # Functions
+    verify_dns_txt_record,
+    verify_dns_txt_record_sync,
+    verify_multiple_domains,
+)
+from .verification import (
+    # Enums
+    VerificationMethod as DomainVerifyMethod,  # Renamed to avoid conflict with identity.VerificationMethod
 )
 
 __all__ = [
@@ -679,4 +674,32 @@ __all__ = [
     "InMemoryConsentChainStore",
     "InMemoryPolicyStore",
     "MockGatewaySigner",
+    # Groups (Issue #103 - MLS Group Management)
+    "AES_KEY_SIZE",
+    "KDF_INFO_ENCRYPTION_KEY",
+    "KDF_INFO_EPOCH_SECRET",
+    "KDF_INFO_MEMBER_SECRET",
+    "KDF_INFO_WELCOME_KEY",
+    "MAX_EPOCH_HISTORY",
+    "NONCE_SIZE",
+    "CommitMessage",
+    "EpochSecrets",
+    "GroupMember",
+    "GroupRole",
+    "GroupState",
+    "GroupStatus",
+    "KeyPackage",
+    "MemberStatus",
+    "RemovalAuditEntry",
+    "WelcomeMessage",
+    "add_member",
+    "can_decrypt_at_epoch",
+    "create_group",
+    "decrypt_group_content",
+    "encrypt_group_content",
+    "get_removal_history",
+    "process_commit",
+    "process_welcome",
+    "remove_member",
+    "rotate_keys",
 ]

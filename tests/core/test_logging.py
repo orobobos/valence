@@ -7,8 +7,7 @@ import logging
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
-
+from valence.core.config import clear_config_cache
 
 # ============================================================================
 # Correlation ID Tests
@@ -430,6 +429,7 @@ class TestConfigureLogging:
         """Should read level from environment variable."""
         from valence.core.logging import configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_LEVEL", "CRITICAL")
         configure_logging()
         root = logging.getLogger()
@@ -448,6 +448,7 @@ class TestConfigureLogging:
         """Should use JSON format from VALENCE_LOG_FORMAT=json."""
         from valence.core.logging import JSONFormatter, configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_FORMAT", "json")
         configure_logging()
         root = logging.getLogger()
@@ -458,6 +459,7 @@ class TestConfigureLogging:
         """Should use text format from VALENCE_LOG_FORMAT=text."""
         from valence.core.logging import StandardFormatter, configure_logging
 
+        clear_config_cache()
         monkeypatch.setenv("VALENCE_LOG_FORMAT", "text")
         configure_logging()
         root = logging.getLogger()
@@ -483,9 +485,7 @@ class TestConfigureLogging:
         configure_logging(log_file=str(log_file))
 
         root = logging.getLogger()
-        file_handlers = [
-            h for h in root.handlers if isinstance(h, logging.FileHandler)
-        ]
+        file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
         assert len(file_handlers) == 1
 
     def test_file_handler_uses_json(self, tmp_path):
@@ -496,9 +496,7 @@ class TestConfigureLogging:
         configure_logging(log_file=str(log_file), json_format=False)
 
         root = logging.getLogger()
-        file_handlers = [
-            h for h in root.handlers if isinstance(h, logging.FileHandler)
-        ]
+        file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
         assert isinstance(file_handlers[0].formatter, JSONFormatter)
 
     def test_removes_existing_handlers(self):

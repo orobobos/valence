@@ -91,9 +91,7 @@ class TokenStore:
         try:
             with open(self.token_file) as f:
                 data = json.load(f)
-            self._tokens = {
-                t["token_hash"]: Token.from_dict(t) for t in data.get("tokens", [])
-            }
+            self._tokens = {t["token_hash"]: Token.from_dict(t) for t in data.get("tokens", [])}
             logger.info(f"Loaded {len(self._tokens)} tokens from {self.token_file}")
         except Exception as e:
             logger.error(f"Failed to load tokens from {self.token_file}: {e}")
@@ -234,9 +232,7 @@ def verify_token(raw_token: str, required_scope: str = "mcp:access") -> Token | 
         return None
 
     if not token.has_scope(required_scope):
-        logger.warning(
-            f"Token for client '{token.client_id}' lacks required scope '{required_scope}'"
-        )
+        logger.warning(f"Token for client '{token.client_id}' lacks required scope '{required_scope}'")
         return None
 
     return token

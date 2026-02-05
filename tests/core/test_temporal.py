@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta
 
 import pytest
@@ -14,10 +13,10 @@ from valence.core.temporal import (
     freshness_label,
 )
 
-
 # ============================================================================
 # TemporalValidity Tests
 # ============================================================================
+
 
 class TestTemporalValidityBasic:
     """Basic tests for TemporalValidity dataclass."""
@@ -495,6 +494,7 @@ class TestTemporalValidityStr:
 # SupersessionChain Tests
 # ============================================================================
 
+
 class TestSupersessionChain:
     """Tests for SupersessionChain dataclass."""
 
@@ -589,7 +589,11 @@ class TestSupersessionChainGetAtTime:
         chain = SupersessionChain(
             belief_ids=["id1", "id2", "id3"],
             reasons=["a", "b", "c"],
-            timestamps=[datetime(2024, 1, 1), datetime(2024, 3, 1), datetime(2024, 5, 1)],
+            timestamps=[
+                datetime(2024, 1, 1),
+                datetime(2024, 3, 1),
+                datetime(2024, 5, 1),
+            ],
         )
         # 2024-02-01 is >= ts[0] but < ts[1], so returns belief_ids[1]
         result = chain.get_at_time(datetime(2024, 2, 1))
@@ -629,6 +633,7 @@ class TestSupersessionChainToDict:
 # ============================================================================
 # calculate_freshness Tests
 # ============================================================================
+
 
 class TestCalculateFreshness:
     """Tests for calculate_freshness function."""
@@ -678,23 +683,27 @@ class TestCalculateFreshness:
 # freshness_label Tests
 # ============================================================================
 
+
 class TestFreshnessLabel:
     """Tests for freshness_label function."""
 
-    @pytest.mark.parametrize("value,expected", [
-        (0.95, "very fresh"),
-        (0.90, "very fresh"),
-        (0.89, "fresh"),
-        (0.70, "fresh"),
-        (0.69, "moderately fresh"),
-        (0.50, "moderately fresh"),
-        (0.49, "aging"),
-        (0.30, "aging"),
-        (0.29, "stale"),
-        (0.10, "stale"),
-        (0.09, "very stale"),
-        (0.0, "very stale"),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (0.95, "very fresh"),
+            (0.90, "very fresh"),
+            (0.89, "fresh"),
+            (0.70, "fresh"),
+            (0.69, "moderately fresh"),
+            (0.50, "moderately fresh"),
+            (0.49, "aging"),
+            (0.30, "aging"),
+            (0.29, "stale"),
+            (0.10, "stale"),
+            (0.09, "very stale"),
+            (0.0, "very stale"),
+        ],
+    )
     def test_freshness_label_boundaries(self, value, expected):
         """Test freshness label at various boundaries."""
         assert freshness_label(value) == expected

@@ -6,71 +6,77 @@ trust relationships, and aggregation results.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from ..core.confidence import DimensionalConfidence
-
 
 # =============================================================================
 # ENUMS
 # =============================================================================
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     """Status of a federation node."""
-    DISCOVERED = "discovered"    # Found but not yet connected
-    CONNECTING = "connecting"    # Connection in progress
-    ACTIVE = "active"            # Connected and syncing
-    SUSPENDED = "suspended"      # Temporarily suspended
+
+    DISCOVERED = "discovered"  # Found but not yet connected
+    CONNECTING = "connecting"  # Connection in progress
+    ACTIVE = "active"  # Connected and syncing
+    SUSPENDED = "suspended"  # Temporarily suspended
     UNREACHABLE = "unreachable"  # Cannot connect
 
 
-class TrustPhase(str, Enum):
+class TrustPhase(StrEnum):
     """Trust establishment phase for a node."""
-    OBSERVER = "observer"        # Days 1-7: Read-only
+
+    OBSERVER = "observer"  # Days 1-7: Read-only
     CONTRIBUTOR = "contributor"  # Days 7-30: Limited contribution
     PARTICIPANT = "participant"  # Day 30+: Full participation
-    ANCHOR = "anchor"            # Earned: Can vouch for others
+    ANCHOR = "anchor"  # Earned: Can vouch for others
 
 
-class Visibility(str, Enum):
+class Visibility(StrEnum):
     """Visibility level for beliefs."""
-    PRIVATE = "private"          # Never shared
-    TRUSTED = "trusted"          # Shared with explicit trust
-    FEDERATED = "federated"      # Shared across federation
-    PUBLIC = "public"            # Discoverable by anyone
+
+    PRIVATE = "private"  # Never shared
+    TRUSTED = "trusted"  # Shared with explicit trust
+    FEDERATED = "federated"  # Shared across federation
+    PUBLIC = "public"  # Discoverable by anyone
 
 
-class ShareLevel(str, Enum):
+class ShareLevel(StrEnum):
     """What information is shared with a belief."""
-    BELIEF_ONLY = "belief_only"          # Content + confidence only
+
+    BELIEF_ONLY = "belief_only"  # Content + confidence only
     WITH_PROVENANCE = "with_provenance"  # + source information
-    FULL = "full"                        # + user attribution, metadata
+    FULL = "full"  # + user attribution, metadata
 
 
-class SyncStatus(str, Enum):
+class SyncStatus(StrEnum):
     """Status of sync with a peer node."""
+
     IDLE = "idle"
     SYNCING = "syncing"
     ERROR = "error"
     PAUSED = "paused"
 
 
-class ThreatLevel(str, Enum):
+class ThreatLevel(StrEnum):
     """Threat level for a node's behavior."""
+
     NONE = "none"
-    LOW = "low"           # Increased scrutiny
-    MEDIUM = "medium"     # Reduced influence
-    HIGH = "high"         # Quarantine from sensitive ops
+    LOW = "low"  # Increased scrutiny
+    MEDIUM = "medium"  # Reduced influence
+    HIGH = "high"  # Quarantine from sensitive ops
     CRITICAL = "critical"  # Functional isolation
 
 
-class ResolutionProposal(str, Enum):
+class ResolutionProposal(StrEnum):
     """Proposed resolution for a tension."""
+
     SUPERSEDE_A = "supersede_a"
     SUPERSEDE_B = "supersede_b"
     ACCEPT_BOTH = "accept_both"
@@ -78,8 +84,9 @@ class ResolutionProposal(str, Enum):
     REFER_TO_AUTHORITY = "refer_to_authority"
 
 
-class ResolutionStatus(str, Enum):
+class ResolutionStatus(StrEnum):
     """Status of a tension resolution."""
+
     PROPOSED = "proposed"
     VOTING = "voting"
     ACCEPTED = "accepted"
@@ -87,30 +94,34 @@ class ResolutionStatus(str, Enum):
     IMPLEMENTED = "implemented"
 
 
-class ConsensusMethod(str, Enum):
+class ConsensusMethod(StrEnum):
     """Method for reaching consensus on resolutions."""
+
     TRUST_WEIGHTED = "trust_weighted"
     UNANIMOUS = "unanimous"
     MAJORITY = "majority"
     AUTHORITY = "authority"
 
 
-class Vote(str, Enum):
+class Vote(StrEnum):
     """Vote on a resolution."""
+
     SUPPORT = "support"
     OPPOSE = "oppose"
     ABSTAIN = "abstain"
 
 
-class WarningSeverity(str, Enum):
+class WarningSeverity(StrEnum):
     """Severity level for trust concentration warnings."""
-    INFO = "info"           # Informational, no action needed
-    WARNING = "warning"     # Should be addressed
-    CRITICAL = "critical"   # Urgent, requires attention
+
+    INFO = "info"  # Informational, no action needed
+    WARNING = "warning"  # Should be addressed
+    CRITICAL = "critical"  # Urgent, requires attention
 
 
-class TrustPreference(str, Enum):
+class TrustPreference(StrEnum):
     """User preference for node trust."""
+
     BLOCKED = "blocked"
     REDUCED = "reduced"
     AUTOMATIC = "automatic"
@@ -118,8 +129,9 @@ class TrustPreference(str, Enum):
     ANCHOR = "anchor"
 
 
-class AnnotationType(str, Enum):
+class AnnotationType(StrEnum):
     """Type of belief trust annotation."""
+
     CORROBORATION = "corroboration"
     DISPUTE = "dispute"
     ENDORSEMENT = "endorsement"
@@ -184,8 +196,8 @@ class FederationNode:
             "phase_started_at": self.phase_started_at.isoformat(),
             "protocol_version": self.protocol_version,
             "discovered_at": self.discovered_at.isoformat(),
-            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
-            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
+            "last_seen_at": (self.last_seen_at.isoformat() if self.last_seen_at else None),
+            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
             "metadata": self.metadata,
         }
 
@@ -353,10 +365,10 @@ class BeliefProvenance:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_id=row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"]),
-            federation_id=row["federation_id"] if isinstance(row["federation_id"], UUID) else UUID(row["federation_id"]),
-            origin_node_id=row["origin_node_id"] if isinstance(row["origin_node_id"], UUID) else UUID(row["origin_node_id"]),
-            origin_belief_id=row["origin_belief_id"] if isinstance(row["origin_belief_id"], UUID) else UUID(row["origin_belief_id"]),
+            belief_id=(row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"])),
+            federation_id=(row["federation_id"] if isinstance(row["federation_id"], UUID) else UUID(row["federation_id"])),
+            origin_node_id=(row["origin_node_id"] if isinstance(row["origin_node_id"], UUID) else UUID(row["origin_node_id"])),
+            origin_belief_id=(row["origin_belief_id"] if isinstance(row["origin_belief_id"], UUID) else UUID(row["origin_belief_id"])),
             origin_signature=row["origin_signature"],
             signed_at=row["signed_at"],
             signature_verified=row.get("signature_verified", False),
@@ -428,10 +440,7 @@ class NodeTrust:
         if self.overall < 0 or self.overall > 1:
             raise ValueError(f"overall trust must be between 0 and 1, got {self.overall}")
 
-    def recalculate_overall(
-        self,
-        weights: dict[str, float] | None = None
-    ) -> NodeTrust:
+    def recalculate_overall(self, weights: dict[str, float] | None = None) -> NodeTrust:
         """Recalculate overall trust from dimensions."""
         w = weights or TRUST_WEIGHTS
         weighted_sum = 0.0
@@ -448,7 +457,10 @@ class NodeTrust:
         age_bonus = min(0.05, age_days / 90 * 0.05)
 
         if total_weight > 0:
-            self.overall = min(1.0, (weighted_sum / total_weight) + age_bonus + self.manual_trust_adjustment)
+            self.overall = min(
+                1.0,
+                (weighted_sum / total_weight) + age_bonus + self.manual_trust_adjustment,
+            )
         else:
             self.overall = 0.1 + age_bonus + self.manual_trust_adjustment
 
@@ -500,7 +512,7 @@ class NodeTrust:
             "endorsements_received": self.endorsements_received,
             "endorsements_given": self.endorsements_given,
             "relationship_started_at": self.relationship_started_at.isoformat(),
-            "last_interaction_at": self.last_interaction_at.isoformat() if self.last_interaction_at else None,
+            "last_interaction_at": (self.last_interaction_at.isoformat() if self.last_interaction_at else None),
             "manual_trust_adjustment": float(self.manual_trust_adjustment),
             "adjustment_reason": self.adjustment_reason,
             "created_at": self.created_at.isoformat(),
@@ -513,11 +525,12 @@ class NodeTrust:
         trust_data = row.get("trust", {"overall": 0.1})
         if isinstance(trust_data, str):
             import json
+
             trust_data = json.loads(trust_data)
 
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            node_id=row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"]),
+            node_id=(row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"])),
             overall=trust_data.get("overall", 0.1),
             belief_accuracy=trust_data.get("belief_accuracy"),
             extraction_quality=trust_data.get("extraction_quality"),
@@ -586,7 +599,7 @@ class UserNodeTrust:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            node_id=row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"]),
+            node_id=(row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"])),
             trust_preference=TrustPreference(row.get("trust_preference", "automatic")),
             manual_trust_score=row.get("manual_trust_score"),
             reason=row.get("reason"),
@@ -634,9 +647,9 @@ class BeliefTrustAnnotation:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_id=row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"]),
+            belief_id=(row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"])),
             type=AnnotationType(row["type"]),
-            source_node_id=UUID(row["source_node_id"]) if row.get("source_node_id") else None,
+            source_node_id=(UUID(row["source_node_id"]) if row.get("source_node_id") else None),
             corroboration_attestation=row.get("corroboration_attestation"),
             confidence_delta=float(row.get("confidence_delta", 0)),
             created_at=row.get("created_at", datetime.now()),
@@ -691,7 +704,7 @@ class AggregatedBelief:
             "query_domain": self.query_domain,
             "query_semantic": self.query_semantic,
             "collective_confidence": float(self.collective_confidence),
-            "agreement_score": float(self.agreement_score) if self.agreement_score else None,
+            "agreement_score": (float(self.agreement_score) if self.agreement_score else None),
             "contributor_count": self.contributor_count,
             "node_count": self.node_count,
             "total_belief_count": self.total_belief_count,
@@ -702,7 +715,7 @@ class AggregatedBelief:
                 "delta": float(self.privacy_delta),
                 "mechanism": self.privacy_mechanism,
             },
-            "aggregator_node_id": str(self.aggregator_node_id) if self.aggregator_node_id else None,
+            "aggregator_node_id": (str(self.aggregator_node_id) if self.aggregator_node_id else None),
             "computed_at": self.computed_at.isoformat(),
             "valid_until": self.valid_until.isoformat() if self.valid_until else None,
             "metadata": self.metadata,
@@ -766,15 +779,15 @@ class TensionResolution:
             "node_b_id": str(self.node_b_id) if self.node_b_id else None,
             "proposed_resolution": self.proposed_resolution.value,
             "resolution_rationale": self.resolution_rationale,
-            "proposed_by_node_id": str(self.proposed_by_node_id) if self.proposed_by_node_id else None,
+            "proposed_by_node_id": (str(self.proposed_by_node_id) if self.proposed_by_node_id else None),
             "proposed_at": self.proposed_at.isoformat(),
             "consensus_method": self.consensus_method.value,
             "consensus_threshold": float(self.consensus_threshold),
             "current_support": float(self.current_support),
             "status": self.status.value,
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
-            "winning_belief_id": str(self.winning_belief_id) if self.winning_belief_id else None,
-            "superseded_belief_id": str(self.superseded_belief_id) if self.superseded_belief_id else None,
+            "winning_belief_id": (str(self.winning_belief_id) if self.winning_belief_id else None),
+            "superseded_belief_id": (str(self.superseded_belief_id) if self.superseded_belief_id else None),
         }
 
 
@@ -850,8 +863,8 @@ class SyncState:
             "last_sync_duration_ms": self.last_sync_duration_ms,
             "last_error": self.last_error,
             "error_count": self.error_count,
-            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
-            "next_sync_scheduled": self.next_sync_scheduled.isoformat() if self.next_sync_scheduled else None,
+            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
+            "next_sync_scheduled": (self.next_sync_scheduled.isoformat() if self.next_sync_scheduled else None),
             "created_at": self.created_at.isoformat(),
             "modified_at": self.modified_at.isoformat(),
         }
@@ -902,7 +915,7 @@ class PrivacyParameters:
     """Privacy parameters for aggregation queries."""
 
     epsilon: float = 0.1  # Privacy loss per query
-    delta: float = 1e-6   # Probability of complete privacy failure
+    delta: float = 1e-6  # Probability of complete privacy failure
     min_contributors: int = 5  # Minimum nodes for aggregate
     max_queries_per_period: int = 100  # Rate limit
     budget_period: timedelta = field(default_factory=lambda: timedelta(days=1))
@@ -1063,7 +1076,7 @@ class AggregationResult:
             "request_id": str(self.request_id),
             "result": {
                 "collective_confidence": float(self.collective_confidence),
-                "agreement_score": float(self.agreement_score) if self.agreement_score else None,
+                "agreement_score": (float(self.agreement_score) if self.agreement_score else None),
                 "contributor_count": self.contributor_count,
                 "node_count": self.node_count,
                 "stance_summary": self.stance_summary,
@@ -1082,7 +1095,7 @@ class AggregationResult:
 @dataclass
 class TrustConcentrationWarning:
     """Warning about trust concentration in the network.
-    
+
     Detects when trust is too concentrated in few nodes, which could
     indicate vulnerability to manipulation or single points of failure.
     """
@@ -1091,15 +1104,15 @@ class TrustConcentrationWarning:
     severity: WarningSeverity
     message: str
     details: dict[str, Any] = field(default_factory=dict)
-    
+
     # Context
     node_id: UUID | None = None  # Node ID if warning is about specific node
     node_name: str | None = None  # Human-readable node name
     trust_share: float | None = None  # Trust share percentage (0-1)
-    
+
     # Recommendations
     recommendation: str | None = None
-    
+
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1111,7 +1124,7 @@ class TrustConcentrationWarning:
             "details": self.details,
             "node_id": str(self.node_id) if self.node_id else None,
             "node_name": self.node_name,
-            "trust_share": float(self.trust_share) if self.trust_share is not None else None,
+            "trust_share": (float(self.trust_share) if self.trust_share is not None else None),
             "recommendation": self.recommendation,
             "created_at": self.created_at.isoformat(),
         }
@@ -1130,23 +1143,23 @@ class TrustConcentrationWarning:
 @dataclass
 class TrustConcentrationReport:
     """Full report of trust concentration analysis.
-    
+
     Includes all warnings and network health metrics.
     """
 
     warnings: list[TrustConcentrationWarning] = field(default_factory=list)
-    
+
     # Network metrics
     total_nodes: int = 0
     active_nodes: int = 0
     total_trust: float = 0.0
-    
+
     # Concentration metrics
     top_node_share: float = 0.0  # Trust share of top node
     top_3_share: float = 0.0  # Trust share of top 3 nodes
     trusted_sources: int = 0  # Number of nodes with trust > 0.1
     gini_coefficient: float | None = None  # Inequality measure (0 = equal, 1 = max inequality)
-    
+
     # Analysis timestamp
     analyzed_at: datetime = field(default_factory=datetime.now)
 
@@ -1165,7 +1178,11 @@ class TrustConcentrationReport:
         """Get the maximum severity among all warnings."""
         if not self.warnings:
             return None
-        severity_order = [WarningSeverity.INFO, WarningSeverity.WARNING, WarningSeverity.CRITICAL]
+        severity_order = [
+            WarningSeverity.INFO,
+            WarningSeverity.WARNING,
+            WarningSeverity.CRITICAL,
+        ]
         return max(self.warnings, key=lambda w: severity_order.index(w.severity)).severity
 
     def to_dict(self) -> dict[str, Any]:
@@ -1179,7 +1196,7 @@ class TrustConcentrationReport:
                 "top_node_share": float(self.top_node_share),
                 "top_3_share": float(self.top_3_share),
                 "trusted_sources": self.trusted_sources,
-                "gini_coefficient": float(self.gini_coefficient) if self.gini_coefficient is not None else None,
+                "gini_coefficient": (float(self.gini_coefficient) if self.gini_coefficient is not None else None),
             },
             "has_warnings": self.has_warnings,
             "has_critical_warnings": self.has_critical_warnings,

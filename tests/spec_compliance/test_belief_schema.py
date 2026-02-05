@@ -15,13 +15,14 @@ See: docs/FEDERATION_SCHEMA.md, docs/VISION.md
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import pytest
 
 # ============================================================================
 # Schema Field Existence Tests
 # ============================================================================
+
 
 class TestBeliefSchemaFields:
     """Test that belief table has all required fields per spec."""
@@ -33,11 +34,11 @@ class TestBeliefSchemaFields:
     def test_holder_id_column_exists(self, mock_db_connection):
         """
         Spec requires holder_id (UUID) for multi-holder/federation support.
-        
+
         The spec distinguishes between:
         - source_id: WHERE the belief came from (provenance)
         - holder_id: WHO holds/owns this belief (ownership)
-        
+
         This is critical for federation where beliefs can be shared
         between nodes while maintaining ownership attribution.
         """
@@ -55,7 +56,7 @@ class TestBeliefSchemaFields:
     def test_version_column_exists(self, mock_db_connection):
         """
         Spec requires explicit version field for belief versioning.
-        
+
         While the current schema has supersedes_id/superseded_by_id for
         creating supersession chains, the spec also requires an explicit
         version number for:
@@ -77,7 +78,7 @@ class TestBeliefSchemaFields:
     def test_content_hash_column_exists(self, mock_db_connection):
         """
         Spec requires content_hash for deduplication.
-        
+
         SHA-256 hash of belief content enables:
         - Efficient deduplication during federation sync
         - Quick detection of identical beliefs across nodes
@@ -85,9 +86,7 @@ class TestBeliefSchemaFields:
         """
         columns = mock_db_connection.get_belief_columns()
         assert "content_hash" in columns, (
-            "content_hash column required for deduplication. "
-            "SHA-256 hash of content enables efficient federation sync "
-            "and integrity verification."
+            "content_hash column required for deduplication. SHA-256 hash of content enables efficient federation sync and integrity verification."
         )
 
     @pytest.mark.xfail(
@@ -97,22 +96,20 @@ class TestBeliefSchemaFields:
     def test_visibility_column_exists(self, mock_db_connection):
         """
         Spec requires visibility enum for federation privacy levels.
-        
+
         Valid values: 'private', 'federated', 'public'
         - private: Only visible to holder
         - federated: Shared with trusted federation nodes
         - public: Visible to anyone
         """
         columns = mock_db_connection.get_belief_columns()
-        assert "visibility" in columns, (
-            "visibility column required for federation privacy. "
-            "Enum with values: private, federated, public."
-        )
+        assert "visibility" in columns, "visibility column required for federation privacy. Enum with values: private, federated, public."
 
 
 # ============================================================================
 # Schema Constraint Tests
 # ============================================================================
+
 
 class TestBeliefSchemaConstraints:
     """Test that belief table has proper constraints per spec."""
@@ -124,9 +121,7 @@ class TestBeliefSchemaConstraints:
     def test_version_positive_constraint(self, mock_db_connection):
         """Version must be > 0."""
         constraints = mock_db_connection.get_belief_constraints()
-        assert any(
-            "version" in c and "> 0" in c for c in constraints
-        ), "version_positive constraint required: version > 0"
+        assert any("version" in c and "> 0" in c for c in constraints), "version_positive constraint required: version > 0"
 
     @pytest.mark.xfail(
         reason="content_hash format not validated in base schema",
@@ -135,9 +130,7 @@ class TestBeliefSchemaConstraints:
     def test_content_hash_format(self, mock_db_connection):
         """Content hash should be CHAR(64) for SHA-256 hex."""
         columns = mock_db_connection.get_belief_column_types()
-        assert columns.get("content_hash") == "character(64)", (
-            "content_hash should be CHAR(64) for SHA-256 hex encoding"
-        )
+        assert columns.get("content_hash") == "character(64)", "content_hash should be CHAR(64) for SHA-256 hex encoding"
 
     @pytest.mark.xfail(
         reason="visibility enum not in base schema",
@@ -147,14 +140,13 @@ class TestBeliefSchemaConstraints:
         """Visibility enum should have correct values."""
         enum_values = mock_db_connection.get_enum_values("visibility_level")
         expected = {"private", "federated", "public"}
-        assert set(enum_values) == expected, (
-            f"visibility_level enum should have {expected}, got {enum_values}"
-        )
+        assert set(enum_values) == expected, f"visibility_level enum should have {expected}, got {enum_values}"
 
 
 # ============================================================================
 # Schema Index Tests
 # ============================================================================
+
 
 class TestBeliefSchemaIndexes:
     """Test that belief table has required indexes per spec."""
@@ -166,9 +158,7 @@ class TestBeliefSchemaIndexes:
     def test_holder_id_index_exists(self, mock_db_connection):
         """Index on holder_id for efficient per-holder queries."""
         indexes = mock_db_connection.get_belief_indexes()
-        assert any("holder" in idx for idx in indexes), (
-            "idx_beliefs_holder index required for holder_id lookups"
-        )
+        assert any("holder" in idx for idx in indexes), "idx_beliefs_holder index required for holder_id lookups"
 
     @pytest.mark.xfail(
         reason="content_hash index not in base schema",
@@ -177,19 +167,18 @@ class TestBeliefSchemaIndexes:
     def test_content_hash_index_exists(self, mock_db_connection):
         """Index on content_hash for deduplication lookups."""
         indexes = mock_db_connection.get_belief_indexes()
-        assert any("content_hash" in idx for idx in indexes), (
-            "idx_beliefs_content_hash index required for dedup lookups"
-        )
+        assert any("content_hash" in idx for idx in indexes), "idx_beliefs_content_hash index required for dedup lookups"
 
 
 # ============================================================================
 # Migration Verification Tests (Post-Migration)
 # ============================================================================
 
+
 class TestMigration002Applied:
     """
     Tests that pass after migration 002 is applied.
-    
+
     These tests verify the migration adds the required fields correctly.
     Run with: pytest -k "Migration002" --runxfail
     """
@@ -224,25 +213,36 @@ class TestMigration002Applied:
 # Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_db_connection():
     """
     Mock database connection for testing base schema.
-    
+
     Returns a mock that simulates the CURRENT schema (before migrations).
     All xfail tests use this to verify gaps exist.
     """
     mock = MagicMock()
-    
+
     # Current schema columns (from schema.sql)
     mock.get_belief_columns.return_value = [
-        "id", "content", "confidence", "domain_path",
-        "valid_from", "valid_until", "created_at", "modified_at",
-        "source_id", "extraction_method",
-        "supersedes_id", "superseded_by_id",
-        "status", "embedding", "content_tsv"
+        "id",
+        "content",
+        "confidence",
+        "domain_path",
+        "valid_from",
+        "valid_until",
+        "created_at",
+        "modified_at",
+        "source_id",
+        "extraction_method",
+        "supersedes_id",
+        "superseded_by_id",
+        "status",
+        "embedding",
+        "content_tsv",
     ]
-    
+
     mock.get_belief_column_types.return_value = {
         "id": "uuid",
         "content": "text",
@@ -251,23 +251,23 @@ def mock_db_connection():
         "source_id": "uuid",
         "status": "text",
     }
-    
+
     mock.get_belief_constraints.return_value = [
         "beliefs_valid_status CHECK (status IN ('active', 'superseded', 'disputed', 'archived'))",
         "beliefs_valid_confidence CHECK ((confidence->>'overall')::numeric >= 0 AND ...)",
     ]
-    
+
     mock.get_belief_indexes.return_value = [
         "idx_beliefs_domain",
-        "idx_beliefs_status", 
+        "idx_beliefs_status",
         "idx_beliefs_created",
         "idx_beliefs_tsv",
         "idx_beliefs_source",
         "idx_beliefs_embedding",
     ]
-    
+
     mock.get_enum_values.return_value = []  # No visibility_level enum in base
-    
+
     return mock
 
 
@@ -275,11 +275,11 @@ def mock_db_connection():
 def mock_db_post_migration():
     """
     Mock database connection for testing schema AFTER migrations applied.
-    
+
     Returns a mock that simulates the schema after 001 + 002 migrations.
     """
     mock = MagicMock()
-    
+
     mock.get_column_info.side_effect = lambda table, col: {
         ("beliefs", "holder_id"): {
             "type": "uuid",
@@ -302,9 +302,9 @@ def mock_db_post_migration():
             "default": "'private'::visibility_level",
         },
     }.get((table, col))
-    
+
     mock.count_null.return_value = 0  # All content_hash computed
-    
+
     mock.get_enum_values.return_value = ["private", "federated", "public"]
-    
+
     return mock

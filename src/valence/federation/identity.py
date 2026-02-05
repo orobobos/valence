@@ -16,23 +16,22 @@ Examples:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
-from urllib.parse import urlparse
 
 # Try to import cryptography for Ed25519, fall back to pure Python if needed
 try:
+    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
         Ed25519PublicKey,
     )
-    from cryptography.hazmat.primitives import serialization
+
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -49,7 +48,7 @@ DID_PREFIX = f"did:{DID_METHOD}:"
 MULTIBASE_BASE58BTC = "z"
 
 # Multicodec prefix for Ed25519 public key (0xed01)
-MULTICODEC_ED25519_PUB = bytes([0xed, 0x01])
+MULTICODEC_ED25519_PUB = bytes([0xED, 0x01])
 
 # Well-known endpoint paths
 WELL_KNOWN_NODE_METADATA = "/.well-known/vfp-node-metadata"
@@ -61,11 +60,12 @@ WELL_KNOWN_TRUST_ANCHORS = "/.well-known/vfp-trust-anchors"
 # =============================================================================
 
 
-class DIDMethod(str, Enum):
+class DIDMethod(StrEnum):
     """DID method variants for did:vkb."""
-    WEB = "web"      # Domain-verified
-    KEY = "key"      # Self-sovereign (key-based)
-    USER = "user"    # User identity
+
+    WEB = "web"  # Domain-verified
+    KEY = "key"  # Self-sovereign (key-based)
+    USER = "user"  # User identity
 
 
 # =============================================================================
@@ -135,6 +135,7 @@ def multibase_decode(string: str) -> bytes:
 @dataclass
 class KeyPair:
     """Ed25519 key pair for node identity."""
+
     private_key_bytes: bytes
     public_key_bytes: bytes
 
@@ -260,10 +261,10 @@ def parse_did(did_string: str) -> DID:
     if not did_string.startswith(DID_PREFIX):
         raise ValueError(f"Invalid DID: must start with '{DID_PREFIX}'")
 
-    parts = did_string[len(DID_PREFIX):].split(":")
+    parts = did_string[len(DID_PREFIX) :].split(":")
 
     if len(parts) < 2:
-        raise ValueError(f"Invalid DID: missing method or identifier")
+        raise ValueError("Invalid DID: missing method or identifier")
 
     method_str = parts[0]
 
@@ -295,13 +296,16 @@ def parse_did(did_string: str) -> DID:
 
     if method == DIDMethod.WEB:
         # Validate domain format
-        if not re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$", identifier):
+        if not re.match(
+            r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$",
+            identifier,
+        ):
             raise ValueError(f"Invalid domain in web DID: {identifier}")
 
     elif method == DIDMethod.KEY:
         # Validate multibase format (should start with z for base58btc)
         if not identifier.startswith("z"):
-            raise ValueError(f"Invalid key DID: must use base58btc encoding (start with 'z')")
+            raise ValueError("Invalid key DID: must use base58btc encoding (start with 'z')")
         try:
             multibase_decode(identifier)
         except Exception as e:
@@ -515,20 +519,24 @@ class DIDDocument:
         """Create from dictionary."""
         verification_methods = []
         for vm in data.get("verificationMethod", []):
-            verification_methods.append(VerificationMethod(
-                id=vm["id"],
-                type=vm.get("type", "Ed25519VerificationKey2020"),
-                controller=vm.get("controller", ""),
-                public_key_multibase=vm.get("publicKeyMultibase", ""),
-            ))
+            verification_methods.append(
+                VerificationMethod(
+                    id=vm["id"],
+                    type=vm.get("type", "Ed25519VerificationKey2020"),
+                    controller=vm.get("controller", ""),
+                    public_key_multibase=vm.get("publicKeyMultibase", ""),
+                )
+            )
 
         services = []
         for s in data.get("service", []):
-            services.append(ServiceEndpoint(
-                id=s["id"],
-                type=s["type"],
-                service_endpoint=s["serviceEndpoint"],
-            ))
+            services.append(
+                ServiceEndpoint(
+                    id=s["id"],
+                    type=s["type"],
+                    service_endpoint=s["serviceEndpoint"],
+                )
+            )
 
         return cls(
             id=data["id"],
@@ -540,8 +548,8 @@ class DIDDocument:
             capabilities=data.get("vfp:capabilities", []),
             profile=data.get("vfp:profile", {}),
             protocol_version=data.get("vfp:protocolVersion", "1.0"),
-            created=datetime.fromisoformat(data["created"]) if data.get("created") else None,
-            updated=datetime.fromisoformat(data["updated"]) if data.get("updated") else None,
+            created=(datetime.fromisoformat(data["created"]) if data.get("created") else None),
+            updated=(datetime.fromisoformat(data["updated"]) if data.get("updated") else None),
         )
 
 
@@ -585,17 +593,21 @@ def create_did_document(
     # Create services
     services = []
     if federation_endpoint:
-        services.append(ServiceEndpoint(
-            id=f"{did_str}#vfp",
-            type="ValenceFederationProtocol",
-            service_endpoint=federation_endpoint,
-        ))
+        services.append(
+            ServiceEndpoint(
+                id=f"{did_str}#vfp",
+                type="ValenceFederationProtocol",
+                service_endpoint=federation_endpoint,
+            )
+        )
     if mcp_endpoint:
-        services.append(ServiceEndpoint(
-            id=f"{did_str}#mcp",
-            type="ModelContextProtocol",
-            service_endpoint=mcp_endpoint,
-        ))
+        services.append(
+            ServiceEndpoint(
+                id=f"{did_str}#mcp",
+                type="ModelContextProtocol",
+                service_endpoint=mcp_endpoint,
+            )
+        )
 
     # Build profile
     profile: dict[str, Any] = {}

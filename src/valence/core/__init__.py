@@ -1,20 +1,14 @@
 """Valence Core - Shared primitives for the knowledge substrate."""
 
-from .lru_cache import (
-    LRUDict,
-    BoundedList,
-    get_cache_max_size,
-    DEFAULT_CACHE_MAX_SIZE,
-)
+from .confidence import ConfidenceDimension, DimensionalConfidence
 from .config import (
     FederationConfig,
     FederationConfigProtocol,
+    clear_federation_config,
     get_federation_config,
     get_federation_config_or_none,
     set_federation_config,
-    clear_federation_config,
 )
-from .confidence import ConfidenceDimension, DimensionalConfidence
 from .db import (
     close_pool,
     generate_id,
@@ -66,6 +60,12 @@ from .logging import (
     configure_logging,
     get_logger,
     tool_logger,
+)
+from .lru_cache import (
+    DEFAULT_CACHE_MAX_SIZE,
+    BoundedList,
+    LRUDict,
+    get_cache_max_size,
 )
 from .mcp_base import (
     MCPServerBase,

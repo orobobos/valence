@@ -20,20 +20,20 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
-from typing import Any, Optional, Protocol
+from enum import StrEnum
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     """Supported export formats for data reports."""
 
     JSON = "json"
     CSV = "csv"
 
 
-class ReportStatus(str, Enum):
+class ReportStatus(StrEnum):
     """Status of a data report generation job."""
 
     PENDING = "pending"  # Report requested, not yet started
@@ -65,8 +65,8 @@ class ReportScope:
     include_trust_outgoing: bool = True
     include_trust_incoming: bool = True
     include_audit_events: bool = True
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     domains: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,7 +93,7 @@ class BeliefRecord:
     confidence: float
     domains: list[str]
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -108,7 +108,7 @@ class ShareRecord:
     created_at: datetime
     policy_level: str
     revoked: bool = False
-    revoked_at: Optional[datetime] = None
+    revoked_at: datetime | None = None
 
 
 @dataclass
@@ -121,10 +121,10 @@ class TrustRecord:
     integrity: float
     confidentiality: float
     judgment: float
-    domain: Optional[str]
+    domain: str | None
     created_at: datetime
-    updated_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    updated_at: datetime | None = None
+    expires_at: datetime | None = None
 
 
 @dataclass
@@ -134,7 +134,7 @@ class AuditRecord:
     event_id: str
     event_type: str
     actor_did: str
-    target_did: Optional[str]
+    target_did: str | None
     resource: str
     action: str
     success: bool
@@ -166,11 +166,11 @@ class ReportMetadata:
     scope: ReportScope
     format: ExportFormat
     status: ReportStatus = ReportStatus.PENDING
-    generated_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    generated_at: datetime | None = None
+    error_message: str | None = None
     record_counts: dict[str, int] = field(default_factory=dict)
     size_bytes: int = 0
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -178,7 +178,7 @@ class ReportMetadata:
             "report_id": self.report_id,
             "user_did": self.user_did,
             "requested_at": self.requested_at.isoformat(),
-            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "generated_at": (self.generated_at.isoformat() if self.generated_at else None),
             "scope": self.scope.to_dict(),
             "format": self.format.value,
             "status": self.status.value,
@@ -399,9 +399,9 @@ class ReportDataSource(Protocol):
     async def get_beliefs_for_user(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        domains: list[str] | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[BeliefRecord]:
         """Get all beliefs owned by a user."""
         raise NotImplementedError
@@ -410,8 +410,8 @@ class ReportDataSource(Protocol):
     async def get_shares_sent(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[ShareRecord]:
         """Get all shares sent by a user."""
         raise NotImplementedError
@@ -420,8 +420,8 @@ class ReportDataSource(Protocol):
     async def get_shares_received(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[ShareRecord]:
         """Get all shares received by a user."""
         raise NotImplementedError
@@ -430,7 +430,7 @@ class ReportDataSource(Protocol):
     async def get_trust_edges_from(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
+        domains: list[str] | None = None,
     ) -> AsyncIterator[TrustRecord]:
         """Get all trust edges where user is the source."""
         raise NotImplementedError
@@ -439,7 +439,7 @@ class ReportDataSource(Protocol):
     async def get_trust_edges_to(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
+        domains: list[str] | None = None,
     ) -> AsyncIterator[TrustRecord]:
         """Get all trust edges where user is the target."""
         raise NotImplementedError
@@ -448,8 +448,8 @@ class ReportDataSource(Protocol):
     async def get_audit_events_for_user(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[AuditRecord]:
         """Get all audit events where user is actor or target."""
         raise NotImplementedError
@@ -463,7 +463,7 @@ class ReportStore(Protocol):
         """Save report metadata."""
         ...
 
-    async def get_metadata(self, report_id: str) -> Optional[ReportMetadata]:
+    async def get_metadata(self, report_id: str) -> ReportMetadata | None:
         """Get report metadata by ID."""
         ...
 
@@ -471,7 +471,7 @@ class ReportStore(Protocol):
         self,
         report_id: str,
         status: ReportStatus,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Update report status."""
         ...
@@ -480,7 +480,7 @@ class ReportStore(Protocol):
         """Save a generated report."""
         ...
 
-    async def get_report(self, report_id: str) -> Optional[DataReport]:
+    async def get_report(self, report_id: str) -> DataReport | None:
         """Get a generated report by ID."""
         ...
 
@@ -504,7 +504,7 @@ class InMemoryReportStore:
         """Save report metadata."""
         self._metadata[metadata.report_id] = metadata
 
-    async def get_metadata(self, report_id: str) -> Optional[ReportMetadata]:
+    async def get_metadata(self, report_id: str) -> ReportMetadata | None:
         """Get report metadata by ID."""
         return self._metadata.get(report_id)
 
@@ -512,7 +512,7 @@ class InMemoryReportStore:
         self,
         report_id: str,
         status: ReportStatus,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Update report status."""
         if report_id in self._metadata:
@@ -530,7 +530,7 @@ class InMemoryReportStore:
             json_str = report.to_json()
             self._metadata[report_id].size_bytes = len(json_str.encode("utf-8"))
 
-    async def get_report(self, report_id: str) -> Optional[DataReport]:
+    async def get_report(self, report_id: str) -> DataReport | None:
         """Get a generated report by ID."""
         return self._reports.get(report_id)
 
@@ -562,9 +562,9 @@ class InMemoryDataSource:
     async def get_beliefs_for_user(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        domains: list[str] | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[BeliefRecord]:
         """Get beliefs for a user (in-memory, all beliefs assumed owned by queried user for testing)."""
         for belief in self.beliefs:
@@ -581,8 +581,8 @@ class InMemoryDataSource:
     async def get_shares_sent(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[ShareRecord]:
         """Get shares sent by user."""
         for share in self.shares:
@@ -597,8 +597,8 @@ class InMemoryDataSource:
     async def get_shares_received(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[ShareRecord]:
         """Get shares received by user."""
         for share in self.shares:
@@ -613,7 +613,7 @@ class InMemoryDataSource:
     async def get_trust_edges_from(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
+        domains: list[str] | None = None,
     ) -> AsyncIterator[TrustRecord]:
         """Get trust edges from user."""
         for edge in self.trust_edges:
@@ -626,7 +626,7 @@ class InMemoryDataSource:
     async def get_trust_edges_to(
         self,
         user_did: str,
-        domains: Optional[list[str]] = None,
+        domains: list[str] | None = None,
     ) -> AsyncIterator[TrustRecord]:
         """Get trust edges to user."""
         for edge in self.trust_edges:
@@ -639,8 +639,8 @@ class InMemoryDataSource:
     async def get_audit_events_for_user(
         self,
         user_did: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> AsyncIterator[AuditRecord]:
         """Get audit events involving user."""
         for event in self.audit_events:
@@ -688,7 +688,7 @@ class ReportService:
     async def request_report(
         self,
         user_did: str,
-        scope: Optional[ReportScope] = None,
+        scope: ReportScope | None = None,
         format: ExportFormat = ExportFormat.JSON,
         expires_in_hours: int = 24,
     ) -> ReportMetadata:
@@ -822,10 +822,7 @@ class ReportService:
             await self._report_store.save_report(report_id, report)
             await self._report_store.update_status(report_id, ReportStatus.COMPLETED)
 
-            logger.info(
-                f"Report {report_id} generated with "
-                f"{sum(metadata.record_counts.values())} total records"
-            )
+            logger.info(f"Report {report_id} generated with {sum(metadata.record_counts.values())} total records")
 
             return report
 
@@ -869,9 +866,7 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
 
         if metadata.status != ReportStatus.COMPLETED:
-            raise ReportGenerationError(
-                f"Report {report_id} is not completed (status: {metadata.status.value})"
-            )
+            raise ReportGenerationError(f"Report {report_id} is not completed (status: {metadata.status.value})")
 
         report = await self._report_store.get_report(report_id)
         if report is None:
@@ -914,15 +909,15 @@ class ReportService:
 
 
 # Module-level service instance for convenience
-_default_service: Optional[ReportService] = None
+_default_service: ReportService | None = None
 
 
-def get_report_service() -> Optional[ReportService]:
+def get_report_service() -> ReportService | None:
     """Get the default report service instance."""
     return _default_service
 
 
-def set_report_service(service: Optional[ReportService]) -> None:
+def set_report_service(service: ReportService | None) -> None:
     """Set the default report service instance."""
     global _default_service
     _default_service = service
@@ -930,7 +925,7 @@ def set_report_service(service: Optional[ReportService]) -> None:
 
 async def generate_data_report(
     user_did: str,
-    scope: Optional[ReportScope] = None,
+    scope: ReportScope | None = None,
     format: ExportFormat = ExportFormat.JSON,
 ) -> DataReport:
     """Convenience function to generate a data report synchronously.

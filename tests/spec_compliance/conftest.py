@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 
-
 # ============================================================================
 # Spec File Utilities
 # ============================================================================
@@ -30,10 +29,10 @@ def spec_dir() -> Path:
 
 def load_spec(component: str) -> str:
     """Load a spec file by component name.
-    
+
     Args:
         component: Component name (e.g., 'belief-schema')
-        
+
     Returns:
         Full spec content as string
     """
@@ -64,47 +63,53 @@ BELIEF_SPEC_FIELDS = {
     # Identity
     "id": {"type": "uuid", "required": True},
     "version": {"type": "integer", "required": True, "note": "Not in current schema"},
-    
     # Content
     "content": {"type": "text", "required": True},
-    "content_hash": {"type": "text", "required": False, "note": "Not in current schema"},
-    
+    "content_hash": {
+        "type": "text",
+        "required": False,
+        "note": "Not in current schema",
+    },
     # Confidence
     "confidence": {"type": "jsonb", "required": True},
-    
     # Temporal
     "valid_from": {"type": "timestamptz", "required": False},
     "valid_until": {"type": "timestamptz", "required": False},
-    
     # Derivation - spec says derivation object, schema uses source_id
     "source_id": {"type": "uuid", "required": False, "spec_name": "derivation"},
-    
     # Organization - spec says domains[], schema uses domain_path[]
     "domain_path": {"type": "text[]", "required": True, "spec_name": "domains"},
-    
     # Privacy - spec has visibility enum, not yet in schema
     "visibility": {"type": "text", "required": False, "note": "Not in current schema"},
-    
     # Provenance - spec says holder_id, schema uses source_id
     "created_at": {"type": "timestamptz", "required": True},
-    
     # Versioning
     "supersedes_id": {"type": "uuid", "required": False, "spec_name": "supersedes"},
-    "superseded_by_id": {"type": "uuid", "required": False, "spec_name": "superseded_by"},
-    
+    "superseded_by_id": {
+        "type": "uuid",
+        "required": False,
+        "spec_name": "superseded_by",
+    },
     # Search
     "embedding": {"type": "vector", "required": False},
-    
     # Schema additions not in spec
-    "modified_at": {"type": "timestamptz", "required": True, "note": "Schema extension"},
-    "extraction_method": {"type": "text", "required": False, "note": "Schema extension"},
+    "modified_at": {
+        "type": "timestamptz",
+        "required": True,
+        "note": "Schema extension",
+    },
+    "extraction_method": {
+        "type": "text",
+        "required": False,
+        "note": "Schema extension",
+    },
     "status": {"type": "text", "required": True, "note": "Schema extension"},
 }
 
 # Confidence vector dimensions per SPEC.md Section 1.2
 CONFIDENCE_VECTOR_DIMENSIONS = [
     "source_reliability",
-    "method_quality", 
+    "method_quality",
     "internal_consistency",
     "temporal_freshness",
     "corroboration",
@@ -127,7 +132,7 @@ VISIBILITY_VALUES = ["private", "federated", "public"]
 # Derivation type enum values per spec
 DERIVATION_TYPES = [
     "observation",
-    "inference", 
+    "inference",
     "aggregation",
     "hearsay",
     "assumption",
@@ -158,13 +163,14 @@ def confidence_defaults() -> dict[str, float]:
 # SQL Schema Parser
 # ============================================================================
 
+
 def parse_create_table(sql: str, table_name: str) -> dict[str, str]:
     """Extract column definitions from a CREATE TABLE statement.
-    
+
     Args:
         sql: Full SQL schema text
         table_name: Name of table to extract
-        
+
     Returns:
         Dict of column_name -> column_type
     """
@@ -173,9 +179,9 @@ def parse_create_table(sql: str, table_name: str) -> dict[str, str]:
     match = re.search(pattern, sql, re.DOTALL | re.IGNORECASE)
     if not match:
         return {}
-    
+
     table_body = match.group(1)
-    
+
     # Parse column definitions (simplified)
     columns = {}
     for line in table_body.split("\n"):
@@ -186,14 +192,14 @@ def parse_create_table(sql: str, table_name: str) -> dict[str, str]:
             continue
         if line.startswith("FOREIGN KEY"):
             continue
-            
+
         # Extract column name and type
         col_match = re.match(r"(\w+)\s+(\w+(?:\([^)]+\))?)", line)
         if col_match:
             col_name = col_match.group(1).lower()
             col_type = col_match.group(2).lower()
             columns[col_name] = col_type
-            
+
     return columns
 
 

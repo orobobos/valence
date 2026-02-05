@@ -59,10 +59,7 @@ def list_embedding_types(status: str | None = None) -> list[EmbeddingType]:
     """List all embedding types."""
     with get_cursor() as cur:
         if status:
-            cur.execute(
-                "SELECT * FROM embedding_types WHERE status = %s ORDER BY id",
-                (status,)
-            )
+            cur.execute("SELECT * FROM embedding_types WHERE status = %s ORDER BY id", (status,))
         else:
             cur.execute("SELECT * FROM embedding_types ORDER BY id")
 
@@ -94,7 +91,7 @@ def register_embedding_type(
                 is_default = EXCLUDED.is_default
             RETURNING *
             """,
-            (type_id, provider, model, dimensions, is_default)
+            (type_id, provider, model, dimensions, is_default),
         )
         row = cur.fetchone()
         return EmbeddingType.from_row(dict(row))

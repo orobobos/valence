@@ -113,9 +113,7 @@ class OAuthClientStore:
         try:
             with open(self.clients_file) as f:
                 data = json.load(f)
-            self._clients = {
-                c["client_id"]: OAuthClient.from_dict(c) for c in data.get("clients", [])
-            }
+            self._clients = {c["client_id"]: OAuthClient.from_dict(c) for c in data.get("clients", [])}
             logger.info(f"Loaded {len(self._clients)} OAuth clients from {self.clients_file}")
         except Exception as e:
             logger.error(f"Failed to load OAuth clients: {e}")
@@ -267,7 +265,7 @@ def create_access_token(
     """Create a JWT access token."""
     settings = get_settings()
     now = time.time()
-    
+
     # Ensure JWT secret is configured
     jwt_secret = settings.oauth_jwt_secret
     if jwt_secret is None:
@@ -293,7 +291,7 @@ def verify_access_token(token: str, expected_audience: str) -> dict[str, Any] | 
     Returns the payload if valid, None otherwise.
     """
     settings = get_settings()
-    
+
     # Ensure JWT secret is configured
     jwt_secret = settings.oauth_jwt_secret
     if jwt_secret is None:

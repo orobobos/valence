@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.types import Tool
 
+from ..core.confidence import DimensionalConfidence
 from ..core.db import get_cursor
 from ..core.models import Belief, Entity, Tension
-from ..core.confidence import DimensionalConfidence
 from ..core.utils import escape_ilike
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,13 @@ SUBSTRATE_TOOLS = [
                 },
                 "source_type": {
                     "type": "string",
-                    "enum": ["document", "conversation", "inference", "observation", "user_input"],
+                    "enum": [
+                        "document",
+                        "conversation",
+                        "inference",
+                        "observation",
+                        "user_input",
+                    ],
                     "description": "Type of source",
                 },
                 "source_ref": {
@@ -240,7 +247,15 @@ SUBSTRATE_TOOLS = [
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["person", "organization", "tool", "concept", "project", "location", "service"],
+                    "enum": [
+                        "person",
+                        "organization",
+                        "tool",
+                        "concept",
+                        "project",
+                        "location",
+                        "service",
+                    ],
                     "description": "Filter by entity type",
                 },
                 "limit": {
@@ -284,10 +299,7 @@ SUBSTRATE_TOOLS = [
     ),
     Tool(
         name="tension_resolve",
-        description=(
-            "Mark a tension as resolved with explanation.\n\n"
-            "Use when you've determined how to reconcile conflicting beliefs."
-        ),
+        description=("Mark a tension as resolved with explanation.\n\nUse when you've determined how to reconcile conflicting beliefs."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -347,10 +359,10 @@ def belief_query(
     user_did: str | None = None,
 ) -> dict[str, Any]:
     """Search beliefs with revocation filtering.
-    
+
     By default, excludes beliefs that have revoked consent chains.
     This ensures users cannot query content that has been explicitly revoked.
-    
+
     Args:
         query: Natural language search query
         domain_filter: Filter by domain path
@@ -359,17 +371,14 @@ def belief_query(
         include_revoked: Include beliefs with revoked consent chains (audit logged)
         limit: Maximum results
         user_did: DID of user making query (for audit logging)
-        
+
     Returns:
         Query results with matching beliefs
     """
     # Audit log when accessing revoked content
     if include_revoked:
-        logger.info(
-            f"Query includes revoked content: user={user_did or 'unknown'}, "
-            f"query={query[:100]}{'...' if len(query) > 100 else ''}"
-        )
-    
+        logger.info(f"Query includes revoked content: user={user_did or 'unknown'}, query={query[:100]}{'...' if len(query) > 100 else ''}")
+
     with get_cursor() as cur:
         sql = """
             SELECT b.*, ts_rank(b.content_tsv, websearch_to_tsquery('english', %s)) as relevance
@@ -385,7 +394,7 @@ def belief_query(
         if not include_revoked:
             sql += """
                 AND b.id NOT IN (
-                    SELECT DISTINCT cc.belief_id 
+                    SELECT DISTINCT cc.belief_id
                     FROM consent_chains cc
                     WHERE cc.revoked = true
                 )
@@ -430,7 +439,7 @@ def belief_create(
     entities: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Create a new belief.
-    
+
     Args:
         content: The belief content
         confidence: Confidence dimensions
@@ -439,7 +448,7 @@ def belief_create(
         source_ref: Reference to source
         opt_out_federation: If True, belief won't be shared via federation (Issue #26)
         entities: Entities to link
-        
+
     Returns:
         Created belief data
     """
@@ -462,7 +471,13 @@ def belief_create(
             VALUES (%s, %s, %s, %s, %s)
             RETURNING *
             """,
-            (content, json.dumps(confidence_obj.to_dict()), domain_path or [], source_id, opt_out_federation),
+            (
+                content,
+                json.dumps(confidence_obj.to_dict()),
+                domain_path or [],
+                source_id,
+                opt_out_federation,
+            ),
         )
         belief_row = cur.fetchone()
         belief_id = belief_row["id"]
@@ -517,9 +532,7 @@ def belief_supersede(
         old_belief = Belief.from_row(dict(old_row))
 
         # Determine new confidence
-        new_confidence = DimensionalConfidence.from_dict(
-            confidence or old_belief.confidence.to_dict()
-        )
+        new_confidence = DimensionalConfidence.from_dict(confidence or old_belief.confidence.to_dict())
 
         # Create new belief
         cur.execute(
@@ -604,10 +617,7 @@ def belief_get(
             (belief_id,),
         )
         entity_rows = cur.fetchall()
-        result["belief"]["entities"] = [
-            {"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]}
-            for r in entity_rows
-        ]
+        result["belief"]["entities"] = [{"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]} for r in entity_rows]
 
         # Load history if requested
         if include_history:
@@ -629,9 +639,7 @@ def belief_get(
                             "reason": hist_row.get("extraction_method"),
                         }
                     )
-                    current_id = (
-                        str(hist_row["supersedes_id"]) if hist_row["supersedes_id"] else None
-                    )
+                    current_id = str(hist_row["supersedes_id"]) if hist_row["supersedes_id"] else None
                 else:
                     break
 
@@ -686,9 +694,7 @@ def entity_get(
                 (entity_id, belief_limit),
             )
             belief_rows = cur.fetchall()
-            result["beliefs"] = [
-                {**Belief.from_row(dict(r)).to_dict(), "role": r["role"]} for r in belief_rows
-            ]
+            result["beliefs"] = [{**Belief.from_row(dict(r)).to_dict(), "role": r["role"]} for r in belief_rows]
 
         return result
 
@@ -826,7 +832,11 @@ def tension_resolve(
             SET status = %s, resolution = %s, resolved_at = NOW()
             WHERE id = %s
             """,
-            ("resolved" if action != "keep_both" else "accepted", resolution, tension_id),
+            (
+                "resolved" if action != "keep_both" else "accepted",
+                resolution,
+                tension_id,
+            ),
         )
 
         return {
@@ -839,22 +849,23 @@ def tension_resolve(
 
 def belief_corroboration(belief_id: str) -> dict[str, Any]:
     """Get corroboration details for a belief.
-    
+
     Shows how many independent sources confirm this belief and who they are.
     """
-    from ..core.corroboration import get_corroboration
     from uuid import UUID
-    
+
+    from ..core.corroboration import get_corroboration
+
     try:
         belief_uuid = UUID(belief_id)
     except ValueError:
         return {"success": False, "error": f"Invalid belief ID: {belief_id}"}
-    
+
     corroboration = get_corroboration(belief_uuid)
-    
+
     if not corroboration:
         return {"success": False, "error": f"Belief not found: {belief_id}"}
-    
+
     return {
         "success": True,
         "belief_id": str(corroboration.belief_id),

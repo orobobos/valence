@@ -14,18 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import struct
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from typing import Any
 
-import numpy as np
 from openai import OpenAI
 
 from ..core.config import get_config
 from ..core.db import get_cursor
-from ..core.exceptions import EmbeddingException, DatabaseException
-from .registry import get_embedding_type, ensure_default_type
+from ..core.exceptions import DatabaseException, EmbeddingException
+from .registry import ensure_default_type, get_embedding_type
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,13 +31,14 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingProvider(StrEnum):
     """Available embedding providers."""
+
     OPENAI = "openai"
     LOCAL = "local"
 
 
 def get_embedding_provider() -> EmbeddingProvider:
     """Get configured embedding provider from config.
-    
+
     Defaults to 'local' for privacy and to avoid API costs.
     Set VALENCE_EMBEDDING_PROVIDER=openai to use OpenAI embeddings.
     """
@@ -73,56 +72,57 @@ def get_openai_client() -> OpenAI:
 
 def generate_local_embedding(text: str) -> list[float]:
     """Generate embedding using local sentence-transformers model.
-    
+
     Uses BAAI/bge-small-en-v1.5 by default, which produces 384-dimensional
     L2-normalized embeddings with excellent semantic similarity.
-    
+
     Configure via environment variables:
     - VALENCE_EMBEDDING_MODEL_PATH: Model name or local path
     - VALENCE_EMBEDDING_DEVICE: Device to use (cpu|cuda)
-    
+
     Args:
         text: Text to embed
-        
+
     Returns:
         384-dimensional embedding vector (L2 normalized)
     """
     from .providers.local import generate_embedding as local_embed
+
     return local_embed(text)
 
 
 def generate_embedding(
-    text: str, 
+    text: str,
     model: str = "text-embedding-3-small",
     provider: EmbeddingProvider | None = None,
 ) -> list[float]:
     """Generate embedding for text.
-    
+
     Args:
         text: Text to embed
         model: Model name (for OpenAI provider)
         provider: Embedding provider (defaults to env config)
-        
+
     Returns:
         Embedding vector
-        
+
     Raises:
         ValueError: If provider not configured correctly
         NotImplementedError: If local provider requested but not implemented
     """
     if provider is None:
         provider = get_embedding_provider()
-    
+
     # Truncate very long text
     if len(text) > 8000:
         text = text[:8000]
-    
+
     if provider == EmbeddingProvider.LOCAL:
         return generate_local_embedding(text)
-    
+
     # Default: OpenAI
     client = get_openai_client()
-    
+
     response = client.embeddings.create(
         model=model,
         input=text,
@@ -155,17 +155,17 @@ def embed_content(
         if content_type == "belief":
             cur.execute(
                 "UPDATE beliefs SET embedding = %s, modified_at = NOW() WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
         elif content_type == "exchange":
             cur.execute(
                 "UPDATE exchanges SET embedding = %s WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
         elif content_type == "pattern":
             cur.execute(
                 "UPDATE patterns SET embedding = %s WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
 
         # Track coverage
@@ -176,7 +176,7 @@ def embed_content(
             ON CONFLICT (content_type, content_id, embedding_type_id)
             DO UPDATE SET embedded_at = NOW()
             """,
-            (content_type, content_id, emb_type.id)
+            (content_type, content_id, emb_type.id),
         )
 
     logger.info(f"Embedded {content_type}:{content_id} with {emb_type.id}")
@@ -236,15 +236,17 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "belief",
-                    "content_id": str(row["id"]),
-                    "content": row["content"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "belief",
+                        "content_id": str(row["id"]),
+                        "content": row["content"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
         if content_type is None or content_type == "exchange":
             cur.execute(
@@ -256,16 +258,18 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "exchange",
-                    "content_id": str(row["id"]),
-                    "session_id": str(row["session_id"]),
-                    "content": row["content"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "exchange",
+                        "content_id": str(row["id"]),
+                        "session_id": str(row["session_id"]),
+                        "content": row["content"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
         if content_type is None or content_type == "pattern":
             cur.execute(
@@ -277,16 +281,18 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "pattern",
-                    "content_id": str(row["id"]),
-                    "pattern_type": row["type"],
-                    "description": row["description"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "pattern",
+                        "content_id": str(row["id"]),
+                        "pattern_type": row["type"],
+                        "description": row["description"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
     # Sort by similarity and limit
     results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -331,7 +337,7 @@ def backfill_embeddings(
                 AND status = 'active'
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         elif content_type == "exchange":
             cur.execute(
@@ -340,7 +346,7 @@ def backfill_embeddings(
                 WHERE embedding IS NULL
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         elif content_type == "pattern":
             cur.execute(
@@ -349,7 +355,7 @@ def backfill_embeddings(
                 WHERE embedding IS NULL
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         else:
             return 0

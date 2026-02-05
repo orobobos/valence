@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-from .db import get_connection_params, table_exists, DatabaseStats
+from .db import DatabaseStats, get_connection_params, table_exists
 from .exceptions import ConfigException, DatabaseException
 
 logger = logging.getLogger(__name__)
@@ -37,9 +37,9 @@ REQUIRED_TABLES = [
     "belief_entities",
     "sources",
     "tensions",
-    "vkb_sessions",      # Prefixed to avoid Synapse conflict
-    "vkb_exchanges",     # Prefixed to avoid Synapse conflict
-    "vkb_patterns",      # Prefixed to avoid Synapse conflict
+    "vkb_sessions",  # Prefixed to avoid Synapse conflict
+    "vkb_exchanges",  # Prefixed to avoid Synapse conflict
+    "vkb_patterns",  # Prefixed to avoid Synapse conflict
     "vkb_session_insights",  # Prefixed to avoid Synapse conflict
 ]
 
@@ -103,6 +103,7 @@ def check_database_connection() -> tuple[bool, str | None]:
     """
     try:
         import psycopg2
+
         params = get_connection_params()
         conn = psycopg2.connect(**params)
         with conn.cursor() as cur:
@@ -125,14 +126,17 @@ def check_pgvector() -> tuple[bool, str | None]:
     """
     try:
         import psycopg2
+
         params = get_connection_params()
         conn = psycopg2.connect(**params)
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT 1 FROM pg_extension WHERE extname = 'vector'
                 )
-            """)
+            """
+            )
             result = cur.fetchone()
             if result and result[0]:
                 conn.close()
@@ -260,9 +264,7 @@ def validate_environment() -> None:
     """
     env_ok, missing_required, _ = check_env_vars()
     if not env_ok:
-        raise ConfigException(
-            f"Missing required environment variables: {', '.join(missing_required)}"
-        )
+        raise ConfigException(f"Missing required environment variables: {', '.join(missing_required)}")
 
 
 def validate_database() -> None:
@@ -279,9 +281,7 @@ def validate_database() -> None:
     # Check schema
     schema_ok, missing_tables = check_schema()
     if not schema_ok:
-        raise DatabaseException(
-            f"Database schema invalid. Missing tables: {', '.join(missing_tables)}"
-        )
+        raise DatabaseException(f"Database schema invalid. Missing tables: {', '.join(missing_tables)}")
 
 
 def startup_checks(fail_fast: bool = True) -> HealthStatus:
@@ -301,7 +301,7 @@ def startup_checks(fail_fast: bool = True) -> HealthStatus:
 
     if status.healthy:
         logger.info("All startup checks passed")
-        logger.info(f"  Database: connected")
+        logger.info("  Database: connected")
         logger.info(f"  Schema: valid ({len(REQUIRED_TABLES)} tables)")
         logger.info(f"  pgvector: {'available' if status.pgvector_available else 'not available'}")
 
@@ -337,10 +337,7 @@ def cli_health_check() -> int:
     Returns:
         Exit code (0 for healthy, 1 for unhealthy)
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     status = run_health_check()
 

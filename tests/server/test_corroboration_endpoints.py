@@ -49,8 +49,16 @@ def mock_corroboration_info():
 def app():
     """Create test Starlette app with corroboration endpoints."""
     routes = [
-        Route("/beliefs/{belief_id}/corroboration", belief_corroboration_endpoint, methods=["GET"]),
-        Route("/beliefs/most-corroborated", most_corroborated_beliefs_endpoint, methods=["GET"]),
+        Route(
+            "/beliefs/{belief_id}/corroboration",
+            belief_corroboration_endpoint,
+            methods=["GET"],
+        ),
+        Route(
+            "/beliefs/most-corroborated",
+            most_corroborated_beliefs_endpoint,
+            methods=["GET"],
+        ),
     ]
     return Starlette(routes=routes)
 

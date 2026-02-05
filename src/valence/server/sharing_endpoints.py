@@ -11,44 +11,41 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..privacy.sharing import (
-    ShareRequest,
-    ShareResult,
     RevokeRequest,
-    RevokeResult,
     Share,
-    ConsentChainEntry,
+    ShareRequest,
     SharingService,
 )
-from ..privacy.types import SharePolicy, ShareLevel
+from ..privacy.types import SharePolicy
 from .errors import (
-    missing_field_error,
-    invalid_json_error,
-    validation_error,
-    not_found_error,
+    CONFLICT_ALREADY_REVOKED,
+    FORBIDDEN_NOT_OWNER,
+    NOT_FOUND_SHARE,
+    VALIDATION_INVALID_VALUE,
+    conflict_error,
     forbidden_error,
     internal_error,
+    invalid_json_error,
+    missing_field_error,
+    not_found_error,
     service_unavailable_error,
-    conflict_error,
-    NOT_FOUND_SHARE,
-    FORBIDDEN_NOT_OWNER,
-    VALIDATION_INVALID_VALUE,
-    CONFLICT_ALREADY_REVOKED,
+    validation_error,
 )
 
 logger = logging.getLogger(__name__)
 
 
 # Global sharing service instance (initialized in app startup)
-_sharing_service: Optional[SharingService] = None
+_sharing_service: SharingService | None = None
 
 
-def get_sharing_service() -> Optional[SharingService]:
+def get_sharing_service() -> SharingService | None:
     """Get the sharing service instance."""
     return _sharing_service
 
@@ -61,7 +58,7 @@ def set_sharing_service(service: SharingService) -> None:
 
 async def share_belief_endpoint(request: Request) -> JSONResponse:
     """POST /api/v1/share - Share a belief with a specific recipient.
-    
+
     Request Body (JSON):
         {
             "belief_id": "uuid-string",
@@ -72,7 +69,7 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
                 "recipients": ["did:key:..."]
             }
         }
-        
+
     Returns:
         200: Share result with share_id, consent_chain_id, etc.
         400: Invalid request (validation error)
@@ -81,21 +78,21 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
     service = get_sharing_service()
     if service is None:
         return service_unavailable_error("Sharing service")
-    
+
     try:
         body = await request.json()
     except json.JSONDecodeError:
         return invalid_json_error()
-    
+
     # Validate required fields
     belief_id = body.get("belief_id")
     if not belief_id:
         return missing_field_error("belief_id")
-    
+
     recipient_did = body.get("recipient_did")
     if not recipient_did:
         return missing_field_error("recipient_did")
-    
+
     # Parse optional policy
     policy = None
     if "policy" in body and body["policy"] is not None:
@@ -103,21 +100,21 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
             policy = SharePolicy.from_dict(body["policy"])
         except (KeyError, ValueError) as e:
             return validation_error(f"Invalid policy: {e}", code=VALIDATION_INVALID_VALUE)
-    
+
     # Create share request
     share_request = ShareRequest(
         belief_id=belief_id,
         recipient_did=recipient_did,
         policy=policy,
     )
-    
+
     # Get sharer DID from authenticated context
     # For now, use identity service's local DID
     sharer_did = service.identity.get_did()
-    
+
     try:
         result = await service.share(share_request, sharer_did)
-        
+
         return JSONResponse(
             {
                 "success": True,
@@ -128,7 +125,7 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
             },
             status_code=200,
         )
-        
+
     except ValueError as e:
         return validation_error(str(e), code=VALIDATION_INVALID_VALUE)
     except Exception as e:
@@ -138,13 +135,13 @@ async def share_belief_endpoint(request: Request) -> JSONResponse:
 
 async def list_shares_endpoint(request: Request) -> JSONResponse:
     """GET /api/v1/shares - List shares.
-    
+
     Query Parameters:
         sharer_did: Filter by sharer DID (optional)
         recipient_did: Filter by recipient DID (optional)
         limit: Maximum results (optional, default 100)
         revoked: Include revoked shares (optional, default false)
-        
+
     Returns:
         200: List of shares
         500: Server error
@@ -152,20 +149,20 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
     service = get_sharing_service()
     if service is None:
         return service_unavailable_error("Sharing service")
-    
+
     sharer_did = request.query_params.get("sharer_did")
     recipient_did = request.query_params.get("recipient_did")
-    
+
     # Parse include_revoked param
     revoked_param = request.query_params.get("revoked", "false").lower()
     include_revoked = revoked_param in ("true", "1", "yes")
-    
+
     try:
         limit = int(request.query_params.get("limit", "100"))
         limit = min(limit, 1000)  # Cap at 1000
     except ValueError:
         limit = 100
-    
+
     try:
         shares = await service.list_shares(
             sharer_did=sharer_did,
@@ -173,7 +170,7 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
             limit=limit,
             include_revoked=include_revoked,
         )
-        
+
         return JSONResponse(
             {
                 "success": True,
@@ -182,7 +179,7 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
             },
             status_code=200,
         )
-        
+
     except Exception as e:
         logger.exception(f"Error listing shares: {e}")
         return internal_error()
@@ -190,10 +187,10 @@ async def list_shares_endpoint(request: Request) -> JSONResponse:
 
 async def get_share_endpoint(request: Request) -> JSONResponse:
     """GET /api/v1/shares/{id} - Get share details.
-    
+
     Path Parameters:
         id: Share UUID
-        
+
     Returns:
         200: Share details
         404: Share not found
@@ -202,17 +199,17 @@ async def get_share_endpoint(request: Request) -> JSONResponse:
     service = get_sharing_service()
     if service is None:
         return service_unavailable_error("Sharing service")
-    
+
     share_id = request.path_params.get("id")
     if not share_id:
         return missing_field_error("Share ID")
-    
+
     try:
         share = await service.get_share(share_id)
-        
+
         if share is None:
             return not_found_error("Share", code=NOT_FOUND_SHARE)
-        
+
         return JSONResponse(
             {
                 "success": True,
@@ -220,7 +217,7 @@ async def get_share_endpoint(request: Request) -> JSONResponse:
             },
             status_code=200,
         )
-        
+
     except Exception as e:
         logger.exception(f"Error getting share: {e}")
         return internal_error()
@@ -228,15 +225,15 @@ async def get_share_endpoint(request: Request) -> JSONResponse:
 
 async def revoke_share_endpoint(request: Request) -> JSONResponse:
     """POST /api/v1/shares/{id}/revoke - Revoke a share.
-    
+
     Path Parameters:
         id: Share UUID
-        
+
     Request Body (JSON, optional):
         {
             "reason": "Optional reason for revocation"
         }
-        
+
     Returns:
         200: Revocation result with share_id, consent_chain_id, revoked_at, affected_recipients
         400: Invalid request (validation error, already revoked)
@@ -247,11 +244,11 @@ async def revoke_share_endpoint(request: Request) -> JSONResponse:
     service = get_sharing_service()
     if service is None:
         return service_unavailable_error("Sharing service")
-    
+
     share_id = request.path_params.get("id")
     if not share_id:
         return missing_field_error("Share ID")
-    
+
     # Parse optional reason from body
     reason = None
     try:
@@ -260,20 +257,20 @@ async def revoke_share_endpoint(request: Request) -> JSONResponse:
     except json.JSONDecodeError:
         # Body is optional, so empty/invalid JSON is OK
         pass
-    
+
     # Create revoke request
     revoke_request = RevokeRequest(
         share_id=share_id,
         reason=reason,
     )
-    
+
     # Get revoker DID from authenticated context
     # For now, use identity service's local DID
     revoker_did = service.identity.get_did()
-    
+
     try:
         result = await service.revoke_share(revoke_request, revoker_did)
-        
+
         return JSONResponse(
             {
                 "success": True,
@@ -284,7 +281,7 @@ async def revoke_share_endpoint(request: Request) -> JSONResponse:
             },
             status_code=200,
         )
-        
+
     except ValueError as e:
         # Share not found, consent chain not found, or already revoked
         error_msg = str(e)

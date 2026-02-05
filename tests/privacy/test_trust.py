@@ -511,15 +511,11 @@ class TestTransitiveTrust:
         graph = {(e.source_did, e.target_did): e for e in edges}
 
         # With max_hops=2, should not reach E (4 hops away)
-        result = compute_transitive_trust(
-            "did:key:a", "did:key:e", graph, max_hops=2, respect_delegation=False
-        )
+        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=2, respect_delegation=False)
         assert result is None
 
         # With max_hops=4, should reach E
-        result = compute_transitive_trust(
-            "did:key:a", "did:key:e", graph, max_hops=4, respect_delegation=False
-        )
+        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=4, respect_delegation=False)
         assert result is not None
 
 
@@ -792,7 +788,11 @@ class TestTrustGraphStore:
 
     def test_cleanup_expired(self, store, mock_cursor):
         """Test cleaning up expired edges."""
-        mock_cursor.fetchall.return_value = [{"id": uuid4()}, {"id": uuid4()}, {"id": uuid4()}]
+        mock_cursor.fetchall.return_value = [
+            {"id": uuid4()},
+            {"id": uuid4()},
+            {"id": uuid4()},
+        ]
 
         count = store.cleanup_expired()
 
@@ -1236,15 +1236,11 @@ class TestComputeTransitiveTrust:
         }
 
         # With respect_delegation=True (default), blocked
-        result_strict = compute_transitive_trust(
-            "did:key:alice", "did:key:carol", graph, respect_delegation=True
-        )
+        result_strict = compute_transitive_trust("did:key:alice", "did:key:carol", graph, respect_delegation=True)
         assert result_strict is None
 
         # With respect_delegation=False, allowed
-        result_permissive = compute_transitive_trust(
-            "did:key:alice", "did:key:carol", graph, respect_delegation=False
-        )
+        result_permissive = compute_transitive_trust("did:key:alice", "did:key:carol", graph, respect_delegation=False)
         assert result_permissive is not None
 
 

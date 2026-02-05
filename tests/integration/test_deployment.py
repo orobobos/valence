@@ -20,10 +20,9 @@ Usage:
 """
 
 import os
-import subprocess
-import pytest
+
 import psycopg2
-from typing import Optional
+import pytest
 
 # Configuration from environment
 VALENCE_POD_IP = os.environ.get("VALENCE_POD_IP")
@@ -91,9 +90,7 @@ class TestDatabaseSchema:
         """Verify pgvector extension is installed."""
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
-        )
+        cursor.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
         result = cursor.fetchone()
         assert result is not None, "pgvector extension not installed"
         conn.close()
@@ -257,11 +254,14 @@ class TestSessionOperations:
         session_id = cursor.fetchone()[0]
 
         # Add exchange
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO vkb_exchanges (session_id, sequence, role, content)
             VALUES (%s, 1, 'user', 'Test message')
             RETURNING id
-        """, (session_id,))
+        """,
+            (session_id,),
+        )
         exchange_id = cursor.fetchone()[0]
         assert exchange_id is not None
 

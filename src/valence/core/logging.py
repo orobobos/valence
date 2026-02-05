@@ -17,9 +17,8 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-
 
 # Context variable for correlation ID (thread/async-safe)
 _correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
@@ -85,7 +84,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -179,6 +178,7 @@ def configure_logging(
     """
     # Get settings from config
     from .config import get_config
+
     config = get_config()
 
     level = config.log_level if level == "INFO" else level

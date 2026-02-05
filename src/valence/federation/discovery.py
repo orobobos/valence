@@ -11,28 +11,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import aiohttp
 
 from ..core.db import get_cursor
 from .identity import (
-    DID,
-    DIDDocument,
-    parse_did,
-    resolve_did,
     WELL_KNOWN_NODE_METADATA,
+    DIDDocument,
+    resolve_did,
 )
 from .models import (
     FederationNode,
-    NodeTrust,
     NodeStatus,
+    NodeTrust,
     TrustPhase,
-    SyncState,
-    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -151,7 +146,8 @@ def register_node(did_document: DIDDocument) -> FederationNode | None:
 
             if existing:
                 # Update existing node
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE federation_nodes SET
                         federation_endpoint = %s,
                         mcp_endpoint = %s,
@@ -167,21 +163,24 @@ def register_node(did_document: DIDDocument) -> FederationNode | None:
                         END
                     WHERE did = %s
                     RETURNING *
-                """, (
-                    federation_endpoint,
-                    mcp_endpoint,
-                    public_key,
-                    name,
-                    domains,
-                    capabilities,
-                    did_document.protocol_version,
-                    did,
-                ))
+                """,
+                    (
+                        federation_endpoint,
+                        mcp_endpoint,
+                        public_key,
+                        name,
+                        domains,
+                        capabilities,
+                        did_document.protocol_version,
+                        did,
+                    ),
+                )
                 row = cur.fetchone()
                 logger.info(f"Updated existing node: {did}")
             else:
                 # Insert new node
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO federation_nodes (
                         did, federation_endpoint, mcp_endpoint,
                         public_key_multibase, name, domains,
@@ -191,38 +190,46 @@ def register_node(did_document: DIDDocument) -> FederationNode | None:
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW()
                     )
                     RETURNING *
-                """, (
-                    did,
-                    federation_endpoint,
-                    mcp_endpoint,
-                    public_key,
-                    name,
-                    domains,
-                    capabilities,
-                    NodeStatus.DISCOVERED.value,
-                    TrustPhase.OBSERVER.value,
-                    did_document.protocol_version,
-                ))
+                """,
+                    (
+                        did,
+                        federation_endpoint,
+                        mcp_endpoint,
+                        public_key,
+                        name,
+                        domains,
+                        capabilities,
+                        NodeStatus.DISCOVERED.value,
+                        TrustPhase.OBSERVER.value,
+                        did_document.protocol_version,
+                    ),
+                )
                 row = cur.fetchone()
                 node_id = row["id"]
 
                 # Initialize trust record
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO node_trust (node_id, trust)
                     VALUES (%s, '{"overall": 0.1}')
-                """, (node_id,))
+                """,
+                    (node_id,),
+                )
 
                 # Initialize sync state
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO sync_state (node_id, status)
                     VALUES (%s, 'idle')
-                """, (node_id,))
+                """,
+                    (node_id,),
+                )
 
                 logger.info(f"Registered new node: {did}")
 
             return FederationNode.from_row(row)
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error registering node {did}")
         return None
 
@@ -307,11 +314,14 @@ def update_node_status(node_id: UUID, status: NodeStatus) -> bool:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE federation_nodes
                 SET status = %s, last_seen_at = NOW()
                 WHERE id = %s
-            """, (status.value, node_id))
+            """,
+                (status.value, node_id),
+            )
             return True
     except Exception as e:
         logger.warning(f"Error updating node status: {e}")
@@ -410,12 +420,15 @@ async def check_node_health(node: FederationNode) -> bool:
         if did_doc and did_doc.id == node.did:
             # Update last seen
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE federation_nodes
                     SET last_seen_at = NOW(),
                         status = 'active'
                     WHERE id = %s
-                """, (node.id,))
+                """,
+                    (node.id,),
+                )
             return True
         else:
             mark_node_unreachable(node.id)
@@ -437,10 +450,12 @@ async def check_all_nodes_health() -> dict[str, bool]:
 
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT * FROM federation_nodes
                 WHERE status IN ('active', 'connecting')
-            """)
+            """
+            )
             rows = cur.fetchall()
 
         nodes = [FederationNode.from_row(row) for row in rows]
@@ -455,7 +470,7 @@ async def check_all_nodes_health() -> dict[str, bool]:
             else:
                 results[node.did] = health
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error checking node health")
 
     return results
@@ -503,12 +518,15 @@ def list_nodes(
 
     try:
         with get_cursor() as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""  # nosec B608
                 SELECT * FROM federation_nodes
                 {where_clause}
                 ORDER BY last_seen_at DESC NULLS LAST
                 LIMIT %s
-            """, params)
+            """,
+                params,
+            )
             rows = cur.fetchall()
             return [FederationNode.from_row(row) for row in rows]
     except Exception as e:
@@ -529,14 +547,16 @@ def list_nodes_with_trust() -> list[tuple[FederationNode, NodeTrust | None]]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT fn.*, nt.id as trust_id, nt.trust, nt.beliefs_received,
                        nt.beliefs_corroborated, nt.beliefs_disputed,
                        nt.relationship_started_at, nt.last_interaction_at
                 FROM federation_nodes fn
                 LEFT JOIN node_trust nt ON fn.id = nt.node_id
                 ORDER BY (nt.trust->>'overall')::numeric DESC NULLS LAST
-            """)
+            """
+            )
             rows = cur.fetchall()
 
             results = []
@@ -578,13 +598,15 @@ def get_known_peers() -> list[dict[str, Any]]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT did, federation_endpoint, domains, trust_phase
                 FROM federation_nodes
                 WHERE status = 'active'
                 ORDER BY last_seen_at DESC
                 LIMIT 50
-            """)
+            """
+            )
             rows = cur.fetchall()
 
             return [

@@ -193,7 +193,7 @@ Environment Variables:
     )
     start_parser.add_argument(
         "--host",
-        default="0.0.0.0",
+        default="0.0.0.0",  # nosec B104
         help="Bind address (default: 0.0.0.0)",
     )
     start_parser.add_argument(
@@ -221,11 +221,6 @@ Environment Variables:
         default=300,
         help="Seconds between seed heartbeats (default: 300)",
     )
-    start_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
 
     # status command
     status_parser = subparsers.add_parser(
@@ -244,11 +239,6 @@ Environment Variables:
         type=int,
         default=8471,
         help="Router port (default: 8471)",
-    )
-    status_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
     )
 
     return parser

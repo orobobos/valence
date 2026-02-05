@@ -11,9 +11,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import os
-from unittest.mock import patch
-
 import pytest
 
 from valence.core.config import (
@@ -27,7 +24,6 @@ from valence.core.config import (
     get_federation_config_or_none,
     set_federation_config,
 )
-
 
 # ============================================================================
 # CoreSettings - Default Values
