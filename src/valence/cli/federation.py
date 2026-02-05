@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 def get_private_key() -> bytes | None:
     """Get the Ed25519 private key from config."""
     from ..core.config import get_config
+
     config = get_config()
     key_hex = config.federation_private_key
     if key_hex:
@@ -62,12 +63,14 @@ def get_private_key() -> bytes | None:
 def get_public_key_multibase() -> str | None:
     """Get the Ed25519 public key in multibase format."""
     from ..core.config import get_config
+
     return get_config().federation_public_key
 
 
 def get_local_did() -> str | None:
     """Get the local node's DID."""
     from ..core.config import get_config
+
     return get_config().federation_did
 
 
@@ -159,6 +162,7 @@ async def federation_request(
 
         # Extract path from URL for signing
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         path = parsed.path
 
@@ -319,7 +323,10 @@ async def cmd_list(args: argparse.Namespace) -> int:
         return 0
 
     except ImportError:
-        print("❌ Federation module not available. Is the database configured?", file=sys.stderr)
+        print(
+            "❌ Federation module not available. Is the database configured?",
+            file=sys.stderr,
+        )
         return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
@@ -334,32 +341,38 @@ async def cmd_status(args: argparse.Namespace) -> int:
         # Get overall federation stats
         with get_cursor() as cur:
             # Node counts by status
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT status, COUNT(*) as count
                 FROM federation_nodes
                 GROUP BY status
-            """)
+            """
+            )
             nodes_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
 
             # Total sync stats
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) as total_peers,
                     SUM(beliefs_sent) as beliefs_sent,
                     SUM(beliefs_received) as beliefs_received,
                     MAX(last_sync_at) as last_sync
                 FROM sync_state
-            """)
+            """
+            )
             sync_stats = cur.fetchone()
 
             # Belief counts
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) FILTER (WHERE is_local = TRUE) as local_beliefs,
                     COUNT(*) FILTER (WHERE is_local = FALSE) as federated_beliefs
                 FROM beliefs
                 WHERE status = 'active'
-            """)
+            """
+            )
             belief_stats = cur.fetchone()
 
         if args.json:
@@ -372,7 +385,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
                     "peers": sync_stats["total_peers"] or 0,
                     "beliefs_sent": sync_stats["beliefs_sent"] or 0,
                     "beliefs_received": sync_stats["beliefs_received"] or 0,
-                    "last_sync": sync_stats["last_sync"].isoformat() if sync_stats["last_sync"] else None,
+                    "last_sync": (sync_stats["last_sync"].isoformat() if sync_stats["last_sync"] else None),
                 },
                 "beliefs": {
                     "local": belief_stats["local_beliefs"] or 0,
@@ -390,7 +403,13 @@ async def cmd_status(args: argparse.Namespace) -> int:
         total_nodes = sum(nodes_by_status.values())
         print(f"📡 Nodes: {total_nodes} total")
         for status, count in sorted(nodes_by_status.items()):
-            icon = {"active": "🟢", "discovered": "🔵", "connecting": "🟡", "suspended": "🟠", "unreachable": "🔴"}.get(status, "⚪")
+            icon = {
+                "active": "🟢",
+                "discovered": "🔵",
+                "connecting": "🟡",
+                "suspended": "🟠",
+                "unreachable": "🔴",
+            }.get(status, "⚪")
             print(f"   {icon} {status}: {count}")
 
         print("\n🔄 Sync:")
@@ -434,7 +453,10 @@ async def cmd_trust(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        from ..federation.tools import federation_trust_get, federation_trust_set_preference
+        from ..federation.tools import (
+            federation_trust_get,
+            federation_trust_set_preference,
+        )
 
         # Get current trust first
         current = federation_trust_get(node_id, include_details=True)
@@ -488,7 +510,10 @@ async def cmd_sync(args: argparse.Namespace) -> int:
         result = federation_sync_trigger(node_id=node_id)
 
         if not result.get("success"):
-            print(f"❌ Sync failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
+            print(
+                f"❌ Sync failed: {result.get('error', 'Unknown error')}",
+                file=sys.stderr,
+            )
             return 1
 
         if args.json:
@@ -509,10 +534,7 @@ async def cmd_sync(args: argparse.Namespace) -> int:
             for _ in range(30):  # 30 second timeout
                 await asyncio.sleep(1)
                 status = federation_sync_status(node_id=node_id)
-                syncing = any(
-                    s.get("status") == "syncing"
-                    for s in status.get("sync_states", [])
-                )
+                syncing = any(s.get("status") == "syncing" for s in status.get("sync_states", []))
                 if not syncing:
                     print("✅ Sync completed")
                     break
@@ -567,7 +589,8 @@ Environment Variables:
         help="Output as JSON",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Verbose output",
     )
@@ -585,7 +608,8 @@ Environment Variables:
         help="Node URL (e.g., https://valence.example.com) or DID",
     )
     discover_parser.add_argument(
-        "--register", "-r",
+        "--register",
+        "-r",
         action="store_true",
         default=True,
         help="Register the node after discovery (default: True)",
@@ -609,17 +633,20 @@ Environment Variables:
         description="List all known federation nodes with their status and trust levels.",
     )
     list_parser.add_argument(
-        "--status", "-s",
+        "--status",
+        "-s",
         choices=["discovered", "connecting", "active", "suspended", "unreachable"],
         help="Filter by node status",
     )
     list_parser.add_argument(
-        "--trust-phase", "-t",
+        "--trust-phase",
+        "-t",
         choices=["observer", "contributor", "participant", "anchor"],
         help="Filter by trust phase",
     )
     list_parser.add_argument(
-        "--limit", "-n",
+        "--limit",
+        "-n",
         type=int,
         default=50,
         help="Maximum nodes to list (default: 50)",
@@ -684,7 +711,8 @@ Environment Variables:
         help="Specific node UUID to sync with (syncs all if omitted)",
     )
     sync_parser.add_argument(
-        "--wait", "-w",
+        "--wait",
+        "-w",
         action="store_true",
         help="Wait for sync to complete",
     )

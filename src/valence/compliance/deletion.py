@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 class DeletionReason(StrEnum):
     """Legal basis for deletion request."""
 
-    USER_REQUEST = "user_request"           # GDPR Article 17
+    USER_REQUEST = "user_request"  # GDPR Article 17
     CONSENT_WITHDRAWAL = "consent_withdrawal"
-    LEGAL_ORDER = "legal_order"             # Court order, subpoena
+    LEGAL_ORDER = "legal_order"  # Court order, subpoena
     POLICY_VIOLATION = "policy_violation"
-    DATA_ACCURACY = "data_accuracy"         # Factually incorrect
+    DATA_ACCURACY = "data_accuracy"  # Factually incorrect
     SECURITY_INCIDENT = "security_incident"
 
 
@@ -79,17 +79,9 @@ class Tombstone:
             "reason": self.reason.value,
             "legal_basis": self.legal_basis,
             "encryption_key_revoked": self.encryption_key_revoked,
-            "key_revocation_timestamp": (
-                self.key_revocation_timestamp.isoformat()
-                if self.key_revocation_timestamp else None
-            ),
-            "propagation_started": (
-                self.propagation_started.isoformat()
-                if self.propagation_started else None
-            ),
-            "acknowledged_by": {
-                k: v.isoformat() for k, v in self.acknowledged_by.items()
-            },
+            "key_revocation_timestamp": (self.key_revocation_timestamp.isoformat() if self.key_revocation_timestamp else None),
+            "propagation_started": (self.propagation_started.isoformat() if self.propagation_started else None),
+            "acknowledged_by": {k: v.isoformat() for k, v in self.acknowledged_by.items()},
             "signature": self.signature.hex() if self.signature else None,
         }
 
@@ -111,11 +103,7 @@ class Tombstone:
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
             target_type=row["target_type"],
-            target_id=(
-                row["target_id"]
-                if isinstance(row["target_id"], UUID)
-                else UUID(row["target_id"])
-            ),
+            target_id=(row["target_id"] if isinstance(row["target_id"], UUID) else UUID(row["target_id"])),
             created_at=row["created_at"],
             created_by=row["created_by"],
             reason=DeletionReason(row["reason"]),
@@ -213,13 +201,10 @@ def create_tombstone(
                 tombstone.reason.value,
                 tombstone.legal_basis,
                 False,
-            )
+            ),
         )
 
-    logger.info(
-        f"Created tombstone {tombstone.id} for {target_type}:{target_id} "
-        f"reason={reason.value}"
-    )
+    logger.info(f"Created tombstone {tombstone.id} for {target_type}:{target_id} " f"reason={reason.value}")
 
     return tombstone
 
@@ -251,7 +236,7 @@ def perform_cryptographic_erasure(tombstone_id: UUID) -> bool:
             WHERE id = %s
             RETURNING target_type, target_id
             """,
-            (str(tombstone_id),)
+            (str(tombstone_id),),
         )
 
         row = cur.fetchone()
@@ -273,7 +258,7 @@ def perform_cryptographic_erasure(tombstone_id: UUID) -> bool:
                     modified_at = NOW()
                 WHERE id = %s
                 """,
-                (str(target_id),)
+                (str(target_id),),
             )
 
         logger.info(f"Cryptographic erasure complete for tombstone {tombstone_id}")
@@ -328,7 +313,7 @@ def delete_user_data(
                 WHERE sess.metadata->>'user_id' = %s
                    OR sess.metadata->>'user_id_hash' = %s
                 """,
-                (user_id, user_hash)
+                (user_id, user_hash),
             )
             belief_ids = [row["id"] for row in cur.fetchall()]
 
@@ -351,7 +336,7 @@ def delete_user_data(
                         modified_at = NOW()
                     WHERE id = %s
                     """,
-                    (str(belief_id),)
+                    (str(belief_id),),
                 )
                 result.beliefs_deleted += 1
 
@@ -362,7 +347,7 @@ def delete_user_data(
                 WHERE metadata->>'user_id' = %s
                    OR metadata->>'user_id_hash' = %s
                 """,
-                (user_id, user_hash)
+                (user_id, user_hash),
             )
             session_ids = [row["id"] for row in cur.fetchall()]
 
@@ -373,15 +358,12 @@ def delete_user_data(
                     DELETE FROM exchanges WHERE session_id = %s
                     RETURNING id
                     """,
-                    (str(session_id),)
+                    (str(session_id),),
                 )
                 result.exchanges_deleted += cur.rowcount
 
                 # Delete session
-                cur.execute(
-                    "DELETE FROM sessions WHERE id = %s",
-                    (str(session_id),)
-                )
+                cur.execute("DELETE FROM sessions WHERE id = %s", (str(session_id),))
                 result.sessions_deleted += 1
 
             # Anonymize entity references (don't delete - others may reference)
@@ -395,7 +377,7 @@ def delete_user_data(
                 WHERE name = %s OR %s = ANY(aliases)
                 RETURNING id
                 """,
-                (user_id, user_id)
+                (user_id, user_id),
             )
             result.entities_anonymized = cur.rowcount
 
@@ -406,7 +388,7 @@ def delete_user_data(
                 WHERE evidence && %s::uuid[]
                 RETURNING id
                 """,
-                ([str(s) for s in session_ids],)
+                ([str(s) for s in session_ids],),
             )
             result.patterns_deleted = cur.rowcount
 
@@ -448,7 +430,7 @@ def _start_tombstone_propagation(tombstone_id: UUID) -> None:
             SET propagation_started = NOW()
             WHERE id = %s
             """,
-            (str(tombstone_id),)
+            (str(tombstone_id),),
         )
 
     logger.info(f"Tombstone propagation started: {tombstone_id}")
@@ -464,10 +446,7 @@ def get_deletion_verification(tombstone_id: UUID) -> dict[str, Any] | None:
         Verification report or None if not found
     """
     with get_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM tombstones WHERE id = %s",
-            (str(tombstone_id),)
-        )
+        cur.execute("SELECT * FROM tombstones WHERE id = %s", (str(tombstone_id),))
         row = cur.fetchone()
 
         if not row:
@@ -477,16 +456,10 @@ def get_deletion_verification(tombstone_id: UUID) -> dict[str, Any] | None:
 
         return {
             "tombstone_id": str(tombstone.id),
-            "status": (
-                "complete" if tombstone.encryption_key_revoked
-                else "processing"
-            ),
+            "status": ("complete" if tombstone.encryption_key_revoked else "processing"),
             "tombstone_created": tombstone.created_at.isoformat(),
             "key_revoked": tombstone.encryption_key_revoked,
-            "key_revocation_timestamp": (
-                tombstone.key_revocation_timestamp.isoformat()
-                if tombstone.key_revocation_timestamp else None
-            ),
+            "key_revocation_timestamp": (tombstone.key_revocation_timestamp.isoformat() if tombstone.key_revocation_timestamp else None),
             "propagation_status": {
                 "started": tombstone.propagation_started is not None,
                 "acknowledged_count": len(tombstone.acknowledged_by),

@@ -64,7 +64,7 @@ async def delete_user_data_endpoint(request: Request) -> JSONResponse:
         valid = ", ".join(r.value for r in DeletionReason)
         return validation_error(
             f"Invalid reason: {reason_str}. Valid: {valid}",
-            code=VALIDATION_INVALID_VALUE
+            code=VALIDATION_INVALID_VALUE,
         )
 
     legal_basis = request.query_params.get("legal_basis")

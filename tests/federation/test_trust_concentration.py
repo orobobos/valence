@@ -11,25 +11,21 @@ Tests cover:
 
 from __future__ import annotations
 
-import json
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime
-from typing import Generator
 from unittest.mock import MagicMock, patch
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 import pytest
-
-from valence.federation.trust_policy import (
-    TrustPolicy,
-    CONCENTRATION_THRESHOLDS,
-)
 from valence.federation.models import (
-    WarningSeverity,
-    TrustConcentrationWarning,
     TrustConcentrationReport,
+    TrustConcentrationWarning,
+    WarningSeverity,
 )
-
+from valence.federation.trust_policy import (
+    CONCENTRATION_THRESHOLDS,
+    TrustPolicy,
+)
 
 # =============================================================================
 # FIXTURES
@@ -48,6 +44,7 @@ def mock_cursor():
 @pytest.fixture
 def mock_get_cursor(mock_cursor):
     """Mock the get_cursor context manager."""
+
     @contextmanager
     def _mock_get_cursor(dict_cursor: bool = True) -> Generator:
         yield mock_cursor
@@ -98,7 +95,7 @@ class TestTrustConcentrationWarning:
             severity=WarningSeverity.WARNING,
             message="Test warning message",
         )
-        
+
         assert warning.warning_type == "single_node_dominant"
         assert warning.severity == WarningSeverity.WARNING
         assert warning.message == "Test warning message"
@@ -117,7 +114,7 @@ class TestTrustConcentrationWarning:
             trust_share=0.55,
             recommendation="Reduce trust concentration",
         )
-        
+
         assert warning.node_id == node_id
         assert warning.node_name == "alice"
         assert warning.trust_share == 0.55
@@ -133,9 +130,9 @@ class TestTrustConcentrationWarning:
             node_id=node_id,
             trust_share=0.33,
         )
-        
+
         data = warning.to_dict()
-        
+
         assert data["warning_type"] == "few_sources"
         assert data["severity"] == "warning"
         assert data["node_id"] == str(node_id)
@@ -148,7 +145,7 @@ class TestTrustConcentrationWarning:
             severity=WarningSeverity.CRITICAL,
             message="Single node holds 55% of trust",
         )
-        
+
         result = str(warning)
         assert "CRITICAL" in result
         assert "55%" in result
@@ -166,7 +163,7 @@ class TestTrustConcentrationWarning:
             severity=WarningSeverity.WARNING,
             message="Warning message",
         )
-        
+
         assert "ℹ️" in str(info_warning)
         assert "⚠️" in str(warning_warning)
 
@@ -186,7 +183,7 @@ class TestTrustConcentrationReport:
             active_nodes=8,
             total_trust=5.0,
         )
-        
+
         assert report.total_nodes == 10
         assert report.has_warnings is False
         assert report.has_critical_warnings is False
@@ -206,13 +203,13 @@ class TestTrustConcentrationReport:
                 message="Warning 2",
             ),
         ]
-        
+
         report = TrustConcentrationReport(
             warnings=warnings,
             total_nodes=5,
             active_nodes=5,
         )
-        
+
         assert report.has_warnings is True
         assert report.has_critical_warnings is True
         assert report.max_severity == WarningSeverity.CRITICAL
@@ -228,9 +225,9 @@ class TestTrustConcentrationReport:
             trusted_sources=5,
             gini_coefficient=0.45,
         )
-        
+
         data = report.to_dict()
-        
+
         assert data["metrics"]["total_nodes"] == 10
         assert data["metrics"]["top_node_share"] == 0.35
         assert data["metrics"]["gini_coefficient"] == 0.45
@@ -250,9 +247,9 @@ class TestTrustConcentrationReport:
                 message="Warning",
             ),
         ]
-        
+
         report = TrustConcentrationReport(warnings=warnings)
-        
+
         assert report.max_severity == WarningSeverity.WARNING
 
 
@@ -269,7 +266,7 @@ class TestGiniCoefficient:
         # All equal values
         values = [1.0, 1.0, 1.0, 1.0, 1.0]
         gini = trust_policy._calculate_gini(values)
-        
+
         assert gini is not None
         assert abs(gini - 0.0) < 0.01  # Should be close to 0
 
@@ -278,7 +275,7 @@ class TestGiniCoefficient:
         # One dominant value
         values = [0.1, 0.1, 0.1, 0.1, 10.0]
         gini = trust_policy._calculate_gini(values)
-        
+
         assert gini is not None
         assert gini > 0.5  # Should be high
 
@@ -291,7 +288,7 @@ class TestGiniCoefficient:
         """Test Gini with all zero values."""
         values = [0.0, 0.0, 0.0]
         gini = trust_policy._calculate_gini(values)
-        
+
         assert gini == 0.0
 
 
@@ -306,9 +303,9 @@ class TestCheckTrustConcentration:
     def test_no_nodes(self, trust_policy, mock_get_cursor):
         """Test with empty network."""
         mock_get_cursor.fetchall.return_value = []
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.total_nodes == 0
         assert report.has_warnings is False
 
@@ -336,9 +333,9 @@ class TestCheckTrustConcentration:
             make_node_row(name="node7", trust_score=0.30),
         ]
         # Total = 2.0, top 3 = 0.3+0.30+0.30 = 0.90 = 45%
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.total_nodes == 7
         assert report.trusted_sources == 7
         assert report.has_warnings is False
@@ -354,15 +351,15 @@ class TestCheckTrustConcentration:
             make_node_row(name="node4", trust_score=0.3),
             make_node_row(name="node5", trust_score=0.1),
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.has_warnings is True
-        
+
         # Find the single node warning
         single_warning = next(
             (w for w in report.warnings if w.warning_type == "single_node_dominant"),
-            None
+            None,
         )
         assert single_warning is not None
         assert single_warning.severity == WarningSeverity.WARNING
@@ -378,14 +375,14 @@ class TestCheckTrustConcentration:
             make_node_row(name="node4", trust_score=0.1),
             make_node_row(name="node5", trust_score=0.1),
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.has_critical_warnings is True
-        
+
         single_warning = next(
             (w for w in report.warnings if w.warning_type == "single_node_dominant"),
-            None
+            None,
         )
         assert single_warning is not None
         assert single_warning.severity == WarningSeverity.CRITICAL
@@ -394,19 +391,16 @@ class TestCheckTrustConcentration:
         """Test warning when top 3 nodes dominate."""
         # Top 3 nodes hold >50% of trust
         mock_get_cursor.fetchall.return_value = [
-            make_node_row(name="node1", trust_score=0.5),   # 25%
-            make_node_row(name="node2", trust_score=0.4),   # 20%
+            make_node_row(name="node1", trust_score=0.5),  # 25%
+            make_node_row(name="node2", trust_score=0.4),  # 20%
             make_node_row(name="node3", trust_score=0.35),  # 17.5% (total 62.5% for top 3)
             make_node_row(name="node4", trust_score=0.4),
             make_node_row(name="node5", trust_score=0.35),
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
-        top3_warning = next(
-            (w for w in report.warnings if w.warning_type == "top_nodes_dominant"),
-            None
-        )
+
+        top3_warning = next((w for w in report.warnings if w.warning_type == "top_nodes_dominant"), None)
         # Top 3 share is 0.5+0.4+0.4 / 2.0 = 0.65 > 50%
         # Actually let me recalculate: 0.5+0.4+0.35 / (0.5+0.4+0.35+0.4+0.35) = 1.25/2.0 = 62.5%
         assert top3_warning is not None
@@ -420,15 +414,12 @@ class TestCheckTrustConcentration:
             make_node_row(name="node3", trust_score=0.05),  # Below 0.1 threshold
             make_node_row(name="node4", trust_score=0.02),  # Below threshold
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.trusted_sources == 2
-        
-        few_sources_warning = next(
-            (w for w in report.warnings if w.warning_type == "few_sources"),
-            None
-        )
+
+        few_sources_warning = next((w for w in report.warnings if w.warning_type == "few_sources"), None)
         assert few_sources_warning is not None
         assert "2" in few_sources_warning.message
 
@@ -439,15 +430,12 @@ class TestCheckTrustConcentration:
             make_node_row(name="node2", trust_score=0.05),
             make_node_row(name="node3", trust_score=0.01),
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.trusted_sources == 1
-        
-        few_sources_warning = next(
-            (w for w in report.warnings if w.warning_type == "few_sources"),
-            None
-        )
+
+        few_sources_warning = next((w for w in report.warnings if w.warning_type == "few_sources"), None)
         assert few_sources_warning is not None
         assert few_sources_warning.severity == WarningSeverity.CRITICAL
 
@@ -455,17 +443,17 @@ class TestCheckTrustConcentration:
         """Test with custom threshold values."""
         # Node has 25% share - below default 30% but above custom 20%
         mock_get_cursor.fetchall.return_value = [
-            make_node_row(name="node1", trust_score=0.5),   # 25%
-            make_node_row(name="node2", trust_score=0.5),   # 25%
-            make_node_row(name="node3", trust_score=0.5),   # 25%
-            make_node_row(name="node4", trust_score=0.5),   # 25%
+            make_node_row(name="node1", trust_score=0.5),  # 25%
+            make_node_row(name="node2", trust_score=0.5),  # 25%
+            make_node_row(name="node3", trust_score=0.5),  # 25%
+            make_node_row(name="node4", trust_score=0.5),  # 25%
         ]
-        
+
         # With default thresholds - no warning
         report = trust_policy.check_trust_concentration()
         single_warnings = [w for w in report.warnings if w.warning_type == "single_node_dominant"]
         assert len(single_warnings) == 0
-        
+
         # With stricter custom threshold - should warn
         custom_thresholds = {
             "single_node_warning": 0.20,  # 20% instead of 30%
@@ -482,9 +470,9 @@ class TestCheckTrustConcentration:
     def test_db_error_handling(self, trust_policy, mock_get_cursor):
         """Test graceful handling of database errors."""
         mock_get_cursor.execute.side_effect = Exception("Database error")
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert len(report.warnings) == 1
         assert "error" in report.warnings[0].warning_type
         assert "Database error" in report.warnings[0].message
@@ -496,9 +484,9 @@ class TestCheckTrustConcentration:
             make_node_row(name="active2", status="active", trust_score=0.4),
             make_node_row(name="unreachable", status="unreachable", trust_score=0.3),
         ]
-        
+
         report = trust_policy.check_trust_concentration()
-        
+
         assert report.total_nodes == 3
         assert report.active_nodes == 2
 
@@ -514,35 +502,41 @@ class TestTrustCheckCLI:
     def test_cli_parses_check_command(self):
         """Test that CLI parses trust check command."""
         from valence.cli.main import app
-        
+
         parser = app()
-        args = parser.parse_args(['trust', 'check'])
-        
-        assert args.command == 'trust'
-        assert args.trust_command == 'check'
+        args = parser.parse_args(["trust", "check"])
+
+        assert args.command == "trust"
+        assert args.trust_command == "check"
         assert args.json is False
 
     def test_cli_parses_json_flag(self):
         """Test that CLI parses --json flag."""
         from valence.cli.main import app
-        
+
         parser = app()
-        args = parser.parse_args(['trust', 'check', '--json'])
-        
+        args = parser.parse_args(["trust", "check", "--json"])
+
         assert args.json is True
 
     def test_cli_parses_custom_thresholds(self):
         """Test that CLI parses custom threshold arguments."""
         from valence.cli.main import app
-        
+
         parser = app()
-        args = parser.parse_args([
-            'trust', 'check',
-            '--single-threshold', '0.25',
-            '--top3-threshold', '0.45',
-            '--min-sources', '5',
-        ])
-        
+        args = parser.parse_args(
+            [
+                "trust",
+                "check",
+                "--single-threshold",
+                "0.25",
+                "--top3-threshold",
+                "0.45",
+                "--min-sources",
+                "5",
+            ]
+        )
+
         assert args.single_threshold == 0.25
         assert args.top3_threshold == 0.45
         assert args.min_sources == 5
@@ -570,7 +564,7 @@ class TestConcentrationThresholds:
         # Warning should be lower than critical
         assert CONCENTRATION_THRESHOLDS["single_node_warning"] < CONCENTRATION_THRESHOLDS["single_node_critical"]
         assert CONCENTRATION_THRESHOLDS["top_3_warning"] < CONCENTRATION_THRESHOLDS["top_3_critical"]
-        
+
         # All should be between 0 and 1
         for key, value in CONCENTRATION_THRESHOLDS.items():
             if key != "min_trusted_sources":

@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch, call
-from uuid import UUID, uuid4
-
-import pytest
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from valence.core.corroboration import (
     CORROBORATION_FACTOR,
@@ -21,10 +19,10 @@ from valence.core.corroboration import (
     process_incoming_belief_corroboration,
 )
 
-
 # ============================================================================
 # Constants Tests
 # ============================================================================
+
 
 class TestConstants:
     """Tests for module constants."""
@@ -42,6 +40,7 @@ class TestConstants:
 # ============================================================================
 # calculate_corroboration_confidence Tests
 # ============================================================================
+
 
 class TestCalculateCorroborationConfidence:
     """Tests for calculate_corroboration_confidence function."""
@@ -113,6 +112,7 @@ class TestCalculateCorroborationConfidence:
 # CorroborationResult Tests
 # ============================================================================
 
+
 class TestCorroborationResult:
     """Tests for CorroborationResult dataclass."""
 
@@ -126,7 +126,7 @@ class TestCorroborationResult:
             source_did="did:example:source123",
             is_new_source=True,
         )
-        
+
         assert result.corroborated is True
         assert result.existing_belief_id == belief_id
         assert result.similarity == 0.95
@@ -142,7 +142,7 @@ class TestCorroborationResult:
             source_did="did:example:source456",
             is_new_source=False,
         )
-        
+
         assert result.corroborated is False
         assert result.existing_belief_id is None
         assert result.similarity == 0.5
@@ -157,9 +157,9 @@ class TestCorroborationResult:
             source_did="did:example:abc",
             is_new_source=True,
         )
-        
+
         d = result.to_dict()
-        
+
         assert d["corroborated"] is True
         assert d["existing_belief_id"] == str(belief_id)
         assert d["similarity"] == 0.92
@@ -175,15 +175,15 @@ class TestCorroborationResult:
             source_did="did:example:xyz",
             is_new_source=False,
         )
-        
+
         d = result.to_dict()
-        
+
         assert d["existing_belief_id"] is None
 
     def test_to_dict_is_json_serializable(self):
         """to_dict output should be JSON serializable."""
         import json
-        
+
         result = CorroborationResult(
             corroborated=True,
             existing_belief_id=uuid4(),
@@ -191,7 +191,7 @@ class TestCorroborationResult:
             source_did="did:example:test",
             is_new_source=True,
         )
-        
+
         # Should not raise
         json_str = json.dumps(result.to_dict())
         assert isinstance(json_str, str)
@@ -200,6 +200,7 @@ class TestCorroborationResult:
 # ============================================================================
 # CorroborationInfo Tests
 # ============================================================================
+
 
 class TestCorroborationInfo:
     """Tests for CorroborationInfo dataclass."""
@@ -211,14 +212,14 @@ class TestCorroborationInfo:
             {"source_did": "did:a", "similarity": 0.95, "timestamp": "2024-01-01"},
             {"source_did": "did:b", "similarity": 0.92, "timestamp": "2024-01-02"},
         ]
-        
+
         info = CorroborationInfo(
             belief_id=belief_id,
             corroboration_count=2,
             confidence_corroboration=0.375,
             sources=sources,
         )
-        
+
         assert info.belief_id == belief_id
         assert info.corroboration_count == 2
         assert info.confidence_corroboration == 0.375
@@ -234,7 +235,7 @@ class TestCorroborationInfo:
             confidence_corroboration=0.0,
             sources=[],
         )
-        
+
         assert info.corroboration_count == 0
         assert info.sources == []
 
@@ -242,16 +243,16 @@ class TestCorroborationInfo:
         """to_dict should serialize properly."""
         belief_id = uuid4()
         sources = [{"source_did": "did:test", "similarity": 0.9}]
-        
+
         info = CorroborationInfo(
             belief_id=belief_id,
             corroboration_count=1,
             confidence_corroboration=0.23,
             sources=sources,
         )
-        
+
         d = info.to_dict()
-        
+
         assert d["belief_id"] == str(belief_id)
         assert d["corroboration_count"] == 1
         assert d["confidence_corroboration"] == 0.23
@@ -260,14 +261,14 @@ class TestCorroborationInfo:
     def test_to_dict_is_json_serializable(self):
         """to_dict output should be JSON serializable."""
         import json
-        
+
         info = CorroborationInfo(
             belief_id=uuid4(),
             corroboration_count=3,
             confidence_corroboration=0.5,
             sources=[{"did": "test"}],
         )
-        
+
         json_str = json.dumps(info.to_dict())
         assert isinstance(json_str, str)
 
@@ -276,26 +277,25 @@ class TestCorroborationInfo:
 # check_corroboration Tests
 # ============================================================================
 
+
 class TestCheckCorroboration:
     """Tests for check_corroboration function."""
 
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.generate_embedding")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_generates_embedding_when_not_provided(
-        self, mock_vector, mock_embed, mock_cursor
-    ):
+    def test_generates_embedding_when_not_provided(self, mock_vector, mock_embed, mock_cursor):
         """Should generate embedding if not provided."""
         mock_embed.return_value = [0.1] * 1536
         mock_vector.return_value = "[0.1,...]"
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = None
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         check_corroboration("test content", "did:source:1")
-        
+
         mock_embed.assert_called_once_with("test content")
 
     @patch("valence.core.corroboration.get_cursor")
@@ -304,12 +304,12 @@ class TestCheckCorroboration:
         """Should use provided embedding without generating."""
         embedding = [0.5] * 1536
         mock_vector.return_value = "[0.5,...]"
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = None
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         with patch("valence.embeddings.service.generate_embedding") as mock_gen:
             check_corroboration("test", "did:s", content_embedding=embedding)
             mock_gen.assert_not_called()
@@ -319,24 +319,22 @@ class TestCheckCorroboration:
     def test_returns_none_when_no_beliefs_exist(self, mock_vector, mock_cursor):
         """Should return None if no beliefs in database."""
         mock_vector.return_value = "[0.1,...]"
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = None
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = check_corroboration("test", "did:s", content_embedding=[0.1] * 10)
-        
+
         assert result is None
 
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_returns_none_when_similarity_below_threshold(
-        self, mock_vector, mock_cursor
-    ):
+    def test_returns_none_when_similarity_below_threshold(self, mock_vector, mock_cursor):
         """Should return None if similarity below threshold."""
         mock_vector.return_value = "[0.1,...]"
-        
+
         belief_id = uuid4()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
@@ -347,19 +345,17 @@ class TestCheckCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = check_corroboration("test", "did:s", content_embedding=[0.1] * 10)
-        
+
         assert result is None
 
     @patch("valence.core.corroboration.get_cursor")
     @patch("valence.embeddings.service.vector_to_pgvector")
-    def test_returns_result_when_similarity_above_threshold(
-        self, mock_vector, mock_cursor
-    ):
+    def test_returns_result_when_similarity_above_threshold(self, mock_vector, mock_cursor):
         """Should return CorroborationResult if similarity >= threshold."""
         mock_vector.return_value = "[0.1,...]"
-        
+
         belief_id = uuid4()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
@@ -370,9 +366,9 @@ class TestCheckCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = check_corroboration("test", "did:source:1", content_embedding=[0.1] * 10)
-        
+
         assert result is not None
         assert result.corroborated is True
         assert result.existing_belief_id == belief_id
@@ -385,12 +381,10 @@ class TestCheckCorroboration:
     def test_detects_existing_source(self, mock_vector, mock_cursor):
         """Should detect when source already corroborated."""
         mock_vector.return_value = "[0.1,...]"
-        
+
         belief_id = uuid4()
-        existing_sources = [
-            {"source_did": "did:existing:source", "similarity": 0.92}
-        ]
-        
+        existing_sources = [{"source_did": "did:existing:source", "similarity": 0.92}]
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
             "id": belief_id,
@@ -400,11 +394,9 @@ class TestCheckCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
-        result = check_corroboration(
-            "test", "did:existing:source", content_embedding=[0.1] * 10
-        )
-        
+
+        result = check_corroboration("test", "did:existing:source", content_embedding=[0.1] * 10)
+
         assert result is not None
         assert result.is_new_source is False
 
@@ -413,7 +405,7 @@ class TestCheckCorroboration:
     def test_handles_none_corroborating_sources(self, mock_vector, mock_cursor):
         """Should handle None corroborating_sources gracefully."""
         mock_vector.return_value = "[0.1,...]"
-        
+
         belief_id = uuid4()
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
@@ -424,9 +416,9 @@ class TestCheckCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = check_corroboration("test", "did:s", content_embedding=[0.1] * 10)
-        
+
         assert result is not None
         assert result.is_new_source is True
 
@@ -434,10 +426,10 @@ class TestCheckCorroboration:
     def test_returns_none_on_exception(self, mock_cursor):
         """Should return None and log warning on exception."""
         mock_cursor.side_effect = Exception("Database error")
-        
+
         with patch("valence.core.corroboration.logger") as mock_logger:
             result = check_corroboration("test", "did:s", content_embedding=[0.1] * 10)
-            
+
             assert result is None
             mock_logger.warning.assert_called_once()
 
@@ -446,6 +438,7 @@ class TestCheckCorroboration:
 # add_corroboration Tests
 # ============================================================================
 
+
 class TestAddCorroboration:
     """Tests for add_corroboration function."""
 
@@ -453,15 +446,15 @@ class TestAddCorroboration:
     def test_adds_corroboration_successfully(self, mock_cursor):
         """Should add corroboration and return True."""
         belief_id = uuid4()
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {"added": True}
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         with patch("valence.core.corroboration.logger"):
             result = add_corroboration(belief_id, "did:source:1", 0.95)
-        
+
         assert result is True
         mock_cur.execute.assert_called_once()
         args = mock_cur.execute.call_args[0]
@@ -472,29 +465,29 @@ class TestAddCorroboration:
     def test_returns_false_when_source_exists(self, mock_cursor):
         """Should return False if source already exists."""
         belief_id = uuid4()
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {"added": False}
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = add_corroboration(belief_id, "did:s", 0.95)
-        
+
         assert result is False
 
     @patch("valence.core.corroboration.get_cursor")
     def test_respects_boost_confidence_flag(self, mock_cursor):
         """Should pass boost_confidence to SQL function."""
         belief_id = uuid4()
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {"added": True}
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         with patch("valence.core.corroboration.logger"):
             add_corroboration(belief_id, "did:s", 0.9, boost_confidence=False)
-        
+
         args = mock_cur.execute.call_args[0]
         assert args[1][3] is False
 
@@ -505,19 +498,19 @@ class TestAddCorroboration:
         mock_cur.fetchone.return_value = None
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = add_corroboration(uuid4(), "did:s", 0.9)
-        
+
         assert result is False
 
     @patch("valence.core.corroboration.get_cursor")
     def test_returns_false_on_exception(self, mock_cursor):
         """Should return False and log warning on exception."""
         mock_cursor.side_effect = Exception("DB error")
-        
+
         with patch("valence.core.corroboration.logger") as mock_logger:
             result = add_corroboration(uuid4(), "did:s", 0.9)
-            
+
             assert result is False
             mock_logger.warning.assert_called_once()
 
@@ -525,15 +518,15 @@ class TestAddCorroboration:
     def test_logs_on_successful_add(self, mock_cursor):
         """Should log info when corroboration added."""
         belief_id = uuid4()
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {"added": True}
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         with patch("valence.core.corroboration.logger") as mock_logger:
             add_corroboration(belief_id, "did:source:test", 0.95)
-            
+
             mock_logger.info.assert_called_once()
             log_msg = mock_logger.info.call_args[0][0]
             assert str(belief_id) in log_msg
@@ -545,6 +538,7 @@ class TestAddCorroboration:
 # get_corroboration Tests
 # ============================================================================
 
+
 class TestGetCorroboration:
     """Tests for get_corroboration function."""
 
@@ -553,7 +547,7 @@ class TestGetCorroboration:
         """Should return CorroborationInfo for existing belief."""
         belief_id = uuid4()
         sources = [{"source_did": "did:a"}]
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
             "id": belief_id,
@@ -563,9 +557,9 @@ class TestGetCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_corroboration(belief_id)
-        
+
         assert result is not None
         assert result.belief_id == belief_id
         assert result.corroboration_count == 3
@@ -579,16 +573,16 @@ class TestGetCorroboration:
         mock_cur.fetchone.return_value = None
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_corroboration(uuid4())
-        
+
         assert result is None
 
     @patch("valence.core.corroboration.get_cursor")
     def test_handles_null_values(self, mock_cursor):
         """Should handle NULL values from database."""
         belief_id = uuid4()
-        
+
         mock_cur = MagicMock()
         mock_cur.fetchone.return_value = {
             "id": belief_id,
@@ -598,9 +592,9 @@ class TestGetCorroboration:
         }
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_corroboration(belief_id)
-        
+
         assert result is not None
         assert result.corroboration_count == 0
         assert result.confidence_corroboration == 0.0
@@ -610,10 +604,10 @@ class TestGetCorroboration:
     def test_returns_none_on_exception(self, mock_cursor):
         """Should return None and log on exception."""
         mock_cursor.side_effect = Exception("DB error")
-        
+
         with patch("valence.core.corroboration.logger") as mock_logger:
             result = get_corroboration(uuid4())
-            
+
             assert result is None
             mock_logger.warning.assert_called_once()
 
@@ -622,6 +616,7 @@ class TestGetCorroboration:
 # process_incoming_belief_corroboration Tests
 # ============================================================================
 
+
 class TestProcessIncomingBeliefCorroboration:
     """Tests for process_incoming_belief_corroboration function."""
 
@@ -629,9 +624,9 @@ class TestProcessIncomingBeliefCorroboration:
     def test_returns_none_when_no_corroboration(self, mock_check):
         """Should return None if no corroboration found."""
         mock_check.return_value = None
-        
+
         result = process_incoming_belief_corroboration("content", "did:s")
-        
+
         assert result is None
         mock_check.assert_called_once_with("content", "did:s", None)
 
@@ -645,9 +640,9 @@ class TestProcessIncomingBeliefCorroboration:
             source_did="did:s",
             is_new_source=False,
         )
-        
+
         result = process_incoming_belief_corroboration("content", "did:s")
-        
+
         assert result is None
 
     @patch("valence.core.corroboration.add_corroboration")
@@ -663,9 +658,9 @@ class TestProcessIncomingBeliefCorroboration:
             is_new_source=True,
         )
         mock_add.return_value = True
-        
+
         result = process_incoming_belief_corroboration("content", "did:new:source")
-        
+
         assert result is not None
         assert result.corroborated is True
         mock_add.assert_called_once_with(
@@ -686,9 +681,9 @@ class TestProcessIncomingBeliefCorroboration:
             source_did="did:existing",
             is_new_source=False,  # Already corroborated
         )
-        
+
         result = process_incoming_belief_corroboration("content", "did:existing")
-        
+
         assert result is not None
         mock_add.assert_not_called()
 
@@ -705,9 +700,9 @@ class TestProcessIncomingBeliefCorroboration:
             is_new_source=True,
         )
         mock_add.return_value = False  # Add failed
-        
+
         result = process_incoming_belief_corroboration("content", "did:new")
-        
+
         assert result is not None
         assert result.is_new_source is False  # Updated
 
@@ -716,15 +711,16 @@ class TestProcessIncomingBeliefCorroboration:
         """Should pass embedding to check_corroboration."""
         mock_check.return_value = None
         embedding = [0.1, 0.2, 0.3]
-        
+
         process_incoming_belief_corroboration("content", "did:s", embedding)
-        
+
         mock_check.assert_called_once_with("content", "did:s", embedding)
 
 
 # ============================================================================
 # get_most_corroborated_beliefs Tests
 # ============================================================================
+
 
 class TestGetMostCorroboratedBeliefs:
     """Tests for get_most_corroborated_beliefs function."""
@@ -747,9 +743,9 @@ class TestGetMostCorroboratedBeliefs:
         ]
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_most_corroborated_beliefs()
-        
+
         assert len(result) == 1
         assert result[0]["id"] == str(belief_id)
         assert result[0]["content"] == "Test belief"
@@ -766,9 +762,9 @@ class TestGetMostCorroboratedBeliefs:
         mock_cur.fetchall.return_value = []
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         get_most_corroborated_beliefs(limit=5)
-        
+
         query_params = mock_cur.execute.call_args[0][1]
         assert 5 in query_params
 
@@ -779,9 +775,9 @@ class TestGetMostCorroboratedBeliefs:
         mock_cur.fetchall.return_value = []
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         get_most_corroborated_beliefs(min_count=3)
-        
+
         query_params = mock_cur.execute.call_args[0][1]
         assert 3 in query_params
 
@@ -792,12 +788,12 @@ class TestGetMostCorroboratedBeliefs:
         mock_cur.fetchall.return_value = []
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         get_most_corroborated_beliefs(domain_filter=["science", "physics"])
-        
+
         query = mock_cur.execute.call_args[0][0]
         params = mock_cur.execute.call_args[0][1]
-        
+
         assert "domain_path &&" in query
         assert ["science", "physics"] in params
 
@@ -818,9 +814,9 @@ class TestGetMostCorroboratedBeliefs:
         ]
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_most_corroborated_beliefs()
-        
+
         assert result[0]["sources"] == []
         assert result[0]["domain_path"] == []
 
@@ -831,19 +827,19 @@ class TestGetMostCorroboratedBeliefs:
         mock_cur.fetchall.return_value = []
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         result = get_most_corroborated_beliefs()
-        
+
         assert result == []
 
     @patch("valence.core.corroboration.get_cursor")
     def test_returns_empty_list_on_exception(self, mock_cursor):
         """Should return empty list and log on exception."""
         mock_cursor.side_effect = Exception("DB error")
-        
+
         with patch("valence.core.corroboration.logger") as mock_logger:
             result = get_most_corroborated_beliefs()
-            
+
             assert result == []
             mock_logger.warning.assert_called_once()
 
@@ -854,9 +850,9 @@ class TestGetMostCorroboratedBeliefs:
         mock_cur.fetchall.return_value = []
         mock_cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
         mock_cursor.return_value.__exit__ = MagicMock(return_value=None)
-        
+
         get_most_corroborated_beliefs()
-        
+
         query = mock_cur.execute.call_args[0][0]
         assert "ORDER BY corroboration_count DESC, created_at DESC" in query
 
@@ -864,6 +860,7 @@ class TestGetMostCorroboratedBeliefs:
 # ============================================================================
 # Integration-style Tests (still mocked, but test workflows)
 # ============================================================================
+
 
 class TestCorroborationWorkflow:
     """Tests for complete corroboration workflows."""
@@ -873,7 +870,7 @@ class TestCorroborationWorkflow:
     def test_full_corroboration_workflow(self, mock_check, mock_add):
         """Test the complete workflow of receiving and processing corroboration."""
         belief_id = uuid4()
-        
+
         # Simulate finding a matching belief
         mock_check.return_value = CorroborationResult(
             corroborated=True,
@@ -883,19 +880,19 @@ class TestCorroborationWorkflow:
             is_new_source=True,
         )
         mock_add.return_value = True
-        
+
         # Process the incoming belief
         result = process_incoming_belief_corroboration(
             content="The Earth orbits the Sun",
             source_did="did:peer:node123",
             content_embedding=[0.1] * 1536,
         )
-        
+
         # Verify the workflow
         assert result is not None
         assert result.corroborated is True
         assert result.existing_belief_id == belief_id
-        
+
         # Verify corroboration was added
         mock_add.assert_called_once_with(
             belief_id=belief_id,
@@ -910,12 +907,12 @@ class TestCorroborationWorkflow:
         for count in range(0, 11):
             conf = calculate_corroboration_confidence(count)
             confidences.append(conf)
-        
+
         # Verify monotonic increase
         for i in range(1, len(confidences)):
             if i > 0:
-                assert confidences[i] > confidences[i-1]
-        
+                assert confidences[i] > confidences[i - 1]
+
         # Verify reasonable values
         assert confidences[0] == 0.0
         assert 0.2 < confidences[1] < 0.3

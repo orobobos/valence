@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import os
-import stat
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import patch
 
+import pytest
 from valence.server.cli import (
+    cmd_create,
     get_secure_token_dir,
     save_token_securely,
-    cmd_create,
 )
 
 

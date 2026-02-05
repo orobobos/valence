@@ -19,9 +19,10 @@ from uuid import UUID
 
 class ValidatorTier(StrEnum):
     """Validator stake tiers with different risk/reward profiles."""
-    STANDARD = "standard"    # 0.10-0.30 stake, 1.0× weight
-    ENHANCED = "enhanced"    # 0.30-0.50 stake, 1.5× weight
-    GUARDIAN = "guardian"    # 0.50-0.80 stake, 2.0× weight
+
+    STANDARD = "standard"  # 0.10-0.30 stake, 1.0× weight
+    ENHANCED = "enhanced"  # 0.30-0.50 stake, 1.5× weight
+    GUARDIAN = "guardian"  # 0.50-0.80 stake, 2.0× weight
 
     @property
     def multiplier(self) -> float:
@@ -53,41 +54,45 @@ class ValidatorTier(StrEnum):
 
 class ValidatorStatus(StrEnum):
     """Current status of a validator."""
-    ELIGIBLE = "eligible"        # Meets criteria but not staked
-    STAKED = "staked"            # In pool waiting for selection
-    ACTIVE = "active"            # Currently validating
-    COOLDOWN = "cooldown"        # Epoch ended, unbonding
-    SUSPENDED = "suspended"      # Temporarily suspended
-    SLASHED = "slashed"          # Stake slashed
+
+    ELIGIBLE = "eligible"  # Meets criteria but not staked
+    STAKED = "staked"  # In pool waiting for selection
+    ACTIVE = "active"  # Currently validating
+    COOLDOWN = "cooldown"  # Epoch ended, unbonding
+    SUSPENDED = "suspended"  # Temporarily suspended
+    SLASHED = "slashed"  # Stake slashed
 
 
 class StakeStatus(StrEnum):
     """Status of a stake registration."""
-    PENDING = "pending"          # Registered, not yet active
-    ACTIVE = "active"            # Stake is active
-    UNBONDING = "unbonding"      # Requested withdrawal
-    SLASHED = "slashed"          # Slashed due to misbehavior
-    WITHDRAWN = "withdrawn"      # Successfully withdrawn
+
+    PENDING = "pending"  # Registered, not yet active
+    ACTIVE = "active"  # Stake is active
+    UNBONDING = "unbonding"  # Requested withdrawal
+    SLASHED = "slashed"  # Slashed due to misbehavior
+    WITHDRAWN = "withdrawn"  # Successfully withdrawn
 
 
 class AttestationType(StrEnum):
     """Types of identity attestations for Sybil resistance."""
-    SOCIAL_VALIDATOR = "social_validator"      # Existing validators vouch
-    FEDERATION_MEMBER = "federation_member"    # Federation vouches
-    GOVERNMENT_ID = "government_id"            # Via bridge
-    BIOMETRIC_POH = "biometric_poh"            # Worldcoin, etc.
-    WEB_OF_TRUST = "web_of_trust"              # Keybase-style
+
+    SOCIAL_VALIDATOR = "social_validator"  # Existing validators vouch
+    FEDERATION_MEMBER = "federation_member"  # Federation vouches
+    GOVERNMENT_ID = "government_id"  # Via bridge
+    BIOMETRIC_POH = "biometric_poh"  # Worldcoin, etc.
+    WEB_OF_TRUST = "web_of_trust"  # Keybase-style
 
 
 class SlashingOffense(StrEnum):
     """Types of slashable offenses."""
-    DOUBLE_VOTING = "double_voting"            # CRITICAL: 100% slash
-    EQUIVOCATION = "equivocation"              # CRITICAL: 100% slash
-    COLLUSION = "collusion"                    # CRITICAL: 100% slash
-    UNAVAILABILITY = "unavailability"          # HIGH: 50% slash
-    CENSORSHIP = "censorship"                  # HIGH: 50% slash
-    INVALID_VOTE = "invalid_vote"              # MEDIUM: 20% slash
-    LATE_VOTING = "late_voting"                # LOW: 5% slash
+
+    DOUBLE_VOTING = "double_voting"  # CRITICAL: 100% slash
+    EQUIVOCATION = "equivocation"  # CRITICAL: 100% slash
+    COLLUSION = "collusion"  # CRITICAL: 100% slash
+    UNAVAILABILITY = "unavailability"  # HIGH: 50% slash
+    CENSORSHIP = "censorship"  # HIGH: 50% slash
+    INVALID_VOTE = "invalid_vote"  # MEDIUM: 20% slash
+    LATE_VOTING = "late_voting"  # LOW: 5% slash
 
     @property
     def severity(self) -> str:
@@ -118,15 +123,17 @@ class SlashingOffense(StrEnum):
 
 class SlashingStatus(StrEnum):
     """Status of a slashing event."""
-    PENDING = "pending"          # Reported, awaiting review
-    CONFIRMED = "confirmed"      # Confirmed by validators
-    APPEALED = "appealed"        # Under appeal
-    EXECUTED = "executed"        # Slash applied
-    REJECTED = "rejected"        # Evidence insufficient
+
+    PENDING = "pending"  # Reported, awaiting review
+    CONFIRMED = "confirmed"  # Confirmed by validators
+    APPEALED = "appealed"  # Under appeal
+    EXECUTED = "executed"  # Slash applied
+    REJECTED = "rejected"  # Evidence insufficient
 
 
 class ElevationVoteChoice(StrEnum):
     """Vote choices for elevation proposals."""
+
     APPROVE = "approve"
     REJECT = "reject"
     ABSTAIN = "abstain"
@@ -134,10 +141,11 @@ class ElevationVoteChoice(StrEnum):
 
 class ElevationOutcome(StrEnum):
     """Outcomes of elevation proposals."""
-    ELEVATED = "elevated"        # Reached quorum, elevated to L4
-    REJECTED = "rejected"        # Reached quorum, rejected
-    DEFERRED = "deferred"        # No quorum, deferred to next epoch
-    PENDING = "pending"          # Voting in progress
+
+    ELEVATED = "elevated"  # Reached quorum, elevated to L4
+    REJECTED = "rejected"  # Reached quorum, rejected
+    DEFERRED = "deferred"  # No quorum, deferred to next epoch
+    PENDING = "pending"  # Voting in progress
 
 
 # =============================================================================
@@ -234,8 +242,8 @@ class StakeRegistration:
             "registered_at": self.registered_at.isoformat(),
             "eligible_from_epoch": self.eligible_from_epoch,
             "status": self.status.value,
-            "unbond_requested_at": self.unbond_requested_at.isoformat() if self.unbond_requested_at else None,
-            "unbond_available_at": self.unbond_available_at.isoformat() if self.unbond_available_at else None,
+            "unbond_requested_at": (self.unbond_requested_at.isoformat() if self.unbond_requested_at else None),
+            "unbond_available_at": (self.unbond_available_at.isoformat() if self.unbond_available_at else None),
             "slashed_amount": self.slashed_amount,
             "slash_reason": self.slash_reason,
             "effective_stake": self.effective_stake(),
@@ -251,9 +259,9 @@ class StakeRegistration:
 class ValidatorPerformance:
     """Performance metrics for a validator during an epoch."""
 
-    participation_rate: float = 1.0       # % of rounds participated
+    participation_rate: float = 1.0  # % of rounds participated
     votes_cast: int = 0
-    votes_correct: int = 0                # Aligned with consensus
+    votes_correct: int = 0  # Aligned with consensus
     byzantine_strikes: int = 0
     average_vote_latency_ms: float = 0.0
 
@@ -344,11 +352,11 @@ class DiversityConstraints:
 
     # Federation diversity
     max_from_same_federation: float = 0.20  # Max 20% from any federation
-    min_federation_diversity: int = 3       # At least 3 federations
+    min_federation_diversity: int = 3  # At least 3 federations
 
     # Tenure diversity
     max_consecutive_validators: float = 0.60  # Max 60% returning
-    min_new_validators: float = 0.20          # At least 20% new
+    min_new_validators: float = 0.20  # At least 20% new
 
     # Tier diversity
     min_standard_tier: float = 0.30  # At least 30% from standard tier
@@ -485,7 +493,7 @@ class EpochTransition:
             "outgoing_signature_count": self.outgoing_signature_count,
             "incoming_acknowledgment_count": self.incoming_acknowledgment_count,
             "transition_started_at": self.transition_started_at.isoformat(),
-            "transition_completed_at": self.transition_completed_at.isoformat() if self.transition_completed_at else None,
+            "transition_completed_at": (self.transition_completed_at.isoformat() if self.transition_completed_at else None),
         }
 
 
@@ -542,9 +550,9 @@ class SlashingEvent:
     appeal_deadline: datetime | None = None
 
     # Distribution (if executed)
-    reporter_reward: float = 0.0     # 30% to reporter
-    security_fund: float = 0.0       # 20% to security fund
-    burned: float = 0.0              # 50% burned
+    reporter_reward: float = 0.0  # 30% to reporter
+    security_fund: float = 0.0  # 20% to security fund
+    burned: float = 0.0  # 50% burned
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -560,8 +568,8 @@ class SlashingEvent:
             "reported_at": self.reported_at.isoformat(),
             "status": self.status.value,
             "resolution_votes": self.resolution_votes,
-            "resolution_at": self.resolution_at.isoformat() if self.resolution_at else None,
-            "appeal_deadline": self.appeal_deadline.isoformat() if self.appeal_deadline else None,
+            "resolution_at": (self.resolution_at.isoformat() if self.resolution_at else None),
+            "appeal_deadline": (self.appeal_deadline.isoformat() if self.appeal_deadline else None),
             "reporter_reward": self.reporter_reward,
             "security_fund": self.security_fund,
             "burned": self.burned,
@@ -678,7 +686,7 @@ class ElevationProposal:
             "votes": [v.to_dict() for v in self.votes],
             "requirements": self.requirements,
             "outcome": self.outcome.value,
-            "finalized_at": self.finalized_at.isoformat() if self.finalized_at else None,
+            "finalized_at": (self.finalized_at.isoformat() if self.finalized_at else None),
             "approve_count": self.approve_count(),
             "reject_count": self.reject_count(),
             "abstain_count": self.abstain_count(),

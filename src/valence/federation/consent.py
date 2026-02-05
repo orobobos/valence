@@ -126,15 +126,11 @@ class CrossFederationHop:
             "to_federation_id": self.to_federation_id,
             "to_gateway_id": self.to_gateway_id,
             "timestamp": self.timestamp,
-            "signature": self.signature.hex()
-            if isinstance(self.signature, bytes)
-            else self.signature,
+            "signature": (self.signature.hex() if isinstance(self.signature, bytes) else self.signature),
             "original_consent_chain_id": self.original_consent_chain_id,
             "hop_number": self.hop_number,
             "policy_snapshot": self.policy_snapshot,
-            "policy_hash": self.policy_hash.hex()
-            if isinstance(self.policy_hash, bytes)
-            else self.policy_hash,
+            "policy_hash": (self.policy_hash.hex() if isinstance(self.policy_hash, bytes) else self.policy_hash),
             "reason": self.reason,
             "requester_did": self.requester_did,
         }
@@ -335,9 +331,7 @@ class CrossFederationConsentChain:
             "origin_gateway_id": self.origin_gateway_id,
             "cross_federation_hops": [h.to_dict() for h in self.cross_federation_hops],
             "provenance_chain": self.provenance_chain,
-            "chain_hash": self.chain_hash.hex()
-            if isinstance(self.chain_hash, bytes)
-            else self.chain_hash,
+            "chain_hash": (self.chain_hash.hex() if isinstance(self.chain_hash, bytes) else self.chain_hash),
             "revoked": self.revoked,
             "revoked_at": self.revoked_at,
             "revoked_by": self.revoked_by,
@@ -357,9 +351,7 @@ class CrossFederationConsentChain:
             original_chain_id=data["original_chain_id"],
             origin_federation_id=data["origin_federation_id"],
             origin_gateway_id=data["origin_gateway_id"],
-            cross_federation_hops=[
-                CrossFederationHop.from_dict(h) for h in data.get("cross_federation_hops", [])
-            ],
+            cross_federation_hops=[CrossFederationHop.from_dict(h) for h in data.get("cross_federation_hops", [])],
             provenance_chain=data.get("provenance_chain", []),
             chain_hash=chain_hash,
             revoked=data.get("revoked", False),
@@ -476,9 +468,7 @@ class ConsentChainStoreProtocol(Protocol):
         """Get a cross-federation consent chain by ID."""
         ...
 
-    async def get_cross_chain_by_original(
-        self, original_chain_id: str
-    ) -> CrossFederationConsentChain | None:
+    async def get_cross_chain_by_original(self, original_chain_id: str) -> CrossFederationConsentChain | None:
         """Get a cross-federation chain by its original chain ID."""
         ...
 
@@ -626,10 +616,7 @@ class CrossFederationConsentService:
         # Store updated chain
         await self.chain_store.store_cross_chain(cross_chain)
 
-        logger.info(
-            f"Created cross-federation hop: {self.federation_id} -> {target_federation_id} "
-            f"(chain={original_chain_id}, hop={hop_number})"
-        )
+        logger.info(f"Created cross-federation hop: {self.federation_id} -> {target_federation_id} " f"(chain={original_chain_id}, hop={hop_number})")
 
         return hop
 
@@ -667,17 +654,13 @@ class CrossFederationConsentService:
         """
         # Validate this hop is directed to us
         if hop.to_federation_id != self.federation_id:
-            raise ValueError(
-                f"Hop is not directed to this federation "
-                f"(expected {self.federation_id}, got {hop.to_federation_id})"
-            )
+            raise ValueError(f"Hop is not directed to this federation " f"(expected {self.federation_id}, got {hop.to_federation_id})")
 
         # Verify policy snapshot hash (Issue #145 - prevent tampering)
         if hop.policy_hash:
             if not verify_policy_hash(hop.policy_snapshot, hop.policy_hash):
                 raise ValueError(
-                    f"Policy snapshot hash mismatch: snapshot may have been tampered with "
-                    f"(from federation {hop.from_federation_id})"
+                    f"Policy snapshot hash mismatch: snapshot may have been tampered with " f"(from federation {hop.from_federation_id})"
                 )
 
         # Validate against incoming policy
@@ -698,9 +681,7 @@ class CrossFederationConsentService:
                 raise ValueError("Invalid hop signature")
 
         # Get or create local representation of the chain
-        cross_chain = await self.chain_store.get_cross_chain_by_original(
-            hop.original_consent_chain_id
-        )
+        cross_chain = await self.chain_store.get_cross_chain_by_original(hop.original_consent_chain_id)
 
         is_new_chain = cross_chain is None
 
@@ -717,15 +698,10 @@ class CrossFederationConsentService:
 
                 # Validate we have all prior hops
                 if len(prior_hops) != hop.hop_number - 1:
-                    raise ValueError(
-                        f"Incomplete chain provenance: expected {hop.hop_number - 1} "
-                        f"prior hops, got {len(prior_hops)}"
-                    )
+                    raise ValueError(f"Incomplete chain provenance: expected {hop.hop_number - 1} " f"prior hops, got {len(prior_hops)}")
 
                 # Validate chain continuity and cryptographic signatures of all prior hops
-                await self._validate_chain_provenance(
-                    prior_hops, hop, gateway_verifiers
-                )
+                await self._validate_chain_provenance(prior_hops, hop, gateway_verifiers)
 
             # Check federation trust threshold for unknown chains (Issue #176)
             await self._validate_unknown_chain_trust(hop.from_federation_id)
@@ -760,9 +736,7 @@ class CrossFederationConsentService:
         if not is_new_chain:
             expected_hop = cross_chain.get_hop_count() + 1
             if expected_hop != hop.hop_number:
-                raise ValueError(
-                    f"Hop number mismatch: expected {expected_hop}, got {hop.hop_number}"
-                )
+                raise ValueError(f"Hop number mismatch: expected {expected_hop}, got {hop.hop_number}")
 
         # Add hop
         cross_chain.add_hop(hop)
@@ -770,10 +744,7 @@ class CrossFederationConsentService:
         # Store
         await self.chain_store.store_cross_chain(cross_chain)
 
-        logger.info(
-            f"Received cross-federation hop from {hop.from_federation_id}: "
-            f"chain={hop.original_consent_chain_id}, hop={hop.hop_number}"
-        )
+        logger.info(f"Received cross-federation hop from {hop.from_federation_id}: " f"chain={hop.original_consent_chain_id}, hop={hop.hop_number}")
 
         return cross_chain
 
@@ -803,10 +774,7 @@ class CrossFederationConsentService:
         for i, hop in enumerate(sorted_hops):
             expected_number = i + 1
             if hop.hop_number != expected_number:
-                raise ValueError(
-                    f"Non-sequential hop numbers in chain: expected hop {expected_number}, "
-                    f"got hop {hop.hop_number}"
-                )
+                raise ValueError(f"Non-sequential hop numbers in chain: expected hop {expected_number}, " f"got hop {hop.hop_number}")
 
         # Validate chain continuity (each hop's to_federation matches next hop's from_federation)
         all_hops = sorted_hops + [current_hop]
@@ -847,24 +815,17 @@ class CrossFederationConsentService:
                         "timestamp": hop.timestamp,
                     }
                     if not verifier.verify(hop_data, hop.signature, hop.from_gateway_id):
-                        raise ValueError(
-                            f"Invalid signature on hop {hop.hop_number} "
-                            f"from gateway {hop.from_gateway_id}"
-                        )
+                        raise ValueError(f"Invalid signature on hop {hop.hop_number} " f"from gateway {hop.from_gateway_id}")
                 else:
                     logger.warning(
-                        f"No verifier available for gateway {hop.from_gateway_id} "
-                        f"(hop {hop.hop_number}), skipping signature verification"
+                        f"No verifier available for gateway {hop.from_gateway_id} " f"(hop {hop.hop_number}), skipping signature verification"
                     )
 
         # Verify policy hashes on all prior hops
         for hop in sorted_hops:
             if hop.policy_hash:
                 if not verify_policy_hash(hop.policy_snapshot, hop.policy_hash):
-                    raise ValueError(
-                        f"Policy hash mismatch on hop {hop.hop_number} "
-                        f"from federation {hop.from_federation_id}"
-                    )
+                    raise ValueError(f"Policy hash mismatch on hop {hop.hop_number} " f"from federation {hop.from_federation_id}")
 
         logger.debug(
             f"Chain provenance validated: {len(all_hops)} hops, "
@@ -893,9 +854,7 @@ class CrossFederationConsentService:
 
         # Check trust if service available
         if self.trust_service:
-            trust = await self.trust_service.get_federation_trust(
-                source_federation_id, self.federation_id
-            )
+            trust = await self.trust_service.get_federation_trust(source_federation_id, self.federation_id)
             if trust < threshold:
                 raise PermissionError(
                     f"Insufficient trust to accept unknown chain from {source_federation_id}: "
@@ -971,10 +930,7 @@ class CrossFederationConsentService:
                     )
 
                 # Check hop limit
-                if (
-                    source_policy.max_outgoing_hops
-                    and hop.hop_number > source_policy.max_outgoing_hops
-                ):
+                if source_policy.max_outgoing_hops and hop.hop_number > source_policy.max_outgoing_hops:
                     return ConsentValidation(
                         result=ConsentValidationResult.POLICY_VIOLATION,
                         chain_id=chain.id,
@@ -1006,9 +962,7 @@ class CrossFederationConsentService:
 
             # Check trust if service available
             if self.trust_service:
-                trust = await self.trust_service.get_federation_trust(
-                    hop.from_federation_id, hop.to_federation_id
-                )
+                trust = await self.trust_service.get_federation_trust(hop.from_federation_id, hop.to_federation_id)
                 min_trust = source_policy.min_trust_for_outgoing if source_policy else 0.5
                 if trust < min_trust:
                     return ConsentValidation(
@@ -1107,10 +1061,7 @@ class CrossFederationConsentService:
 
         await self.chain_store.store_revocation(revocation)
 
-        logger.info(
-            f"Revoked cross-federation chain {chain.id}: "
-            f"scope={scope.value}, pending={len(pending_federations)} federations"
-        )
+        logger.info(f"Revoked cross-federation chain {chain.id}: " f"scope={scope.value}, pending={len(pending_federations)} federations")
 
         return revocation
 
@@ -1150,9 +1101,7 @@ class CrossFederationConsentService:
 
         await self.chain_store.store_revocation(revocation)
 
-        logger.info(
-            f"Processed revocation from {revocation.revoked_in_federation}: " f"chain={chain.id}"
-        )
+        logger.info(f"Processed revocation from {revocation.revoked_in_federation}: " f"chain={chain.id}")
 
     async def get_provenance(
         self,
@@ -1193,21 +1142,14 @@ class CrossFederationConsentService:
 
         if policy.outgoing_policy == CrossFederationPolicy.ALLOW_LISTED:
             if target_federation_id not in policy.allowed_outgoing_federations:
-                raise PermissionError(
-                    f"Federation {target_federation_id} not in allowed outgoing list"
-                )
+                raise PermissionError(f"Federation {target_federation_id} not in allowed outgoing list")
 
         if policy.outgoing_policy == CrossFederationPolicy.ALLOW_TRUSTED:
             # Check trust if service available
             if self.trust_service:
-                trust = await self.trust_service.get_federation_trust(
-                    self.federation_id, target_federation_id
-                )
+                trust = await self.trust_service.get_federation_trust(self.federation_id, target_federation_id)
                 if trust < policy.min_trust_for_outgoing:
-                    raise PermissionError(
-                        f"Insufficient trust for {target_federation_id}: "
-                        f"{trust:.2f} < {policy.min_trust_for_outgoing:.2f}"
-                    )
+                    raise PermissionError(f"Insufficient trust for {target_federation_id}: " f"{trust:.2f} < {policy.min_trust_for_outgoing:.2f}")
 
     async def _validate_incoming(self, source_federation_id: str) -> None:
         """Validate incoming cross-federation share against policy."""
@@ -1227,21 +1169,14 @@ class CrossFederationConsentService:
 
         if policy.incoming_policy == CrossFederationPolicy.ALLOW_LISTED:
             if source_federation_id not in policy.allowed_incoming_federations:
-                raise PermissionError(
-                    f"Federation {source_federation_id} not in allowed incoming list"
-                )
+                raise PermissionError(f"Federation {source_federation_id} not in allowed incoming list")
 
         if policy.incoming_policy == CrossFederationPolicy.ALLOW_TRUSTED:
             # Check trust if service available
             if self.trust_service:
-                trust = await self.trust_service.get_federation_trust(
-                    source_federation_id, self.federation_id
-                )
+                trust = await self.trust_service.get_federation_trust(source_federation_id, self.federation_id)
                 if trust < policy.min_trust_for_incoming:
-                    raise PermissionError(
-                        f"Insufficient trust from {source_federation_id}: "
-                        f"{trust:.2f} < {policy.min_trust_for_incoming:.2f}"
-                    )
+                    raise PermissionError(f"Insufficient trust from {source_federation_id}: " f"{trust:.2f} < {policy.min_trust_for_incoming:.2f}")
 
 
 # =============================================================================
@@ -1331,9 +1266,7 @@ class InMemoryConsentChainStore:
             self._touch_chain(chain_id)
         return chain
 
-    async def get_cross_chain_by_original(
-        self, original_chain_id: str
-    ) -> CrossFederationConsentChain | None:
+    async def get_cross_chain_by_original(self, original_chain_id: str) -> CrossFederationConsentChain | None:
         """Get a chain by original ID, updating LRU order."""
         chain = self._chains_by_original.get(original_chain_id)
         if chain:

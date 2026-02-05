@@ -13,21 +13,18 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
-from valence.network.messages import AckRequest, AckMessage, DeliverPayload
+from valence.network.discovery import RouterInfo
+from valence.network.messages import AckMessage, AckRequest, DeliverPayload
 from valence.network.node import (
     NodeClient,
-    RouterConnection,
     PendingAck,
-    create_node_client,
+    RouterConnection,
 )
-from valence.network.discovery import RouterInfo
-
 
 # =============================================================================
 # Fixtures
@@ -100,7 +97,7 @@ def node_client(ed25519_keypair, x25519_keypair):
     """Create a NodeClient for testing."""
     private_key, public_key = ed25519_keypair
     enc_private, _ = x25519_keypair
-    
+
     return NodeClient(
         node_id=public_key.public_bytes_raw().hex(),
         private_key=private_key,
@@ -123,7 +120,7 @@ class TestAckRequest:
     def test_ack_request_defaults(self):
         """Test AckRequest with default values."""
         req = AckRequest(message_id="msg-123")
-        
+
         assert req.message_id == "msg-123"
         assert req.require_ack is True
         assert req.ack_timeout_ms == 30000
@@ -135,7 +132,7 @@ class TestAckRequest:
             require_ack=False,
             ack_timeout_ms=60000,
         )
-        
+
         assert req.message_id == "msg-456"
         assert req.require_ack is False
         assert req.ack_timeout_ms == 60000
@@ -152,7 +149,7 @@ class TestAckMessage:
             recipient_id="recipient-abc",
             signature="deadbeef",
         )
-        
+
         assert ack.type == "ack"
         assert ack.original_message_id == "msg-789"
         assert ack.received_at == 1234567890.123
@@ -167,9 +164,9 @@ class TestAckMessage:
             recipient_id="node-456",
             signature="abcd1234",
         )
-        
+
         data = ack.to_dict()
-        
+
         assert data["type"] == "ack"
         assert data["original_message_id"] == "msg-123"
         assert data["received_at"] == 1000.0
@@ -185,9 +182,9 @@ class TestAckMessage:
             "recipient_id": "node-789",
             "signature": "5678efgh",
         }
-        
+
         ack = AckMessage.from_dict(data)
-        
+
         assert ack.type == "ack"
         assert ack.original_message_id == "msg-xyz"
         assert ack.received_at == 2000.0
@@ -202,10 +199,10 @@ class TestAckMessage:
             recipient_id="node-roundtrip",
             signature="roundtripsig",
         )
-        
+
         data = original.to_dict()
         restored = AckMessage.from_dict(data)
-        
+
         assert restored.original_message_id == original.original_message_id
         assert restored.received_at == original.received_at
         assert restored.recipient_id == original.recipient_id
@@ -224,7 +221,7 @@ class TestDeliverPayloadACK:
             message_id="msg-001",
             require_ack=True,
         )
-        
+
         assert payload.message_id == "msg-001"
         assert payload.require_ack is True
 
@@ -235,7 +232,7 @@ class TestDeliverPayloadACK:
             message_type="query",
             content={},
         )
-        
+
         assert payload.message_id is None
         assert payload.require_ack is False
 
@@ -248,9 +245,9 @@ class TestDeliverPayloadACK:
             message_id="msg-002",
             require_ack=True,
         )
-        
+
         data = payload.to_dict()
-        
+
         assert "message_id" in data
         assert "require_ack" in data
         assert data["message_id"] == "msg-002"
@@ -265,9 +262,9 @@ class TestDeliverPayloadACK:
             "message_id": "msg-003",
             "require_ack": False,
         }
-        
+
         payload = DeliverPayload.from_dict(data)
-        
+
         assert payload.message_id == "msg-003"
         assert payload.require_ack is False
 
@@ -283,7 +280,7 @@ class TestPendingAck:
     def test_pending_ack_creation(self, x25519_keypair):
         """Test creating a PendingAck."""
         _, pub_key = x25519_keypair
-        
+
         pending = PendingAck(
             message_id="pending-123",
             recipient_id="recipient-456",
@@ -292,7 +289,7 @@ class TestPendingAck:
             sent_at=1000.0,
             router_id="router-789",
         )
-        
+
         assert pending.message_id == "pending-123"
         assert pending.recipient_id == "recipient-456"
         assert pending.content == b"test content"
@@ -305,7 +302,7 @@ class TestPendingAck:
     def test_pending_ack_custom_timeout(self, x25519_keypair):
         """Test PendingAck with custom timeout."""
         _, pub_key = x25519_keypair
-        
+
         pending = PendingAck(
             message_id="pending-456",
             recipient_id="recipient-789",
@@ -315,7 +312,7 @@ class TestPendingAck:
             router_id="router-abc",
             timeout_ms=60000,
         )
-        
+
         assert pending.timeout_ms == 60000
 
 
@@ -330,7 +327,7 @@ class TestIdempotentDelivery:
     def test_is_duplicate_first_message(self, node_client):
         """Test that first occurrence of message is not duplicate."""
         result = node_client._is_duplicate_message("new-msg-001")
-        
+
         assert result is False
         assert "new-msg-001" in node_client.seen_messages
 
@@ -338,17 +335,17 @@ class TestIdempotentDelivery:
         """Test that second occurrence is detected as duplicate."""
         # First occurrence
         node_client._is_duplicate_message("dup-msg-001")
-        
+
         # Second occurrence
         result = node_client._is_duplicate_message("dup-msg-001")
-        
+
         assert result is True
 
     def test_is_duplicate_different_messages(self, node_client):
         """Test that different messages are not duplicates."""
         node_client._is_duplicate_message("msg-a")
         result = node_client._is_duplicate_message("msg-b")
-        
+
         assert result is False
         assert "msg-a" in node_client.seen_messages
         assert "msg-b" in node_client.seen_messages
@@ -356,11 +353,11 @@ class TestIdempotentDelivery:
     def test_seen_messages_pruning(self, node_client):
         """Test that seen_messages is pruned when too large."""
         node_client.max_seen_messages = 10
-        
+
         # Add more than max
         for i in range(15):
             node_client._is_duplicate_message(f"msg-{i}")
-        
+
         # Should have pruned to roughly half
         assert len(node_client.seen_messages) <= 10
 
@@ -376,7 +373,7 @@ class TestACKSigning:
     def test_sign_ack(self, node_client):
         """Test signing a message_id for ACK."""
         signature = node_client._sign_ack("test-message-id")
-        
+
         assert signature is not None
         assert len(signature) > 0
         # Ed25519 signatures are 64 bytes = 128 hex chars
@@ -386,14 +383,14 @@ class TestACKSigning:
         """Test that signing same message_id produces same signature."""
         sig1 = node_client._sign_ack("consistent-id")
         sig2 = node_client._sign_ack("consistent-id")
-        
+
         assert sig1 == sig2
 
     def test_sign_ack_different_messages(self, node_client):
         """Test that different message_ids produce different signatures."""
         sig1 = node_client._sign_ack("message-1")
         sig2 = node_client._sign_ack("message-2")
-        
+
         assert sig1 != sig2
 
 
@@ -407,11 +404,16 @@ class TestE2EACKHandling:
 
     @pytest.mark.asyncio
     async def test_handle_e2e_ack_success(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test handling a successful E2E ACK."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -421,7 +423,7 @@ class TestE2EACKHandling:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Track a pending ACK
         node_client.pending_acks["test-msg"] = PendingAck(
             message_id="test-msg",
@@ -431,7 +433,7 @@ class TestE2EACKHandling:
             sent_at=time.time(),
             router_id=mock_router_info.router_id,
         )
-        
+
         # Handle ACK
         ack = AckMessage(
             original_message_id="test-msg",
@@ -439,9 +441,9 @@ class TestE2EACKHandling:
             recipient_id="recipient-xyz",
             signature="validsig",
         )
-        
+
         await node_client._handle_e2e_ack(ack)
-        
+
         # Pending ACK should be removed
         assert "test-msg" not in node_client.pending_acks
         # Router stats should be updated
@@ -458,10 +460,10 @@ class TestE2EACKHandling:
             recipient_id="someone",
             signature="sig",
         )
-        
+
         # Should not raise, just log
         await node_client._handle_e2e_ack(ack)
-        
+
         # Stats should remain at 0
         assert node_client._stats.get("ack_successes", 0) == 0
 
@@ -475,11 +477,16 @@ class TestACKFailureHandling:
     """Tests for ACK failure and retry handling."""
 
     def test_handle_ack_failure(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test handling ACK failure."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -489,7 +496,7 @@ class TestACKFailureHandling:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Create pending ACK
         pending = PendingAck(
             message_id="failed-msg",
@@ -501,10 +508,10 @@ class TestACKFailureHandling:
             retries=2,
         )
         node_client.pending_acks["failed-msg"] = pending
-        
+
         # Handle failure
         node_client._handle_ack_failure("failed-msg", pending)
-        
+
         # Pending should be removed
         assert "failed-msg" not in node_client.pending_acks
         # Router failure count should increase
@@ -513,17 +520,22 @@ class TestACKFailureHandling:
         assert node_client._stats["ack_failures"] == 1
 
     def test_handle_ack_failure_with_callback(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test ACK failure triggers callback."""
         _, pub_key = x25519_keypair
         callback_called = []
-        
+
         def on_timeout(msg_id, recipient_id):
             callback_called.append((msg_id, recipient_id))
-        
+
         node_client.on_ack_timeout = on_timeout
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -533,7 +545,7 @@ class TestACKFailureHandling:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         pending = PendingAck(
             message_id="callback-msg",
             recipient_id="recipient-callback",
@@ -542,9 +554,9 @@ class TestACKFailureHandling:
             sent_at=time.time(),
             router_id=mock_router_info.router_id,
         )
-        
+
         node_client._handle_ack_failure("callback-msg", pending)
-        
+
         assert len(callback_called) == 1
         assert callback_called[0] == ("callback-msg", "recipient-callback")
 
@@ -560,7 +572,7 @@ class TestACKStats:
     def test_get_stats_includes_ack_fields(self, node_client):
         """Test that get_stats includes ACK fields."""
         stats = node_client.get_stats()
-        
+
         assert "pending_acks" in stats
         assert "seen_messages_cached" in stats
         assert "ack_successes" in stats
@@ -572,7 +584,7 @@ class TestACKStats:
         # Process same message twice (simulated)
         node_client._is_duplicate_message("dup-test")
         node_client._stats["messages_deduplicated"] += 1  # Simulate handler
-        
+
         stats = node_client.get_stats()
         assert stats["messages_deduplicated"] == 1
 
@@ -587,11 +599,16 @@ class TestACKTimeoutRetry:
 
     @pytest.mark.asyncio
     async def test_wait_for_ack_timeout(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test that _wait_for_ack triggers retry on timeout."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -601,7 +618,7 @@ class TestACKTimeoutRetry:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Create pending ACK with very short timeout
         pending = PendingAck(
             message_id="timeout-msg",
@@ -613,10 +630,10 @@ class TestACKTimeoutRetry:
             timeout_ms=50,  # 50ms timeout for testing
         )
         node_client.pending_acks["timeout-msg"] = pending
-        
+
         # Start waiting
         await node_client._wait_for_ack("timeout-msg")
-        
+
         # After timeout, retries should have incremented
         # (since no ACK was received)
         if "timeout-msg" in node_client.pending_acks:
@@ -624,11 +641,16 @@ class TestACKTimeoutRetry:
 
     @pytest.mark.asyncio
     async def test_wait_for_ack_received_before_timeout(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test that receiving ACK before timeout prevents retry."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -638,7 +660,7 @@ class TestACKTimeoutRetry:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Create pending ACK
         pending = PendingAck(
             message_id="quick-ack-msg",
@@ -650,10 +672,10 @@ class TestACKTimeoutRetry:
             timeout_ms=200,  # 200ms timeout
         )
         node_client.pending_acks["quick-ack-msg"] = pending
-        
+
         # Start waiting in background
         wait_task = asyncio.create_task(node_client._wait_for_ack("quick-ack-msg"))
-        
+
         # Simulate ACK received quickly (remove from pending)
         await asyncio.sleep(0.05)  # 50ms
         ack = AckMessage(
@@ -663,10 +685,10 @@ class TestACKTimeoutRetry:
             signature="sig",
         )
         await node_client._handle_e2e_ack(ack)
-        
+
         # Wait for timeout handler to complete
         await wait_task
-        
+
         # Should have succeeded without retries
         assert "quick-ack-msg" not in node_client.pending_acks
         assert conn.ack_success == 1
@@ -683,7 +705,7 @@ class TestACKTimeoutRetry:
     ):
         """Test retrying via different router after failures."""
         _, pub_key = x25519_keypair
-        
+
         # Set up two connections
         ws1 = AsyncMock()
         ws1.closed = False
@@ -695,7 +717,7 @@ class TestACKTimeoutRetry:
             connected_at=time.time(),
             last_seen=time.time(),
         )
-        
+
         ws2 = AsyncMock()
         ws2.closed = False
         ws2.send_json = AsyncMock()
@@ -706,10 +728,10 @@ class TestACKTimeoutRetry:
             connected_at=time.time(),
             last_seen=time.time(),
         )
-        
+
         node_client.connections[mock_router_info.router_id] = conn1
         node_client.connections[mock_router_info_2.router_id] = conn2
-        
+
         # Create pending ACK for first router
         pending = PendingAck(
             message_id="retry-msg",
@@ -722,10 +744,10 @@ class TestACKTimeoutRetry:
             retries=1,  # Already retried once
         )
         node_client.pending_acks["retry-msg"] = pending
-        
+
         # Trigger retry via different router
         await node_client._retry_via_different_router("retry-msg")
-        
+
         # Should have switched to second router
         if "retry-msg" in node_client.pending_acks:
             assert node_client.pending_acks["retry-msg"].router_id == mock_router_info_2.router_id
@@ -743,11 +765,16 @@ class TestSendMessageWithACK:
 
     @pytest.mark.asyncio
     async def test_send_message_require_ack_true(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test sending message with require_ack=True creates pending ACK."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -757,7 +784,7 @@ class TestSendMessageWithACK:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Send with ACK
         message_id = await node_client.send_message(
             recipient_id="recipient-123",
@@ -765,7 +792,7 @@ class TestSendMessageWithACK:
             content=b"Hello!",
             require_ack=True,
         )
-        
+
         # Should have pending ACK
         assert message_id in node_client.pending_acks
         pending = node_client.pending_acks[message_id]
@@ -775,11 +802,16 @@ class TestSendMessageWithACK:
 
     @pytest.mark.asyncio
     async def test_send_message_require_ack_false(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test sending message with require_ack=False skips ACK tracking."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -789,7 +821,7 @@ class TestSendMessageWithACK:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Send without ACK
         message_id = await node_client.send_message(
             recipient_id="recipient-456",
@@ -797,17 +829,22 @@ class TestSendMessageWithACK:
             content=b"Fire and forget",
             require_ack=False,
         )
-        
+
         # Should NOT have pending ACK
         assert message_id not in node_client.pending_acks
 
     @pytest.mark.asyncio
     async def test_send_message_custom_timeout(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test sending message with custom ACK timeout."""
         _, pub_key = x25519_keypair
-        
+
         # Set up connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -817,7 +854,7 @@ class TestSendMessageWithACK:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         # Send with custom timeout
         message_id = await node_client.send_message(
             recipient_id="recipient-789",
@@ -826,7 +863,7 @@ class TestSendMessageWithACK:
             require_ack=True,
             ack_timeout_ms=60000,
         )
-        
+
         assert message_id in node_client.pending_acks
         assert node_client.pending_acks[message_id].timeout_ms == 60000
 
@@ -847,11 +884,16 @@ class TestACKEdgeCases:
 
     @pytest.mark.asyncio
     async def test_retry_different_router_no_alternative(
-        self, node_client, mock_router_info, mock_websocket, mock_session, x25519_keypair
+        self,
+        node_client,
+        mock_router_info,
+        mock_websocket,
+        mock_session,
+        x25519_keypair,
     ):
         """Test retry when no alternative router available."""
         _, pub_key = x25519_keypair
-        
+
         # Set up only one connection
         conn = RouterConnection(
             router=mock_router_info,
@@ -861,7 +903,7 @@ class TestACKEdgeCases:
             last_seen=time.time(),
         )
         node_client.connections[mock_router_info.router_id] = conn
-        
+
         pending = PendingAck(
             message_id="no-alt-msg",
             recipient_id="recipient",
@@ -871,10 +913,10 @@ class TestACKEdgeCases:
             router_id=mock_router_info.router_id,
         )
         node_client.pending_acks["no-alt-msg"] = pending
-        
+
         # Try to retry via different router (none available)
         await node_client._retry_via_different_router("no-alt-msg")
-        
+
         # Should have failed and removed pending
         assert "no-alt-msg" not in node_client.pending_acks
         assert node_client._stats["ack_failures"] == 1
@@ -883,7 +925,7 @@ class TestACKEdgeCases:
         """Test duplicate check with empty message_id."""
         result1 = node_client._is_duplicate_message("")
         result2 = node_client._is_duplicate_message("")
-        
+
         assert result1 is False
         assert result2 is True
 

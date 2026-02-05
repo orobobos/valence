@@ -35,23 +35,41 @@ from typing import Any, Protocol, cast
 
 # Default patterns for PII detection (can be extended via MetadataSanitizer)
 DEFAULT_PII_PATTERNS: dict[str, re.Pattern] = {
-    "email": re.compile(r'\b[\w.-]+@[\w.-]+\.\w+\b'),
-    "phone_us": re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'),
-    "phone_intl": re.compile(r'\+\d{1,3}[-.\s]?\d{1,14}\b'),
-    "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
-    "credit_card": re.compile(r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b'),
-    "ip_address": re.compile(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'),
+    "email": re.compile(r"\b[\w.-]+@[\w.-]+\.\w+\b"),
+    "phone_us": re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b"),
+    "phone_intl": re.compile(r"\+\d{1,3}[-.\s]?\d{1,14}\b"),
+    "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    "credit_card": re.compile(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"),
+    "ip_address": re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"),
     # DID values should generally be preserved (they're pseudonymous identifiers)
     # but we allow blocking specific patterns if needed
 }
 
 # Keys that should always be sanitized (case-insensitive matching)
-DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset([
-    "password", "secret", "token", "api_key", "apikey", "private_key",
-    "privatekey", "auth", "authorization", "bearer", "credential",
-    "ssn", "social_security", "credit_card", "creditcard", "cvv",
-    "pin", "bank_account", "routing_number", "tax_id",
-])
+DEFAULT_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    [
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "private_key",
+        "privatekey",
+        "auth",
+        "authorization",
+        "bearer",
+        "credential",
+        "ssn",
+        "social_security",
+        "credit_card",
+        "creditcard",
+        "cvv",
+        "pin",
+        "bank_account",
+        "routing_number",
+        "tax_id",
+    ]
+)
 
 # Placeholder for redacted values
 REDACTED_PLACEHOLDER = "[REDACTED]"
@@ -132,7 +150,7 @@ class MetadataSanitizer:
                 sanitized_metadata=metadata.copy() if metadata else {},
                 fields_redacted=[],
                 pii_scrubbed=[],
-                original_hash=self._compute_hash(metadata) if preserve_original_hash else "",
+                original_hash=(self._compute_hash(metadata) if preserve_original_hash else ""),
             )
 
         original_hash = self._compute_hash(metadata) if preserve_original_hash else ""
@@ -171,10 +189,7 @@ class MetadataSanitizer:
                 pii_scrubbed.extend(f"{key}.{f}" for f in nested_result.pii_scrubbed)
             elif isinstance(value, list):
                 # Sanitize list elements if they're strings
-                sanitized[key] = [
-                    self._scrub_pii(v)[0] if isinstance(v, str) else v
-                    for v in value
-                ]
+                sanitized[key] = [self._scrub_pii(v)[0] if isinstance(v, str) else v for v in value]
             else:
                 sanitized[key] = value
 
@@ -263,35 +278,35 @@ class AuditEventType(Enum):
     """Types of security-relevant events that can be audited."""
 
     # Sharing events
-    SHARE = "share"                    # Belief shared with another DID
-    RECEIVE = "receive"                # Belief received from another DID
-    REVOKE = "revoke"                  # Share revoked
+    SHARE = "share"  # Belief shared with another DID
+    RECEIVE = "receive"  # Belief received from another DID
+    REVOKE = "revoke"  # Share revoked
 
     # Trust events
-    GRANT_TRUST = "grant_trust"        # Trust edge created
-    REVOKE_TRUST = "revoke_trust"      # Trust edge removed
-    UPDATE_TRUST = "update_trust"      # Trust level modified
+    GRANT_TRUST = "grant_trust"  # Trust edge created
+    REVOKE_TRUST = "revoke_trust"  # Trust edge removed
+    UPDATE_TRUST = "update_trust"  # Trust level modified
 
     # Domain events
-    DOMAIN_CREATE = "domain_create"    # Domain created
-    DOMAIN_DELETE = "domain_delete"    # Domain deleted
-    MEMBER_ADD = "member_add"          # Member added to domain
-    MEMBER_REMOVE = "member_remove"    # Member removed from domain
-    ROLE_CHANGE = "role_change"        # Member role changed
+    DOMAIN_CREATE = "domain_create"  # Domain created
+    DOMAIN_DELETE = "domain_delete"  # Domain deleted
+    MEMBER_ADD = "member_add"  # Member added to domain
+    MEMBER_REMOVE = "member_remove"  # Member removed from domain
+    ROLE_CHANGE = "role_change"  # Member role changed
 
     # Access events
     ACCESS_GRANTED = "access_granted"  # Access to resource granted
-    ACCESS_DENIED = "access_denied"    # Access to resource denied
+    ACCESS_DENIED = "access_denied"  # Access to resource denied
     ACCESS_EXPIRED = "access_expired"  # Access expired
 
     # Belief events
-    BELIEF_CREATE = "belief_create"    # New belief created
-    BELIEF_UPDATE = "belief_update"    # Belief modified
-    BELIEF_DELETE = "belief_delete"    # Belief deleted
+    BELIEF_CREATE = "belief_create"  # New belief created
+    BELIEF_UPDATE = "belief_update"  # Belief modified
+    BELIEF_DELETE = "belief_delete"  # Belief deleted
 
     # System events
-    KEY_ROTATION = "key_rotation"      # Encryption key rotated
-    CONFIG_CHANGE = "config_change"    # Configuration changed
+    KEY_ROTATION = "key_rotation"  # Encryption key rotated
+    CONFIG_CHANGE = "config_change"  # Configuration changed
 
 
 @dataclass
@@ -491,7 +506,7 @@ class InMemoryAuditBackend:
             # Trim oldest events if over limit
             # Note: trimming breaks chain verification for full history
             if len(self._events) > self._max_events:
-                self._events = self._events[-self._max_events:]
+                self._events = self._events[-self._max_events :]
 
     def query(
         self,
@@ -1017,7 +1032,9 @@ def set_audit_logger(logger: AuditLogger) -> None:
 AuditLog = AuditLogger
 
 
-def _verify_event_chain(events: list[AuditEvent]) -> tuple[bool, ChainVerificationError | None]:
+def _verify_event_chain(
+    events: list[AuditEvent],
+) -> tuple[bool, ChainVerificationError | None]:
     """Internal helper to verify hash chain integrity.
 
     Checks:
@@ -1064,7 +1081,9 @@ def _verify_event_chain(events: list[AuditEvent]) -> tuple[bool, ChainVerificati
     return True, None
 
 
-def verify_chain(events: list[AuditEvent]) -> tuple[bool, ChainVerificationError | None]:
+def verify_chain(
+    events: list[AuditEvent],
+) -> tuple[bool, ChainVerificationError | None]:
     """Verify the integrity of an audit event hash chain.
 
     Standalone function to verify events loaded from external sources.
@@ -1180,11 +1199,13 @@ class StaticKeyProvider(KeyProvider):
 
 class EncryptionError(Exception):
     """Raised when encryption or decryption fails."""
+
     pass
 
 
 class DecryptionError(Exception):
     """Raised when decryption fails (wrong key, corrupted data, etc.)."""
+
     pass
 
 

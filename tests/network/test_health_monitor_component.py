@@ -14,12 +14,10 @@ from seed.py (which is tested in test_health_monitor.py).
 
 from __future__ import annotations
 
-import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.health_monitor import (
     HealthMonitor,
     HealthMonitorConfig,
@@ -27,13 +25,7 @@ from valence.network.health_monitor import (
 from valence.network.messages import (
     HealthGossip,
     RouterHealthObservation,
-    MisbehaviorType,
-    RouterBehaviorMetrics,
-    MisbehaviorEvidence,
-    MisbehaviorReport,
-    NetworkBaseline,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -84,7 +76,7 @@ def health_monitor(mock_discovery, config):
 def mock_router_connection():
     """Create a mock RouterConnection."""
     from valence.network.discovery import RouterInfo
-    
+
     router = RouterInfo(
         router_id="b" * 64,
         endpoints=["192.168.1.1:8471"],
@@ -93,7 +85,7 @@ def mock_router_connection():
         regions=[],
         features=[],
     )
-    
+
     conn = MagicMock()
     conn.router = router
     conn.ping_latency_ms = 50.0
@@ -163,7 +155,7 @@ class TestHealthObservations:
             router_id=mock_router_connection.router.router_id,
             conn=mock_router_connection,
         )
-        
+
         # Observation should be stored
         assert mock_router_connection.router.router_id in health_monitor._own_observations
         obs = health_monitor._own_observations[mock_router_connection.router.router_id]
@@ -173,29 +165,29 @@ class TestHealthObservations:
     def test_get_aggregated_health_own_only(self, health_monitor, mock_router_connection):
         """Test aggregated health with only own observations."""
         router_id = mock_router_connection.router.router_id
-        
+
         # Add own observation
         health_monitor.update_observation(router_id, mock_router_connection)
-        
+
         score = health_monitor.get_aggregated_health(router_id)
-        
+
         # Should return a score between 0 and 1
         assert 0.0 <= score <= 1.0
 
     def test_get_aggregated_health_no_data(self, health_monitor):
         """Test aggregated health with no data."""
         score = health_monitor.get_aggregated_health("unknown-router")
-        
+
         # Should return default score
         assert score == 0.5
 
     def test_get_aggregated_health_with_peer_observations(self, health_monitor, mock_router_connection):
         """Test aggregated health combining own and peer observations."""
         router_id = mock_router_connection.router.router_id
-        
+
         # Add own observation
         health_monitor.update_observation(router_id, mock_router_connection)
-        
+
         # Add peer observation
         peer_obs = RouterHealthObservation(
             router_id=router_id,
@@ -204,9 +196,9 @@ class TestHealthObservations:
             last_seen=time.time(),
         )
         health_monitor._peer_observations["peer1"] = {router_id: peer_obs}
-        
+
         score = health_monitor.get_aggregated_health(router_id)
-        
+
         # Should blend both observations
         assert 0.0 <= score <= 1.0
 
@@ -217,9 +209,9 @@ class TestHealthObservations:
             mock_router_connection.router.router_id,
             mock_router_connection,
         )
-        
+
         result = health_monitor.get_health_observations()
-        
+
         assert "own_observations" in result
         assert "peer_observation_count" in result
         assert "aggregated_health_scores" in result
@@ -240,9 +232,9 @@ class TestHealthGossip:
             mock_router_connection.router.router_id,
             mock_router_connection,
         )
-        
+
         gossip = health_monitor.create_gossip_message()
-        
+
         assert gossip.source_node_id == health_monitor.node_id
         assert gossip.ttl == health_monitor.config.gossip_ttl
         assert len(gossip.observations) > 0
@@ -250,7 +242,7 @@ class TestHealthGossip:
     def test_create_gossip_message_empty(self, health_monitor):
         """Test creating gossip message with no observations."""
         gossip = health_monitor.create_gossip_message()
-        
+
         assert gossip.source_node_id == health_monitor.node_id
         assert len(gossip.observations) == 0
 
@@ -269,9 +261,9 @@ class TestHealthGossip:
             ],
             ttl=2,
         )
-        
+
         health_monitor.handle_gossip(gossip)
-        
+
         # Peer observations should be stored
         assert "peer123" in health_monitor._peer_observations
         assert health_monitor._stats["gossip_received"] == 1
@@ -284,9 +276,9 @@ class TestHealthGossip:
             observations=[],
             ttl=2,
         )
-        
+
         health_monitor.handle_gossip(gossip)
-        
+
         # Should not count as received
         assert health_monitor._stats["gossip_received"] == 0
 
@@ -298,9 +290,9 @@ class TestHealthGossip:
             observations=[],
             ttl=0,
         )
-        
+
         health_monitor.handle_gossip(gossip)
-        
+
         # Should not process
         assert "peer123" not in health_monitor._peer_observations
 
@@ -321,7 +313,7 @@ class TestMisbehaviorDetection:
             delivered=True,
             latency_ms=50.0,
         )
-        
+
         metrics = health_monitor._router_behavior_metrics["router1"]
         assert metrics.messages_sent == 1
         assert metrics.messages_delivered == 1
@@ -334,7 +326,7 @@ class TestMisbehaviorDetection:
             message_id="msg1",
             delivered=False,
         )
-        
+
         metrics = health_monitor._router_behavior_metrics["router1"]
         assert metrics.messages_sent == 1
         assert metrics.messages_dropped == 1
@@ -343,7 +335,7 @@ class TestMisbehaviorDetection:
         """Test recording ACK outcomes."""
         health_monitor.record_ack_outcome("router1", success=True)
         health_monitor.record_ack_outcome("router1", success=False)
-        
+
         metrics = health_monitor._router_behavior_metrics["router1"]
         assert metrics.ack_success_count == 1
         assert metrics.ack_failure_count == 1
@@ -353,9 +345,9 @@ class TestMisbehaviorDetection:
     def test_misbehavior_detection_disabled(self, health_monitor):
         """Test that misbehavior detection can be disabled."""
         health_monitor.config.misbehavior_detection_enabled = False
-        
+
         health_monitor.record_delivery_outcome("router1", "msg1", False)
-        
+
         # Should not track metrics
         assert "router1" not in health_monitor._router_behavior_metrics
 
@@ -368,7 +360,7 @@ class TestMisbehaviorDetection:
         # Add flagged router
         report = MagicMock()
         health_monitor._flagged_routers["router1"] = report
-        
+
         assert health_monitor.is_router_flagged("router1") is True
 
     def test_get_flagged_routers_empty(self, health_monitor):
@@ -381,9 +373,9 @@ class TestMisbehaviorDetection:
         # Add flagged router
         report = MagicMock()
         health_monitor._flagged_routers["router1"] = report
-        
+
         result = health_monitor.clear_router_flag("router1")
-        
+
         assert result is True
         assert "router1" not in health_monitor._flagged_routers
 
@@ -395,7 +387,7 @@ class TestMisbehaviorDetection:
     def test_get_misbehavior_detection_stats(self, health_monitor):
         """Test getting misbehavior detection statistics."""
         stats = health_monitor.get_misbehavior_detection_stats()
-        
+
         assert stats["enabled"] is True
         assert stats["routers_tracked"] == 0
         assert stats["routers_flagged"] == 0
@@ -405,19 +397,19 @@ class TestMisbehaviorDetection:
         """Test behavior check with insufficient data."""
         # Record just one message (below min_messages_for_detection)
         health_monitor.record_delivery_outcome("router1", "msg1", False)
-        
+
         # Should not trigger detection yet
         assert health_monitor.is_router_flagged("router1") is False
 
     def test_check_router_behavior_flags_misbehaving_router(self, health_monitor):
         """Test that misbehaving router gets flagged."""
         router_id = "router1"
-        
+
         # Record many failures to exceed threshold
         for i in range(10):
             health_monitor.record_delivery_outcome(router_id, f"msg{i}", delivered=False)
             health_monitor.record_ack_outcome(router_id, success=False)
-        
+
         # Should be flagged
         assert health_monitor.is_router_flagged(router_id) is True
         assert health_monitor._stats["routers_flagged"] == 1
@@ -438,30 +430,32 @@ class TestEclipseAnomalyDetection:
             failure_type="connection",
             error_code="TIMEOUT",
         )
-        
+
         assert len(health_monitor._failure_events) == 1
         assert health_monitor._failure_events[0]["router_id"] == "router1"
 
     def test_record_failure_event_disabled(self, health_monitor):
         """Test that failure recording is disabled when anomaly detection off."""
         health_monitor.config.anomaly_detection_enabled = False
-        
+
         health_monitor.record_failure_event("router1", "connection")
-        
+
         assert len(health_monitor._failure_events) == 0
 
     def test_record_failure_event_prunes_old(self, health_monitor):
         """Test that old failure events are pruned."""
         # Add old event
-        health_monitor._failure_events.append({
-            "router_id": "old-router",
-            "failure_type": "connection",
-            "timestamp": time.time() - 100,  # Old event
-        })
-        
+        health_monitor._failure_events.append(
+            {
+                "router_id": "old-router",
+                "failure_type": "connection",
+                "timestamp": time.time() - 100,  # Old event
+            }
+        )
+
         # Add new event
         health_monitor.record_failure_event("router1", "connection")
-        
+
         # Old event should be pruned
         assert len(health_monitor._failure_events) == 1
         assert health_monitor._failure_events[0]["router_id"] == "router1"
@@ -475,7 +469,7 @@ class TestEclipseAnomalyDetection:
                 router_id=f"router{i}",
                 failure_type="connection",
             )
-        
+
         # Should detect anomalies (triggers at threshold=2 and again at 3)
         # Each time we exceed threshold with new unique routers, a new alert is generated
         assert health_monitor._stats["anomalies_detected"] >= 1
@@ -490,9 +484,9 @@ class TestEclipseAnomalyDetection:
         """Test clearing anomaly alerts."""
         # Add alert
         health_monitor._anomaly_alerts.append({"type": "test"})
-        
+
         count = health_monitor.clear_anomaly_alerts()
-        
+
         assert count == 1
         assert len(health_monitor._anomaly_alerts) == 0
 
@@ -509,16 +503,16 @@ class TestKeepaliveTracking:
         """Test tracking successful ping."""
         # First record some misses
         health_monitor._missed_pings["router1"] = 1
-        
+
         should_fail = health_monitor.track_ping_response("router1", success=True)
-        
+
         assert should_fail is False
         assert health_monitor._missed_pings["router1"] == 0
 
     def test_track_ping_response_failure(self, health_monitor):
         """Test tracking failed ping."""
         should_fail = health_monitor.track_ping_response("router1", success=False)
-        
+
         assert should_fail is False
         assert health_monitor._missed_pings["router1"] == 1
 
@@ -527,16 +521,16 @@ class TestKeepaliveTracking:
         # Miss pings up to threshold
         health_monitor.track_ping_response("router1", success=False)
         should_fail = health_monitor.track_ping_response("router1", success=False)
-        
+
         assert should_fail is True
         assert health_monitor._missed_pings["router1"] == 2
 
     def test_clear_ping_state(self, health_monitor):
         """Test clearing ping state."""
         health_monitor._missed_pings["router1"] = 3
-        
+
         health_monitor.clear_ping_state("router1")
-        
+
         assert "router1" not in health_monitor._missed_pings
 
 
@@ -551,7 +545,7 @@ class TestHealthMonitorIntegration:
     def test_full_misbehavior_detection_flow(self, health_monitor):
         """Test full misbehavior detection flow."""
         router_id = "misbehaving-router"
-        
+
         # Simulate router exhibiting misbehavior
         for i in range(10):
             health_monitor.record_delivery_outcome(
@@ -560,15 +554,15 @@ class TestHealthMonitorIntegration:
                 delivered=False,  # All messages dropped
             )
             health_monitor.record_ack_outcome(router_id, success=False)
-        
+
         # Check detection
         assert health_monitor.is_router_flagged(router_id) is True
-        
+
         # Get stats
         stats = health_monitor.get_misbehavior_detection_stats()
         assert stats["routers_flagged"] == 1
         assert router_id in stats["flagged_routers"]
-        
+
         # Clear flag
         health_monitor.clear_router_flag(router_id)
         assert health_monitor.is_router_flagged(router_id) is False
@@ -576,14 +570,14 @@ class TestHealthMonitorIntegration:
     def test_full_gossip_flow(self, health_monitor, mock_router_connection):
         """Test full gossip flow."""
         router_id = mock_router_connection.router.router_id
-        
+
         # Update observation
         health_monitor.update_observation(router_id, mock_router_connection)
-        
+
         # Create gossip
         gossip = health_monitor.create_gossip_message()
         assert len(gossip.observations) > 0
-        
+
         # Simulate receiving gossip from peer
         peer_gossip = HealthGossip(
             source_node_id="peer-node",
@@ -599,7 +593,7 @@ class TestHealthMonitorIntegration:
             ttl=2,
         )
         health_monitor.handle_gossip(peer_gossip)
-        
+
         # Aggregated health should incorporate both
         score = health_monitor.get_aggregated_health(router_id)
         assert 0.0 <= score <= 1.0
@@ -607,18 +601,18 @@ class TestHealthMonitorIntegration:
     def test_on_router_flagged_callback(self, health_monitor):
         """Test that on_router_flagged callback is called."""
         callback_args = []
-        
+
         def on_flagged(router_id, report):
             callback_args.append((router_id, report))
-        
+
         health_monitor.on_router_flagged = on_flagged
-        
+
         # Trigger flagging
         router_id = "bad-router"
         for i in range(10):
             health_monitor.record_delivery_outcome(router_id, f"msg-{i}", False)
             health_monitor.record_ack_outcome(router_id, success=False)
-        
+
         # Callback should have been called
         assert len(callback_args) == 1
         assert callback_args[0][0] == router_id

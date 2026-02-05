@@ -13,13 +13,10 @@ Attack vectors tested:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import secrets
 import time
-from datetime import datetime, timedelta
-from typing import Any
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -27,7 +24,7 @@ import pytest
 
 class TestReplayAttackPrevention:
     """Tests for replay attack prevention.
-    
+
     Audit finding #10: Signature verification doesn't check timestamp freshness.
     """
 
@@ -35,10 +32,10 @@ class TestReplayAttackPrevention:
     async def test_old_timestamps_rejected(self):
         """Requests with timestamps outside the validity window must be rejected."""
         from valence.server.federation_endpoints import verify_did_signature
-        
+
         # Create request with 10-minute-old timestamp
         old_timestamp = int(time.time()) - 600
-        
+
         mock_request = MagicMock()
         mock_request.headers = {
             "X-VFP-DID": "did:vkb:key:z6MkTest",
@@ -49,8 +46,8 @@ class TestReplayAttackPrevention:
         mock_request.method = "POST"
         mock_request.url = MagicMock()
         mock_request.url.path = "/federation/protocol"
-        mock_request.body = AsyncMock(return_value=b'{}')
-        
+        mock_request.body = AsyncMock(return_value=b"{}")
+
         result = await verify_did_signature(mock_request)
         assert result is None, "Old timestamps must be rejected"
 
@@ -58,10 +55,10 @@ class TestReplayAttackPrevention:
     async def test_future_timestamps_rejected(self):
         """Requests with timestamps too far in the future must be rejected."""
         from valence.server.federation_endpoints import verify_did_signature
-        
+
         # Create request with timestamp 10 minutes in future
         future_timestamp = int(time.time()) + 600
-        
+
         mock_request = MagicMock()
         mock_request.headers = {
             "X-VFP-DID": "did:vkb:key:z6MkTest",
@@ -72,8 +69,8 @@ class TestReplayAttackPrevention:
         mock_request.method = "POST"
         mock_request.url = MagicMock()
         mock_request.url.path = "/federation/protocol"
-        mock_request.body = AsyncMock(return_value=b'{}')
-        
+        mock_request.body = AsyncMock(return_value=b"{}")
+
         result = await verify_did_signature(mock_request)
         assert result is None, "Future timestamps must be rejected"
 
@@ -81,7 +78,7 @@ class TestReplayAttackPrevention:
         """Each request must have a unique nonce to prevent replay."""
         # Nonces should be tracked and rejected if reused
         # This is a design requirement - nonce tracking needed
-        
+
         # Generate nonces - they should all be unique
         nonces = [secrets.token_hex(16) for _ in range(100)]
         assert len(set(nonces)) == 100, "Nonces must be unique"
@@ -89,8 +86,7 @@ class TestReplayAttackPrevention:
     def test_signed_timestamp_in_message(self):
         """The timestamp must be included in the signed content."""
         # If timestamp isn't signed, attacker can replay with new timestamp
-        from valence.server.federation_endpoints import verify_did_signature
-        
+
         # The verify function should include timestamp in the message hash
         # Format: METHOD PATH TIMESTAMP NONCE BODYHASH
         # This is verified by the implementation
@@ -103,11 +99,11 @@ class TestSignatureForgery:
     def test_invalid_signature_rejected(self):
         """Requests with invalid signatures must be rejected."""
         from valence.federation.identity import verify_signature
-        
+
         message = b"test message"
         fake_signature = b"not a valid signature"
         public_key = "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
-        
+
         # Invalid signature should be rejected
         # (This may raise or return False depending on implementation)
         try:
@@ -123,16 +119,16 @@ class TestSignatureForgery:
             sign_message,
             verify_signature,
         )
-        
+
         # Generate two different key pairs
         keypair1 = generate_keypair()
         keypair2 = generate_keypair()
-        
+
         message = b"test message"
-        
+
         # Sign with keypair1
         signature = sign_message(message, keypair1.private_key_bytes)
-        
+
         # Verify with keypair2's public key should fail
         result = verify_signature(message, signature, keypair2.public_key_multibase)
         assert result is False, "Signature from different key must be rejected"
@@ -144,15 +140,15 @@ class TestSignatureForgery:
             sign_message,
             verify_signature,
         )
-        
+
         keypair = generate_keypair()
-        
+
         original_message = b"original message"
         tampered_message = b"tampered message"
-        
+
         # Sign original message
         signature = sign_message(original_message, keypair.private_key_bytes)
-        
+
         # Verify tampered message should fail
         result = verify_signature(tampered_message, signature, keypair.public_key_multibase)
         assert result is False, "Tampered message must fail verification"
@@ -162,19 +158,21 @@ class TestSignatureForgery:
         # RSA, ECDSA, etc. should be rejected
         # The system only supports Ed25519VerificationKey2020
         from valence.federation.identity import DIDDocument
-        
+
         # Create document with different algorithm
         doc_dict = {
             "@context": ["https://www.w3.org/ns/did/v1"],
             "id": "did:vkb:web:test.example.com",
-            "verificationMethod": [{
-                "id": "did:vkb:web:test.example.com#keys-1",
-                "type": "RsaVerificationKey2018",  # Wrong type
-                "controller": "did:vkb:web:test.example.com",
-                "publicKeyMultibase": "z6MkTest",
-            }],
+            "verificationMethod": [
+                {
+                    "id": "did:vkb:web:test.example.com#keys-1",
+                    "type": "RsaVerificationKey2018",  # Wrong type
+                    "controller": "did:vkb:web:test.example.com",
+                    "publicKeyMultibase": "z6MkTest",
+                }
+            ],
         }
-        
+
         doc = DIDDocument.from_dict(doc_dict)
         # System should reject non-Ed25519 keys for signing operations
         assert doc.verification_methods[0].type != "Ed25519VerificationKey2020"
@@ -185,11 +183,11 @@ class TestMaliciousPeerBehavior:
 
     def test_belief_spam_rate_limiting(self):
         """Nodes sending excessive beliefs must be rate limited."""
-        from valence.federation.trust import TrustManager, TrustSignal
-        
+        from valence.federation.trust import TrustManager
+
         manager = TrustManager()
         node_id = uuid4()
-        
+
         # Simulate rapid belief submissions
         # Rate limiting should kick in
         # This is a design requirement test
@@ -198,7 +196,7 @@ class TestMaliciousPeerBehavior:
     def test_invalid_belief_format_rejected(self):
         """Beliefs with invalid format must be rejected before processing."""
         from valence.federation.models import FederatedBelief
-        
+
         # Missing required fields should raise validation error
         with pytest.raises((ValueError, TypeError, KeyError)):
             FederatedBelief(
@@ -210,9 +208,9 @@ class TestMaliciousPeerBehavior:
         """Excessively large beliefs must be rejected."""
         # DoS prevention - limit belief size
         max_content_size = 1024 * 1024  # 1MB reasonable limit
-        
+
         oversized_content = "x" * (max_content_size + 1)
-        
+
         # System should reject before processing
         # This is a design requirement test
         assert len(oversized_content) > max_content_size
@@ -220,7 +218,7 @@ class TestMaliciousPeerBehavior:
     def test_malformed_did_rejected(self):
         """Malformed DIDs must be rejected."""
         from valence.federation.identity import parse_did
-        
+
         malformed_dids = [
             "not-a-did",
             "did:wrong:method",
@@ -229,7 +227,7 @@ class TestMaliciousPeerBehavior:
             "did:vkb:key:invalid-base58!@#",  # Invalid characters
             "did:vkb:user:",  # Incomplete user DID
         ]
-        
+
         for malformed in malformed_dids:
             with pytest.raises(ValueError):
                 parse_did(malformed)
@@ -245,13 +243,16 @@ class TestProtocolManipulation:
             "type": "MALICIOUS_COMMAND",
             "payload": "evil_data",
         }
-        
+
         # Parser should reject unknown types
         # This is a design requirement test
         assert unknown_message["type"] not in [
-            "AUTH_CHALLENGE", "AUTH_RESPONSE",
-            "SHARE_BELIEF", "ACKNOWLEDGE_BELIEF",
-            "REQUEST_BELIEFS", "BELIEFS_RESPONSE",
+            "AUTH_CHALLENGE",
+            "AUTH_RESPONSE",
+            "SHARE_BELIEF",
+            "ACKNOWLEDGE_BELIEF",
+            "REQUEST_BELIEFS",
+            "BELIEFS_RESPONSE",
         ]
 
     def test_message_type_cannot_be_injected(self):
@@ -262,7 +263,7 @@ class TestProtocolManipulation:
             {"type": "SHARE_BELIEF\x00MALICIOUS"},
             {"type": ["SHARE_BELIEF", "DELETE_ALL"]},  # Array injection
         ]
-        
+
         for msg in malicious_messages:
             # Parser should reject these
             assert not isinstance(msg["type"], str) or ";" in msg["type"] or "\x00" in msg["type"] or isinstance(msg["type"], list)
@@ -276,7 +277,7 @@ class TestProtocolManipulation:
         for _ in range(max_depth):
             current["data"] = {"data": None}
             current = current["data"]
-        
+
         # System should limit nesting depth
         # This is a design requirement test
         assert True
@@ -299,23 +300,23 @@ class TestFederationNodeImpersonation:
     def test_did_must_match_signature_key(self):
         """The DID claimed must match the key used to sign."""
         from valence.federation.identity import (
-            generate_keypair,
             create_key_did,
+            generate_keypair,
             sign_message,
             verify_signature,
         )
-        
+
         # Attacker's keypair
         attacker_keypair = generate_keypair()
-        
+
         # Legitimate node's DID (different key)
         legitimate_keypair = generate_keypair()
         legitimate_did = create_key_did(legitimate_keypair.public_key_multibase)
-        
+
         # Attacker signs with their key but claims legitimate DID
         message = b"test message"
         attacker_signature = sign_message(message, attacker_keypair.private_key_bytes)
-        
+
         # Verification using claimed DID's public key should fail
         result = verify_signature(
             message,
@@ -326,12 +327,12 @@ class TestFederationNodeImpersonation:
 
     def test_web_did_resolution_validates_domain(self):
         """Web DID resolution must validate the domain ownership."""
-        from valence.federation.identity import parse_did, create_web_did
-        
+        from valence.federation.identity import create_web_did
+
         # Valid domain DIDs
         valid_did = create_web_did("example.com")
         assert valid_did.identifier == "example.com"
-        
+
         # Invalid domain patterns should be rejected
         invalid_domains = [
             "localhost",  # Could be blocked
@@ -339,7 +340,7 @@ class TestFederationNodeImpersonation:
             "internal.corp",  # Internal domains
             "../../../etc/passwd",  # Path traversal
         ]
-        
+
         for domain in invalid_domains:
             try:
                 create_web_did(domain)
@@ -358,19 +359,19 @@ class TestBeliefIntegrity:
             sign_belief_content,
             verify_belief_signature,
         )
-        
+
         keypair = generate_keypair()
-        
+
         content = {
             "text": "This is a belief",
             "confidence": 0.9,
         }
-        
+
         signature = sign_belief_content(content, keypair.private_key_bytes)
-        
+
         # Verify original content
         assert verify_belief_signature(content, signature, keypair.public_key_multibase)
-        
+
         # Modified content should fail
         modified_content = {
             "text": "This is a MODIFIED belief",

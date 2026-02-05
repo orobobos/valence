@@ -28,8 +28,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -52,7 +58,7 @@ KDF_INFO_MEMBER_SECRET = b"valence-mls-member-secret"
 
 # Key sizes
 AES_KEY_SIZE = 32  # 256 bits
-NONCE_SIZE = 12    # 96 bits for GCM
+NONCE_SIZE = 12  # 96 bits for GCM
 
 
 # =============================================================================
@@ -62,42 +68,51 @@ NONCE_SIZE = 12    # 96 bits for GCM
 
 class MLSError(Exception):
     """Base exception for MLS-related errors."""
+
     pass
 
 
 class GroupNotFoundError(MLSError):
     """Group does not exist."""
+
     pass
 
 
 class MemberExistsError(MLSError):
     """Member is already in the group."""
+
     pass
 
 
 class MemberNotFoundError(MLSError):
     """Member is not in the group."""
+
     pass
 
 
 class InvalidKeyPackageError(MLSError):
     """KeyPackage is invalid or expired."""
+
     pass
 
 
 class GroupFullError(MLSError):
     """Group has reached maximum capacity."""
+
     pass
 
 
 class PermissionDeniedError(MLSError):
     """Member does not have required permission."""
+
     pass
 
 
 class EpochMismatchError(MLSError):
     """Epoch does not match expected value."""
+
     pass
+
 
 # Epoch history limits
 MAX_EPOCH_HISTORY = 100  # Maximum number of epochs to retain for recovery
@@ -110,8 +125,9 @@ MAX_EPOCH_HISTORY = 100  # Maximum number of epochs to retain for recovery
 
 class GroupRole(StrEnum):
     """Role of a member in a group."""
-    ADMIN = "admin"        # Can add/remove members, change settings
-    MEMBER = "member"      # Can read/write content
+
+    ADMIN = "admin"  # Can add/remove members, change settings
+    MEMBER = "member"  # Can read/write content
     OBSERVER = "observer"  # Read-only access
 
 
@@ -121,6 +137,7 @@ MemberRole = GroupRole
 
 class ProposalType(StrEnum):
     """Type of group change proposal."""
+
     ADD = "add"
     REMOVE = "remove"
     UPDATE = "update"
@@ -129,14 +146,16 @@ class ProposalType(StrEnum):
 
 class MemberStatus(StrEnum):
     """Status of a group member."""
-    PENDING = "pending"    # Invited but not yet joined
-    ACTIVE = "active"      # Fully joined and active
-    REMOVED = "removed"    # Removed from group
-    LEFT = "left"          # Voluntarily left
+
+    PENDING = "pending"  # Invited but not yet joined
+    ACTIVE = "active"  # Fully joined and active
+    REMOVED = "removed"  # Removed from group
+    LEFT = "left"  # Voluntarily left
 
 
 class GroupStatus(StrEnum):
     """Status of a group."""
+
     ACTIVE = "active"
     ARCHIVED = "archived"
     DISSOLVED = "dissolved"
@@ -161,7 +180,7 @@ class KeyPackage:
     member_did: str
 
     # HPKE keys for encryption to this member
-    init_public_key: bytes      # X25519 public key for key exchange
+    init_public_key: bytes  # X25519 public key for key exchange
 
     # Signing key for authenticating the member
     signature_public_key: bytes  # Ed25519 public key
@@ -255,15 +274,18 @@ class KeyPackage:
 
     def _signable_content(self) -> bytes:
         """Get the content to be signed."""
-        return json.dumps({
-            "id": str(self.id),
-            "member_did": self.member_did,
-            "init_public_key": base64.b64encode(self.init_public_key).decode(),
-            "signature_public_key": base64.b64encode(self.signature_public_key).decode(),
-            "credential_type": self.credential_type,
-            "created_at": self.created_at.isoformat(),
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
-        }, sort_keys=True).encode()
+        return json.dumps(
+            {
+                "id": str(self.id),
+                "member_did": self.member_did,
+                "init_public_key": base64.b64encode(self.init_public_key).decode(),
+                "signature_public_key": base64.b64encode(self.signature_public_key).decode(),
+                "credential_type": self.credential_type,
+                "created_at": self.created_at.isoformat(),
+                "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            },
+            sort_keys=True,
+        ).encode()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -288,7 +310,7 @@ class KeyPackage:
             signature_public_key=base64.b64decode(data["signature_public_key"]),
             credential_type=data.get("credential_type", "basic"),
             created_at=datetime.fromisoformat(data["created_at"]),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             signature=base64.b64decode(data["signature"]),
         )
 
@@ -326,8 +348,8 @@ class GroupMember:
             "did": self.did,
             "role": self.role.value,
             "status": self.status.value,
-            "init_public_key": base64.b64encode(self.init_public_key).decode() if self.init_public_key else "",
-            "signature_public_key": base64.b64encode(self.signature_public_key).decode() if self.signature_public_key else "",
+            "init_public_key": (base64.b64encode(self.init_public_key).decode() if self.init_public_key else ""),
+            "signature_public_key": (base64.b64encode(self.signature_public_key).decode() if self.signature_public_key else ""),
             "joined_at_epoch": self.joined_at_epoch,
             "joined_at": self.joined_at.isoformat(),
             "removed_at": self.removed_at.isoformat() if self.removed_at else None,
@@ -341,11 +363,11 @@ class GroupMember:
             did=data["did"],
             role=GroupRole(data.get("role", "member")),
             status=MemberStatus(data.get("status", "active")),
-            init_public_key=base64.b64decode(data["init_public_key"]) if data.get("init_public_key") else b"",
-            signature_public_key=base64.b64decode(data["signature_public_key"]) if data.get("signature_public_key") else b"",
+            init_public_key=(base64.b64decode(data["init_public_key"]) if data.get("init_public_key") else b""),
+            signature_public_key=(base64.b64decode(data["signature_public_key"]) if data.get("signature_public_key") else b""),
             joined_at_epoch=data.get("joined_at_epoch", 0),
-            joined_at=datetime.fromisoformat(data["joined_at"]) if data.get("joined_at") else datetime.now(),
-            removed_at=datetime.fromisoformat(data["removed_at"]) if data.get("removed_at") else None,
+            joined_at=(datetime.fromisoformat(data["joined_at"]) if data.get("joined_at") else datetime.now()),
+            removed_at=(datetime.fromisoformat(data["removed_at"]) if data.get("removed_at") else None),
             leaf_index=data.get("leaf_index", 0),
         )
 
@@ -369,7 +391,7 @@ class EpochSecrets:
     epoch_secret: bytes = b""
 
     # Derived keys
-    encryption_key: bytes = b""   # For encrypting group content
+    encryption_key: bytes = b""  # For encrypting group content
 
     # Tree secret for deriving member-specific secrets
     tree_secret: bytes = b""
@@ -396,7 +418,7 @@ class EpochSecrets:
         epoch_secret = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=epoch.to_bytes(8, 'big'),
+            salt=epoch.to_bytes(8, "big"),
             info=KDF_INFO_EPOCH_SECRET,
         ).derive(combined)
 
@@ -437,7 +459,7 @@ class EpochSecrets:
         return HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=leaf_index.to_bytes(4, 'big'),
+            salt=leaf_index.to_bytes(4, "big"),
             info=KDF_INFO_MEMBER_SECRET,
         ).derive(self.tree_secret)
 
@@ -602,14 +624,17 @@ class WelcomeMessage:
 
     def _signable_content(self) -> bytes:
         """Get content to sign."""
-        return json.dumps({
-            "id": str(self.id),
-            "group_id": str(self.group_id),
-            "new_member_did": self.new_member_did,
-            "epoch": self.epoch,
-            "adder_did": self.adder_did,
-            "created_at": self.created_at.isoformat(),
-        }, sort_keys=True).encode()
+        return json.dumps(
+            {
+                "id": str(self.id),
+                "group_id": str(self.group_id),
+                "new_member_did": self.new_member_did,
+                "epoch": self.epoch,
+                "adder_did": self.adder_did,
+                "created_at": self.created_at.isoformat(),
+            },
+            sort_keys=True,
+        ).encode()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -649,7 +674,7 @@ class WelcomeMessage:
             adder_did=data["adder_did"],
             signature=base64.b64decode(data["signature"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
         )
 
 
@@ -780,6 +805,7 @@ class GroupState:
     def from_dict(cls, data: dict[str, Any]) -> GroupState:
         """Restore from dictionary."""
         from datetime import datetime
+
         return cls(
             id=UUID(data["id"]),
             name=data["name"],
@@ -787,9 +813,9 @@ class GroupState:
             status=GroupStatus(data.get("status", "active")),
             members={did: GroupMember.from_dict(m) for did, m in data.get("members", {}).items()},
             config=data.get("config", {}),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now()),
             created_by=data.get("created_by", ""),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now(),
+            updated_at=(datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now()),
         )
 
     def get_group_info(self) -> dict:
@@ -986,12 +1012,14 @@ def add_member(
         group_id=group.id,
         from_epoch=group.epoch,
         to_epoch=new_epoch,
-        proposals=[{
-            "type": "add",
-            "member_did": new_member_did,
-            "role": role.value,
-            "added_by": adder_did,
-        }],
+        proposals=[
+            {
+                "type": "add",
+                "member_did": new_member_did,
+                "role": role.value,
+                "added_by": adder_did,
+            }
+        ],
         committer_did=adder_did,
         created_at=now,
     )
@@ -1033,27 +1061,34 @@ def add_member(
 
     # Compute confirmation tag
     import hmac
-    confirmation_content = json.dumps({
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-        "committer_did": commit.committer_did,
-    }, sort_keys=True).encode()
+
+    confirmation_content = json.dumps(
+        {
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+            "committer_did": commit.committer_did,
+        },
+        sort_keys=True,
+    ).encode()
     commit.confirmation_tag = hmac.digest(
         new_secrets.confirmation_key,
         confirmation_content,
-        'sha256',
+        "sha256",
     )
 
     # Sign commit
     signing_key = Ed25519PrivateKey.from_private_bytes(adder_signing_key)
-    commit_content = json.dumps({
-        "id": str(commit.id),
-        "group_id": str(commit.group_id),
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-    }, sort_keys=True).encode()
+    commit_content = json.dumps(
+        {
+            "id": str(commit.id),
+            "group_id": str(commit.group_id),
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+        },
+        sort_keys=True,
+    ).encode()
     commit.signature = signing_key.sign(commit_content)
 
     # Update group state
@@ -1133,9 +1168,7 @@ def process_commit(
 
     # Decrypt commit secret
     private_key = X25519PrivateKey.from_private_bytes(member_init_private_key)
-    ephemeral_public = X25519PublicKey.from_public_bytes(
-        base64.b64decode(encrypted_data["ephemeral_public_key"])
-    )
+    ephemeral_public = X25519PublicKey.from_public_bytes(base64.b64decode(encrypted_data["ephemeral_public_key"]))
 
     shared_secret = private_key.exchange(ephemeral_public)
 
@@ -1162,16 +1195,20 @@ def process_commit(
 
     # Verify confirmation tag
     import hmac
-    confirmation_content = json.dumps({
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-        "committer_did": commit.committer_did,
-    }, sort_keys=True).encode()
+
+    confirmation_content = json.dumps(
+        {
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+            "committer_did": commit.committer_did,
+        },
+        sort_keys=True,
+    ).encode()
     expected_tag = hmac.digest(
         new_secrets.confirmation_key,
         confirmation_content,
-        'sha256',
+        "sha256",
     )
 
     if not hmac.compare_digest(expected_tag, commit.confirmation_tag):
@@ -1238,6 +1275,7 @@ class RemovalAuditEntry:
 
     Provides accountability for offboarding decisions.
     """
+
     id: UUID
     group_id: UUID
     removed_did: str
@@ -1259,7 +1297,7 @@ class RemovalAuditEntry:
             "epoch_before": self.epoch_before,
             "epoch_after": self.epoch_after,
             "timestamp": self.timestamp.isoformat(),
-            "signature": base64.b64encode(self.signature).decode() if self.signature else "",
+            "signature": (base64.b64encode(self.signature).decode() if self.signature else ""),
         }
 
     @classmethod
@@ -1273,8 +1311,8 @@ class RemovalAuditEntry:
             reason=data.get("reason"),
             epoch_before=data["epoch_before"],
             epoch_after=data["epoch_after"],
-            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now(),
-            signature=base64.b64decode(data["signature"]) if data.get("signature") else b"",
+            timestamp=(datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now()),
+            signature=(base64.b64decode(data["signature"]) if data.get("signature") else b""),
         )
 
 
@@ -1389,22 +1427,21 @@ def remove_member(
         group_id=group.id,
         from_epoch=epoch_before,
         to_epoch=new_epoch,
-        proposals=[{
-            "type": "remove",
-            "member_did": member_did,
-            "removed_by": remover_did,
-            "reason": reason,
-        }],
+        proposals=[
+            {
+                "type": "remove",
+                "member_did": member_did,
+                "removed_by": remover_did,
+                "reason": reason,
+            }
+        ],
         committer_did=remover_did,
         created_at=now,
     )
 
     # Encrypt commit secret for each REMAINING active member
     # CRITICAL: Do NOT include the removed member
-    remaining_members = [
-        m for m in group.get_active_members()
-        if m.did != member_did
-    ]
+    remaining_members = [m for m in group.get_active_members() if m.did != member_did]
 
     for remaining_member in remaining_members:
         if remaining_member.init_public_key:
@@ -1441,27 +1478,33 @@ def remove_member(
             }
 
     # Compute confirmation tag
-    confirmation_content = json.dumps({
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-        "committer_did": commit.committer_did,
-    }, sort_keys=True).encode()
+    confirmation_content = json.dumps(
+        {
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+            "committer_did": commit.committer_did,
+        },
+        sort_keys=True,
+    ).encode()
     commit.confirmation_tag = hmac.digest(
         new_secrets.confirmation_key,
         confirmation_content,
-        'sha256',
+        "sha256",
     )
 
     # Sign commit
     signing_key = Ed25519PrivateKey.from_private_bytes(remover_signing_key)
-    commit_content = json.dumps({
-        "id": str(commit.id),
-        "group_id": str(commit.group_id),
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-    }, sort_keys=True).encode()
+    commit_content = json.dumps(
+        {
+            "id": str(commit.id),
+            "group_id": str(commit.group_id),
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+        },
+        sort_keys=True,
+    ).encode()
     commit.signature = signing_key.sign(commit_content)
 
     # Create audit entry
@@ -1477,16 +1520,19 @@ def remove_member(
     )
 
     # Sign audit entry
-    audit_content = json.dumps({
-        "id": str(audit_entry.id),
-        "group_id": str(audit_entry.group_id),
-        "removed_did": audit_entry.removed_did,
-        "remover_did": audit_entry.remover_did,
-        "reason": audit_entry.reason,
-        "epoch_before": audit_entry.epoch_before,
-        "epoch_after": audit_entry.epoch_after,
-        "timestamp": audit_entry.timestamp.isoformat(),
-    }, sort_keys=True).encode()
+    audit_content = json.dumps(
+        {
+            "id": str(audit_entry.id),
+            "group_id": str(audit_entry.group_id),
+            "removed_did": audit_entry.removed_did,
+            "remover_did": audit_entry.remover_did,
+            "reason": audit_entry.reason,
+            "epoch_before": audit_entry.epoch_before,
+            "epoch_after": audit_entry.epoch_after,
+            "timestamp": audit_entry.timestamp.isoformat(),
+        },
+        sort_keys=True,
+    ).encode()
     audit_entry.signature = signing_key.sign(audit_content)
 
     # Update group state
@@ -1566,14 +1612,16 @@ def get_removal_history(group: GroupState) -> list[dict[str, Any]]:
     removals = []
     for member in group.members.values():
         if member.status in (MemberStatus.REMOVED, MemberStatus.LEFT):
-            removals.append({
-                "member_did": member.did,
-                "role_at_removal": member.role.value,
-                "joined_at_epoch": member.joined_at_epoch,
-                "joined_at": member.joined_at.isoformat(),
-                "removed_at": member.removed_at.isoformat() if member.removed_at else None,
-                "status": member.status.value,
-            })
+            removals.append(
+                {
+                    "member_did": member.did,
+                    "role_at_removal": member.role.value,
+                    "joined_at_epoch": member.joined_at_epoch,
+                    "joined_at": member.joined_at.isoformat(),
+                    "removed_at": (member.removed_at.isoformat() if member.removed_at else None),
+                    "status": member.status.value,
+                }
+            )
 
     # Sort by removal time
     removals.sort(key=lambda r: r["removed_at"] or "")
@@ -1642,12 +1690,14 @@ def rotate_keys(
         group_id=group.id,
         from_epoch=group.epoch,
         to_epoch=new_epoch,
-        proposals=[{
-            "type": "update",
-            "action": "key_rotation",
-            "rotated_by": rotator_did,
-            "reason": reason,
-        }],
+        proposals=[
+            {
+                "type": "update",
+                "action": "key_rotation",
+                "rotated_by": rotator_did,
+                "reason": reason,
+            }
+        ],
         committer_did=rotator_did,
         created_at=now,
     )
@@ -1684,27 +1734,33 @@ def rotate_keys(
             }
 
     # Compute confirmation tag
-    confirmation_content = json.dumps({
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-        "committer_did": commit.committer_did,
-    }, sort_keys=True).encode()
+    confirmation_content = json.dumps(
+        {
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+            "committer_did": commit.committer_did,
+        },
+        sort_keys=True,
+    ).encode()
     commit.confirmation_tag = hmac.digest(
         new_secrets.confirmation_key,
         confirmation_content,
-        'sha256',
+        "sha256",
     )
 
     # Sign commit
     signing_key = Ed25519PrivateKey.from_private_bytes(rotator_signing_key)
-    commit_content = json.dumps({
-        "id": str(commit.id),
-        "group_id": str(commit.group_id),
-        "from_epoch": commit.from_epoch,
-        "to_epoch": commit.to_epoch,
-        "proposals": commit.proposals,
-    }, sort_keys=True).encode()
+    commit_content = json.dumps(
+        {
+            "id": str(commit.id),
+            "group_id": str(commit.group_id),
+            "from_epoch": commit.from_epoch,
+            "to_epoch": commit.to_epoch,
+            "proposals": commit.proposals,
+        },
+        sort_keys=True,
+    ).encode()
     commit.signature = signing_key.sign(commit_content)
 
     # Update group state
@@ -1817,12 +1873,16 @@ class FederationGroup:
         """Create from dictionary."""
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            federation_id=UUID(data["federation_id"]) if isinstance(data["federation_id"], str) else data["federation_id"],
+            federation_id=(UUID(data["federation_id"]) if isinstance(data["federation_id"], str) else data["federation_id"]),
             group_state=GroupState.from_dict(data["group_state"]),
             allowed_domains=data.get("allowed_domains", []),
             metadata=data.get("metadata", {}),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now()),
-            modified_at=datetime.fromisoformat(data["modified_at"]) if isinstance(data.get("modified_at"), str) else data.get("modified_at", datetime.now()),
+            created_at=(
+                datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now())
+            ),
+            modified_at=(
+                datetime.fromisoformat(data["modified_at"]) if isinstance(data.get("modified_at"), str) else data.get("modified_at", datetime.now())
+            ),
         )
 
 
@@ -1914,10 +1974,7 @@ def get_federation_group_info(group: FederationGroup) -> dict[str, Any]:
     - Member count
     - Admin list
     """
-    admins = [
-        m.did for m in group.members
-        if m.role == GroupRole.ADMIN and m.status == MemberStatus.ACTIVE
-    ]
+    admins = [m.did for m in group.members if m.role == GroupRole.ADMIN and m.status == MemberStatus.ACTIVE]
 
     return {
         "id": str(group.id),

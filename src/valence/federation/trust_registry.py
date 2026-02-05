@@ -85,7 +85,8 @@ class TrustRegistry:
         """
         try:
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE node_trust SET
                         trust = %s,
                         beliefs_received = %s,
@@ -101,20 +102,22 @@ class TrustRegistry:
                         modified_at = NOW()
                     WHERE node_id = %s
                     RETURNING *
-                """, (
-                    node_trust.to_trust_dict(),
-                    node_trust.beliefs_received,
-                    node_trust.beliefs_corroborated,
-                    node_trust.beliefs_disputed,
-                    node_trust.sync_requests_served,
-                    node_trust.aggregation_participations,
-                    node_trust.endorsements_received,
-                    node_trust.endorsements_given,
-                    node_trust.last_interaction_at,
-                    node_trust.manual_trust_adjustment,
-                    node_trust.adjustment_reason,
-                    node_trust.node_id,
-                ))
+                """,
+                    (
+                        node_trust.to_trust_dict(),
+                        node_trust.beliefs_received,
+                        node_trust.beliefs_corroborated,
+                        node_trust.beliefs_disputed,
+                        node_trust.sync_requests_served,
+                        node_trust.aggregation_participations,
+                        node_trust.endorsements_received,
+                        node_trust.endorsements_given,
+                        node_trust.last_interaction_at,
+                        node_trust.manual_trust_adjustment,
+                        node_trust.adjustment_reason,
+                        node_trust.node_id,
+                    ),
+                )
                 row = cur.fetchone()
                 if row:
                     return NodeTrust.from_row(row)
@@ -170,7 +173,8 @@ class TrustRegistry:
         """
         try:
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO user_node_trust (node_id, trust_preference, manual_trust_score, reason, domain_overrides)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (node_id) DO UPDATE SET
@@ -180,13 +184,15 @@ class TrustRegistry:
                         domain_overrides = COALESCE(user_node_trust.domain_overrides, '{}'::jsonb) || COALESCE(EXCLUDED.domain_overrides, '{}'::jsonb),
                         modified_at = NOW()
                     RETURNING *
-                """, (
-                    node_id,
-                    preference.value,
-                    manual_score,
-                    reason,
-                    domain_overrides or {},
-                ))
+                """,
+                    (
+                        node_id,
+                        preference.value,
+                        manual_score,
+                        reason,
+                        domain_overrides or {},
+                    ),
+                )
                 row = cur.fetchone()
                 if row:
                     return UserNodeTrust.from_row(row)
@@ -224,19 +230,22 @@ class TrustRegistry:
         """
         try:
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO belief_trust_annotations
                     (belief_id, type, source_node_id, confidence_delta, corroboration_attestation, expires_at)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING *
-                """, (
-                    belief_id,
-                    annotation_type.value,
-                    source_node_id,
-                    confidence_delta,
-                    attestation,
-                    expires_at,
-                ))
+                """,
+                    (
+                        belief_id,
+                        annotation_type.value,
+                        source_node_id,
+                        confidence_delta,
+                        attestation,
+                        expires_at,
+                    ),
+                )
                 row = cur.fetchone()
                 if row:
                     return BeliefTrustAnnotation.from_row(row)
@@ -257,12 +266,15 @@ class TrustRegistry:
         """
         try:
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT COALESCE(SUM(confidence_delta), 0) as total_delta
                     FROM belief_trust_annotations
                     WHERE belief_id = %s
                     AND (expires_at IS NULL OR expires_at > NOW())
-                """, (belief_id,))
+                """,
+                    (belief_id,),
+                )
                 row = cur.fetchone()
                 return float(row["total_delta"]) if row else 0.0
 

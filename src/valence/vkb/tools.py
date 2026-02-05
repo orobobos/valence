@@ -38,7 +38,14 @@ VKB_TOOLS = [
             "properties": {
                 "platform": {
                     "type": "string",
-                    "enum": ["claude-code", "api", "slack", "claude-web", "claude-desktop", "claude-mobile"],
+                    "enum": [
+                        "claude-code",
+                        "api",
+                        "slack",
+                        "claude-web",
+                        "claude-desktop",
+                        "claude-mobile",
+                    ],
                     "description": "Platform this session is on",
                 },
                 "project_context": {
@@ -248,10 +255,7 @@ VKB_TOOLS = [
     ),
     Tool(
         name="pattern_reinforce",
-        description=(
-            "Strengthen an existing pattern with new evidence.\n\n"
-            "Call when you observe a pattern that matches one already recorded."
-        ),
+        description=("Strengthen an existing pattern with new evidence.\n\n" "Call when you observe a pattern that matches one already recorded."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -396,7 +400,13 @@ def session_start(
             VALUES (%s, %s, %s, %s, %s)
             RETURNING *
             """,
-            (platform, project_context, external_room_id, claude_session_id, json.dumps(metadata or {})),
+            (
+                platform,
+                project_context,
+                external_room_id,
+                claude_session_id,
+                json.dumps(metadata or {}),
+            ),
         )
         row = cur.fetchone()
 
@@ -568,7 +578,14 @@ def exchange_add(
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
-            (session_id, sequence, role, content, tokens_approx, json.dumps(tool_uses or [])),
+            (
+                session_id,
+                sequence,
+                role,
+                content,
+                tokens_approx,
+                json.dumps(tool_uses or []),
+            ),
         )
         row = cur.fetchone()
 
@@ -758,7 +775,12 @@ def insight_extract(
             VALUES (%s, %s, %s, %s, 'conversation_extraction')
             RETURNING *
             """,
-            (content, json.dumps(confidence_obj.to_dict()), domain_path or [], source_id),
+            (
+                content,
+                json.dumps(confidence_obj.to_dict()),
+                domain_path or [],
+                source_id,
+            ),
         )
         belief_row = cur.fetchone()
         belief_id = belief_row["id"]

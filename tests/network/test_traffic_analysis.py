@@ -31,9 +31,7 @@ from valence.network.config import (
 from valence.network.messages import get_padded_size, pad_message, unpad_message
 from valence.network.node import NodeClient
 
-pytestmark = pytest.mark.skip(
-    reason="Needs update for NodeClient decomposition - see #167"
-)
+pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
 
 # =============================================================================
 # CONFIGURATION TESTS
@@ -337,9 +335,7 @@ def mock_node_client():
         node_id=node_id,
         private_key=private_key,
         encryption_private_key=encryption_key,
-        traffic_analysis_mitigation=TrafficAnalysisMitigationConfig.from_privacy_level(
-            PrivacyLevel.MEDIUM
-        ),
+        traffic_analysis_mitigation=TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.MEDIUM),
     )
     return client
 

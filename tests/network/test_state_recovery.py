@@ -17,32 +17,27 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-
 from valence.network.node import (
+    STATE_VERSION,
+    ConnectionState,
+    FailoverState,
     NodeClient,
     PendingAck,
     PendingMessage,
-    FailoverState,
-    ConnectionState,
-    StateConflictError,
     StaleStateError,
-    STATE_VERSION,
-    create_node_client,
+    StateConflictError,
 )
 from valence.network.router import (
-    RouterNode,
-    Connection,
     NodeConnectionHistory,
+    RouterNode,
 )
 
-pytestmark = pytest.mark.skip(
-    reason="Needs update for NodeClient decomposition - see #167"
-)
+pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
 
 
 # =============================================================================
@@ -69,7 +64,7 @@ def x25519_keypair():
 @pytest.fixture
 def temp_state_file():
     """Create a temporary state file path."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         temp_path = f.name
     yield temp_path
     # Cleanup
@@ -82,7 +77,7 @@ def node_client_with_state(ed25519_keypair, x25519_keypair, temp_state_file):
     """Create a NodeClient with state persistence enabled."""
     private_key, public_key = ed25519_keypair
     enc_private, _ = x25519_keypair
-    
+
     return NodeClient(
         node_id=public_key.public_bytes_raw().hex(),
         private_key=private_key,
@@ -112,7 +107,7 @@ class TestConnectionState:
             saved_at=1000.0,
             sequence_number=42,
         )
-        
+
         assert state.version == STATE_VERSION
         assert state.node_id == "a" * 64
         assert state.saved_at == 1000.0
@@ -130,9 +125,9 @@ class TestConnectionState:
             pending_acks=[{"message_id": "msg-1"}],
             seen_messages=["seen-1", "seen-2"],
         )
-        
+
         data = state.to_dict()
-        
+
         assert data["version"] == STATE_VERSION
         assert data["node_id"] == "a" * 64
         assert data["sequence_number"] == 42
@@ -152,9 +147,9 @@ class TestConnectionState:
             "failover_states": {},
             "stats": {"messages_sent": 10},
         }
-        
+
         state = ConnectionState.from_dict(data)
-        
+
         assert state.node_id == "b" * 64
         assert state.sequence_number == 99
         assert len(state.pending_acks) == 1
@@ -170,10 +165,10 @@ class TestConnectionState:
             pending_acks=[{"message_id": "msg-3"}],
             seen_messages=["s1", "s2", "s3"],
         )
-        
+
         json_str = original.to_json()
         restored = ConnectionState.from_json(json_str)
-        
+
         assert restored.version == original.version
         assert restored.node_id == original.node_id
         assert restored.sequence_number == original.sequence_number
@@ -191,7 +186,7 @@ class TestPendingAckSerialization:
     def test_pending_ack_to_dict(self, x25519_keypair):
         """Test PendingAck serialization."""
         _, pub_key = x25519_keypair
-        
+
         ack = PendingAck(
             message_id="msg-123",
             recipient_id="recipient-456",
@@ -202,9 +197,9 @@ class TestPendingAckSerialization:
             timeout_ms=5000,
             retries=1,
         )
-        
+
         data = ack.to_dict()
-        
+
         assert data["message_id"] == "msg-123"
         assert data["recipient_id"] == "recipient-456"
         assert data["content"] == b"Hello, World!".hex()
@@ -218,7 +213,7 @@ class TestPendingAckSerialization:
         """Test PendingAck deserialization."""
         _, pub_key = x25519_keypair
         pub_key_hex = pub_key.public_bytes_raw().hex()
-        
+
         data = {
             "message_id": "msg-abc",
             "recipient_id": "recipient-def",
@@ -230,9 +225,9 @@ class TestPendingAckSerialization:
             "retries": 2,
             "max_retries": 3,
         }
-        
+
         ack = PendingAck.from_dict(data)
-        
+
         assert ack.message_id == "msg-abc"
         assert ack.content == b"Test content"
         assert ack.timeout_ms == 10000
@@ -241,7 +236,7 @@ class TestPendingAckSerialization:
     def test_pending_ack_roundtrip(self, x25519_keypair):
         """Test PendingAck serialization roundtrip."""
         _, pub_key = x25519_keypair
-        
+
         original = PendingAck(
             message_id="msg-roundtrip",
             recipient_id="recipient-rt",
@@ -250,10 +245,10 @@ class TestPendingAckSerialization:
             sent_at=time.time(),
             router_id="router-rt",
         )
-        
+
         data = original.to_dict()
         restored = PendingAck.from_dict(data)
-        
+
         assert restored.message_id == original.message_id
         assert restored.content == original.content
         assert restored.recipient_id == original.recipient_id
@@ -270,7 +265,7 @@ class TestPendingMessageSerialization:
     def test_pending_message_to_dict(self, x25519_keypair):
         """Test PendingMessage serialization."""
         _, pub_key = x25519_keypair
-        
+
         msg = PendingMessage(
             message_id="msg-pm",
             recipient_id="recipient-pm",
@@ -279,9 +274,9 @@ class TestPendingMessageSerialization:
             queued_at=1500.0,
             retries=1,
         )
-        
+
         data = msg.to_dict()
-        
+
         assert data["message_id"] == "msg-pm"
         assert data["content"] == b"Pending content".hex()
         assert data["queued_at"] == 1500.0
@@ -289,7 +284,7 @@ class TestPendingMessageSerialization:
     def test_pending_message_roundtrip(self, x25519_keypair):
         """Test PendingMessage serialization roundtrip."""
         _, pub_key = x25519_keypair
-        
+
         original = PendingMessage(
             message_id="msg-pm-rt",
             recipient_id="recipient-pm-rt",
@@ -297,10 +292,10 @@ class TestPendingMessageSerialization:
             recipient_public_key=pub_key,
             queued_at=time.time(),
         )
-        
+
         data = original.to_dict()
         restored = PendingMessage.from_dict(data)
-        
+
         assert restored.message_id == original.message_id
         assert restored.content == original.content
 
@@ -321,9 +316,9 @@ class TestFailoverStateSerialization:
             fail_count=3,
             cooldown_until=1060.0,
         )
-        
+
         data = state.to_dict()
-        
+
         assert data["router_id"] == "router-fs"
         assert data["fail_count"] == 3
         assert data["cooldown_until"] == 1060.0
@@ -336,10 +331,10 @@ class TestFailoverStateSerialization:
             fail_count=2,
             cooldown_until=time.time() + 60,
         )
-        
+
         data = original.to_dict()
         restored = FailoverState.from_dict(data)
-        
+
         assert restored.router_id == original.router_id
         assert restored.fail_count == original.fail_count
 
@@ -357,7 +352,7 @@ class TestStatePersistence:
         """Test saving state to disk."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Add some pending state
         node.pending_acks["msg-1"] = PendingAck(
             message_id="msg-1",
@@ -367,24 +362,26 @@ class TestStatePersistence:
             sent_at=time.time(),
             router_id="router-1",
         )
-        
-        node.message_queue.append(PendingMessage(
-            message_id="msg-2",
-            recipient_id="r2",
-            content=b"queued",
-            recipient_public_key=pub_key,
-            queued_at=time.time(),
-        ))
-        
+
+        node.message_queue.append(
+            PendingMessage(
+                message_id="msg-2",
+                recipient_id="r2",
+                content=b"queued",
+                recipient_public_key=pub_key,
+                queued_at=time.time(),
+            )
+        )
+
         # Save state
         await node._save_state()
-        
+
         # Verify file exists and is valid JSON
         assert Path(node.state_file).exists()
-        
+
         with open(node.state_file) as f:
             data = json.load(f)
-        
+
         assert data["version"] == STATE_VERSION
         assert data["node_id"] == node.node_id
         assert len(data["pending_acks"]) == 1
@@ -395,7 +392,7 @@ class TestStatePersistence:
         """Test loading state from disk."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Create a state file
         state = ConnectionState(
             version=STATE_VERSION,
@@ -406,12 +403,12 @@ class TestStatePersistence:
             message_queue=[],
             seen_messages=["s1", "s2"],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         # Load state
         loaded = await node._load_state()
-        
+
         assert loaded is not None
         assert loaded.node_id == node.node_id
         assert loaded.sequence_number == 5
@@ -421,7 +418,7 @@ class TestStatePersistence:
     async def test_load_state_version_mismatch(self, node_client_with_state):
         """Test that version mismatch returns None."""
         node = node_client_with_state
-        
+
         # Create state with wrong version
         state_data = {
             "version": STATE_VERSION + 1,  # Wrong version
@@ -434,9 +431,9 @@ class TestStatePersistence:
             "failover_states": {},
             "stats": {},
         }
-        
+
         Path(node.state_file).write_text(json.dumps(state_data))
-        
+
         # Should return None for version mismatch
         loaded = await node._load_state()
         assert loaded is None
@@ -445,7 +442,7 @@ class TestStatePersistence:
     async def test_load_state_wrong_node_id(self, node_client_with_state):
         """Test that wrong node_id raises StateConflictError."""
         node = node_client_with_state
-        
+
         # Create state with different node_id
         state = ConnectionState(
             version=STATE_VERSION,
@@ -453,9 +450,9 @@ class TestStatePersistence:
             saved_at=time.time(),
             sequence_number=1,
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         # Should raise StateConflictError
         with pytest.raises(StateConflictError):
             await node._load_state()
@@ -465,7 +462,7 @@ class TestStatePersistence:
         """Test that stale state raises StaleStateError."""
         node = node_client_with_state
         node.max_state_age = 60.0  # 1 minute max age
-        
+
         # Create state that's too old
         state = ConnectionState(
             version=STATE_VERSION,
@@ -473,9 +470,9 @@ class TestStatePersistence:
             saved_at=time.time() - 120,  # 2 minutes ago
             sequence_number=1,
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         # Should raise StaleStateError
         with pytest.raises(StaleStateError):
             await node._load_state()
@@ -494,7 +491,7 @@ class TestStateRecovery:
         """Test recovering pending ACKs from saved state."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Create state with pending ACKs
         ack_data = {
             "message_id": "recover-ack-1",
@@ -507,7 +504,7 @@ class TestStateRecovery:
             "retries": 0,
             "max_retries": 2,
         }
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -515,13 +512,13 @@ class TestStateRecovery:
             sequence_number=10,
             pending_acks=[ack_data],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         # Mock _wait_for_ack to prevent actual waiting
-        with patch.object(node, '_wait_for_ack', new_callable=AsyncMock):
+        with patch.object(node, "_wait_for_ack", new_callable=AsyncMock):
             recovered = await node._recover_state()
-        
+
         assert recovered is True
         assert "recover-ack-1" in node.pending_acks
         assert node._state_sequence == 10
@@ -531,7 +528,7 @@ class TestStateRecovery:
         """Test recovering message queue from saved state."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Create state with queued messages
         msg_data = {
             "message_id": "recover-msg-1",
@@ -542,7 +539,7 @@ class TestStateRecovery:
             "retries": 0,
             "max_retries": 3,
         }
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -550,11 +547,11 @@ class TestStateRecovery:
             sequence_number=20,
             message_queue=[msg_data],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         recovered = await node._recover_state()
-        
+
         assert recovered is True
         assert len(node.message_queue) == 1
         assert node.message_queue[0].message_id == "recover-msg-1"
@@ -563,7 +560,7 @@ class TestStateRecovery:
     async def test_recover_seen_messages(self, node_client_with_state):
         """Test recovering seen messages for deduplication."""
         node = node_client_with_state
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -571,11 +568,11 @@ class TestStateRecovery:
             sequence_number=30,
             seen_messages=["seen-1", "seen-2", "seen-3"],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         recovered = await node._recover_state()
-        
+
         assert recovered is True
         assert "seen-1" in node.seen_messages
         assert "seen-2" in node.seen_messages
@@ -585,7 +582,7 @@ class TestStateRecovery:
     async def test_recover_failover_states(self, node_client_with_state):
         """Test recovering failover states."""
         node = node_client_with_state
-        
+
         # Create state with active cooldown
         state = ConnectionState(
             version=STATE_VERSION,
@@ -602,11 +599,11 @@ class TestStateRecovery:
                 }
             },
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         recovered = await node._recover_state()
-        
+
         assert recovered is True
         assert "router-1" in node.failover_states
         assert node.failover_states["router-1"].is_in_cooldown()
@@ -615,19 +612,19 @@ class TestStateRecovery:
     async def test_recovery_deletes_state_file(self, node_client_with_state):
         """Test that state file is deleted after successful recovery."""
         node = node_client_with_state
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
             saved_at=time.time() - 2,
             sequence_number=50,
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
         assert Path(node.state_file).exists()
-        
+
         await node._recover_state()
-        
+
         # State file should be deleted
         assert not Path(node.state_file).exists()
 
@@ -635,38 +632,38 @@ class TestStateRecovery:
     async def test_no_recovery_without_state_file(self, node_client_with_state):
         """Test that recovery returns False when no state file exists."""
         node = node_client_with_state
-        
+
         # Ensure no state file
         if Path(node.state_file).exists():
             Path(node.state_file).unlink()
-        
+
         recovered = await node._recover_state()
-        
+
         assert recovered is False
 
     @pytest.mark.asyncio
     async def test_recovery_callback(self, node_client_with_state):
         """Test that on_state_recovered callback is called."""
         node = node_client_with_state
-        
+
         callback_called = []
-        
+
         def on_recovered(state):
             callback_called.append(state)
-        
+
         node.on_state_recovered = on_recovered
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
             saved_at=time.time() - 2,
             sequence_number=60,
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         await node._recover_state()
-        
+
         assert len(callback_called) == 1
         assert callback_called[0].sequence_number == 60
 
@@ -683,7 +680,7 @@ class TestNodeLifecycleWithState:
     async def test_start_recovers_state(self, node_client_with_state):
         """Test that start() attempts state recovery."""
         node = node_client_with_state
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -691,12 +688,12 @@ class TestNodeLifecycleWithState:
             sequence_number=70,
             seen_messages=["startup-seen"],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
-        with patch.object(node.discovery, 'discover_routers', new_callable=AsyncMock, return_value=[]):
+
+        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
             await node.start()
-        
+
         try:
             # Should have recovered seen messages
             assert "startup-seen" in node.seen_messages
@@ -708,10 +705,10 @@ class TestNodeLifecycleWithState:
         """Test that stop() saves state."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
-        with patch.object(node.discovery, 'discover_routers', new_callable=AsyncMock, return_value=[]):
+
+        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
             await node.start()
-        
+
         # Add some pending state
         node.pending_acks["stop-test"] = PendingAck(
             message_id="stop-test",
@@ -721,15 +718,15 @@ class TestNodeLifecycleWithState:
             sent_at=time.time(),
             router_id="router-1",
         )
-        
+
         await node.stop()
-        
+
         # State file should exist with our pending ACK
         assert Path(node.state_file).exists()
-        
+
         with open(node.state_file) as f:
             data = json.load(f)
-        
+
         assert len(data["pending_acks"]) == 1
         assert data["pending_acks"][0]["message_id"] == "stop-test"
 
@@ -739,10 +736,10 @@ class TestNodeLifecycleWithState:
         node = node_client_with_state
         node.state_save_interval = 0.1  # Fast for testing
         _, pub_key = x25519_keypair
-        
-        with patch.object(node.discovery, 'discover_routers', new_callable=AsyncMock, return_value=[]):
+
+        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
             await node.start()
-        
+
         # Add pending state
         node.pending_acks["periodic-test"] = PendingAck(
             message_id="periodic-test",
@@ -752,12 +749,12 @@ class TestNodeLifecycleWithState:
             sent_at=time.time(),
             router_id="router-1",
         )
-        
+
         # Wait for periodic save
         await asyncio.sleep(0.3)
-        
+
         await node.stop()
-        
+
         # Should have been saved by the loop
         assert Path(node.state_file).exists()
 
@@ -779,7 +776,7 @@ class TestRouterReconnectionTracking:
             last_disconnected=0.0,
             connection_count=1,
         )
-        
+
         assert history.node_id == "node-1"
         assert history.connection_count == 1
         assert history.time_since_disconnect() > 0  # last_disconnected=0
@@ -790,9 +787,9 @@ class TestRouterReconnectionTracking:
         router = RouterNode()
         ws = AsyncMock()
         ws.closed = False
-        
+
         node_id = await router._handle_identify({"node_id": "new-node"}, ws)
-        
+
         assert node_id == "new-node"
         assert "new-node" in router.connection_history
         assert router.connection_history["new-node"].connection_count == 1
@@ -805,18 +802,18 @@ class TestRouterReconnectionTracking:
         ws1.closed = False
         ws2 = AsyncMock()
         ws2.closed = False
-        
+
         # First connection
         await router._handle_identify({"node_id": "reconnect-node"}, ws1)
         assert router.connection_history["reconnect-node"].connection_count == 1
-        
+
         # Disconnect
         del router.connections["reconnect-node"]
         router.connection_history["reconnect-node"].last_disconnected = time.time()
-        
+
         # Reconnect
         await router._handle_identify({"node_id": "reconnect-node"}, ws2)
-        
+
         assert router.connection_history["reconnect-node"].connection_count == 2
         assert router.reconnections_total == 1
 
@@ -824,24 +821,24 @@ class TestRouterReconnectionTracking:
     async def test_router_sends_reconnection_info(self):
         """Test that router sends reconnection info in identify response."""
         router = RouterNode()
-        
+
         # First connection
         ws1 = AsyncMock()
         ws1.closed = False
         await router._handle_identify({"node_id": "info-node"}, ws1)
-        
+
         # Check first response
         call_args = ws1.send_json.call_args[0][0]
         assert call_args["is_reconnection"] is False
-        
+
         # Disconnect and reconnect
         del router.connections["info-node"]
         router.connection_history["info-node"].last_disconnected = time.time() - 10
-        
+
         ws2 = AsyncMock()
         ws2.closed = False
         await router._handle_identify({"node_id": "info-node"}, ws2)
-        
+
         # Check reconnection response
         call_args = ws2.send_json.call_args[0][0]
         assert call_args["is_reconnection"] is True
@@ -852,35 +849,39 @@ class TestRouterReconnectionTracking:
     async def test_router_includes_queued_count_in_response(self):
         """Test that router includes queued message count in response."""
         router = RouterNode()
-        
+
         # First connection
         ws1 = AsyncMock()
         ws1.closed = False
         await router._handle_identify({"node_id": "queue-node"}, ws1)
-        
+
         # Disconnect
         del router.connections["queue-node"]
         router.connection_history["queue-node"].last_disconnected = time.time()
-        
+
         # Queue some messages
-        await router._handle_relay({
-            "message_id": "q1",
-            "next_hop": "queue-node",
-            "payload": "data1",
-            "ttl": 5,
-        })
-        await router._handle_relay({
-            "message_id": "q2",
-            "next_hop": "queue-node",
-            "payload": "data2",
-            "ttl": 5,
-        })
-        
+        await router._handle_relay(
+            {
+                "message_id": "q1",
+                "next_hop": "queue-node",
+                "payload": "data1",
+                "ttl": 5,
+            }
+        )
+        await router._handle_relay(
+            {
+                "message_id": "q2",
+                "next_hop": "queue-node",
+                "payload": "data2",
+                "ttl": 5,
+            }
+        )
+
         # Reconnect
         ws2 = AsyncMock()
         ws2.closed = False
         await router._handle_identify({"node_id": "queue-node"}, ws2)
-        
+
         # Should show 2 queued messages in response
         call_args = ws2.send_json.call_args_list[0][0][0]  # First call is identify response
         assert call_args["queued_messages"] == 2
@@ -889,31 +890,35 @@ class TestRouterReconnectionTracking:
     async def test_router_delivers_queued_on_reconnect(self):
         """Test that router delivers queued messages on reconnection."""
         router = RouterNode()
-        
+
         # Queue messages for offline node
-        await router._handle_relay({
-            "message_id": "deliver-1",
-            "next_hop": "offline-node",
-            "payload": "payload1",
-            "ttl": 5,
-        })
-        await router._handle_relay({
-            "message_id": "deliver-2",
-            "next_hop": "offline-node",
-            "payload": "payload2",
-            "ttl": 5,
-        })
-        
+        await router._handle_relay(
+            {
+                "message_id": "deliver-1",
+                "next_hop": "offline-node",
+                "payload": "payload1",
+                "ttl": 5,
+            }
+        )
+        await router._handle_relay(
+            {
+                "message_id": "deliver-2",
+                "next_hop": "offline-node",
+                "payload": "payload2",
+                "ttl": 5,
+            }
+        )
+
         assert len(router.offline_queues.get("offline-node", [])) == 2
-        
+
         # Node connects
         ws = AsyncMock()
         ws.closed = False
         await router._handle_identify({"node_id": "offline-node"}, ws)
-        
+
         # Queued messages should have been delivered
         assert "offline-node" not in router.offline_queues
-        
+
         # Check that messages were sent (identified + 2 delivers)
         assert ws.send_json.call_count == 3
 
@@ -922,7 +927,7 @@ class TestRouterReconnectionTracking:
         router = RouterNode()
         router.max_history_entries = 5
         router.history_max_age = 60.0
-        
+
         # Add old history entries
         now = time.time()
         for i in range(10):
@@ -933,12 +938,12 @@ class TestRouterReconnectionTracking:
                 last_disconnected=now - 100,
                 connection_count=1,
             )
-        
+
         assert len(router.connection_history) == 10
-        
+
         # Prune
         router._prune_connection_history()
-        
+
         # Should have removed old entries
         assert len(router.connection_history) < 10
 
@@ -954,42 +959,42 @@ class TestDeleteStateFile:
     def test_delete_existing_state_file(self, node_client_with_state):
         """Test deleting an existing state file."""
         node = node_client_with_state
-        
+
         # Create file
         Path(node.state_file).write_text("{}")
         assert Path(node.state_file).exists()
-        
+
         result = node.delete_state_file()
-        
+
         assert result is True
         assert not Path(node.state_file).exists()
 
     def test_delete_nonexistent_state_file(self, node_client_with_state):
         """Test deleting a nonexistent state file."""
         node = node_client_with_state
-        
+
         # Ensure file doesn't exist
         if Path(node.state_file).exists():
             Path(node.state_file).unlink()
-        
+
         result = node.delete_state_file()
-        
+
         assert result is False
 
     def test_delete_state_file_disabled(self, ed25519_keypair, x25519_keypair):
         """Test delete_state_file when state persistence is disabled."""
         private_key, public_key = ed25519_keypair
         enc_private, _ = x25519_keypair
-        
+
         node = NodeClient(
             node_id=public_key.public_bytes_raw().hex(),
             private_key=private_key,
             encryption_private_key=enc_private,
             state_file=None,  # Disabled
         )
-        
+
         result = node.delete_state_file()
-        
+
         assert result is False
 
 
@@ -1006,7 +1011,7 @@ class TestEdgeCases:
         """Test that expired pending ACKs are not recovered."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Create state with expired ACK
         ack_data = {
             "message_id": "expired-ack",
@@ -1019,7 +1024,7 @@ class TestEdgeCases:
             "retries": 0,
             "max_retries": 2,
         }
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -1027,12 +1032,12 @@ class TestEdgeCases:
             sequence_number=80,
             pending_acks=[ack_data],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
-        with patch.object(node, '_wait_for_ack', new_callable=AsyncMock):
+
+        with patch.object(node, "_wait_for_ack", new_callable=AsyncMock):
             await node._recover_state()
-        
+
         # Expired ACK should not be recovered
         assert "expired-ack" not in node.pending_acks
 
@@ -1042,7 +1047,7 @@ class TestEdgeCases:
         node = node_client_with_state
         node.MAX_QUEUE_AGE = 60.0  # 1 minute max age
         _, pub_key = x25519_keypair
-        
+
         # Create state with expired message
         msg_data = {
             "message_id": "expired-msg",
@@ -1053,7 +1058,7 @@ class TestEdgeCases:
             "retries": 0,
             "max_retries": 3,
         }
-        
+
         state = ConnectionState(
             version=STATE_VERSION,
             node_id=node.node_id,
@@ -1061,11 +1066,11 @@ class TestEdgeCases:
             sequence_number=90,
             message_queue=[msg_data],
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         await node._recover_state()
-        
+
         # Expired message should not be recovered
         assert len(node.message_queue) == 0
 
@@ -1073,7 +1078,7 @@ class TestEdgeCases:
     async def test_expired_failover_states_not_recovered(self, node_client_with_state):
         """Test that expired failover states are not recovered."""
         node = node_client_with_state
-        
+
         # Create state with expired cooldown
         state = ConnectionState(
             version=STATE_VERSION,
@@ -1090,11 +1095,11 @@ class TestEdgeCases:
                 }
             },
         )
-        
+
         Path(node.state_file).write_text(state.to_json())
-        
+
         await node._recover_state()
-        
+
         # Expired failover state should not be recovered
         assert "router-expired" not in node.failover_states
 
@@ -1102,10 +1107,10 @@ class TestEdgeCases:
     async def test_corrupted_state_file_handled(self, node_client_with_state):
         """Test that corrupted state file is handled gracefully."""
         node = node_client_with_state
-        
+
         # Write invalid JSON
         Path(node.state_file).write_text("not valid json {{{")
-        
+
         # Should return None, not raise
         loaded = await node._load_state()
         assert loaded is None
@@ -1115,7 +1120,7 @@ class TestEdgeCases:
         """Test that save is atomic (temp file pattern)."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
-        
+
         # Add state
         node.pending_acks["atomic-test"] = PendingAck(
             message_id="atomic-test",
@@ -1125,13 +1130,13 @@ class TestEdgeCases:
             sent_at=time.time(),
             router_id="router-1",
         )
-        
+
         # Save state
         await node._save_state()
-        
+
         # No temp file should remain
-        temp_path = Path(node.state_file).with_suffix('.tmp')
+        temp_path = Path(node.state_file).with_suffix(".tmp")
         assert not temp_path.exists()
-        
+
         # Main file should exist
         assert Path(node.state_file).exists()

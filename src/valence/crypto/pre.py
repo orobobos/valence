@@ -49,31 +49,37 @@ from typing import Any
 
 class PREError(Exception):
     """Base exception for PRE operations."""
+
     pass
 
 
 class PREKeyError(PREError):
     """Raised when a key operation fails."""
+
     pass
 
 
 class PREEncryptionError(PREError):
     """Raised when encryption fails."""
+
     pass
 
 
 class PREDecryptionError(PREError):
     """Raised when decryption fails."""
+
     pass
 
 
 class PREReEncryptionError(PREError):
     """Raised when re-encryption fails."""
+
     pass
 
 
 class PREInvalidCiphertextError(PREError):
     """Raised when ciphertext is malformed or invalid."""
+
     pass
 
 
@@ -113,7 +119,7 @@ class PREPublicKey:
         return cls(
             key_id=bytes.fromhex(data["key_id"]),
             key_bytes=bytes.fromhex(data["key_bytes"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             metadata=data.get("metadata", {}),
         )
 
@@ -160,7 +166,7 @@ class PREPrivateKey:
         return cls(
             key_id=bytes.fromhex(data["key_id"]),
             key_bytes=bytes.fromhex(data["key_bytes"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             metadata=data.get("metadata", {}),
         )
 
@@ -262,8 +268,8 @@ class ReEncryptionKey:
             delegator_id=bytes.fromhex(data["delegator_id"]),
             delegatee_id=bytes.fromhex(data["delegatee_id"]),
             key_bytes=bytes.fromhex(data["key_bytes"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             metadata=data.get("metadata", {}),
         )
 
@@ -297,7 +303,7 @@ class PRECiphertext:
             "encrypted_data": self.encrypted_data.hex(),
             "recipient_id": self.recipient_id.hex(),
             "is_reencrypted": self.is_reencrypted,
-            "original_recipient_id": self.original_recipient_id.hex() if self.original_recipient_id else None,
+            "original_recipient_id": (self.original_recipient_id.hex() if self.original_recipient_id else None),
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
@@ -310,8 +316,8 @@ class PRECiphertext:
             encrypted_data=bytes.fromhex(data["encrypted_data"]),
             recipient_id=bytes.fromhex(data["recipient_id"]),
             is_reencrypted=data.get("is_reencrypted", False),
-            original_recipient_id=bytes.fromhex(data["original_recipient_id"]) if data.get("original_recipient_id") else None,
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            original_recipient_id=(bytes.fromhex(data["original_recipient_id"]) if data.get("original_recipient_id") else None),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             metadata=data.get("metadata", {}),
         )
 
@@ -586,8 +592,7 @@ class MockPREBackend(PREBackend):
         # Validate recipient matches
         if ciphertext.recipient_id != recipient_private_key.key_id:
             raise PREDecryptionError(
-                f"Key mismatch: ciphertext for {ciphertext.recipient_id.hex()}, "
-                f"but got key {recipient_private_key.key_id.hex()}"
+                f"Key mismatch: ciphertext for {ciphertext.recipient_id.hex()}, " f"but got key {recipient_private_key.key_id.hex()}"
             )
 
         # Look up original plaintext (mock shortcut)
@@ -616,8 +621,7 @@ class MockPREBackend(PREBackend):
         # Validate rekey matches ciphertext recipient
         if ciphertext.recipient_id != rekey.delegator_id:
             raise PREReEncryptionError(
-                f"Rekey delegator {rekey.delegator_id.hex()} doesn't match "
-                f"ciphertext recipient {ciphertext.recipient_id.hex()}"
+                f"Rekey delegator {rekey.delegator_id.hex()} doesn't match " f"ciphertext recipient {ciphertext.recipient_id.hex()}"
             )
 
         # Check expiration

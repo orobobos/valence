@@ -17,12 +17,12 @@ from typing import Any, Protocol
 class AnomalyType(Enum):
     """Types of anomalies that can be detected."""
 
-    RAPID_SHARING = "rapid_sharing"          # >N shares per hour
-    BULK_ACCESS = "bulk_access"              # >N accesses in short time
-    UNUSUAL_HOURS = "unusual_hours"          # Activity outside normal hours
+    RAPID_SHARING = "rapid_sharing"  # >N shares per hour
+    BULK_ACCESS = "bulk_access"  # >N accesses in short time
+    UNUSUAL_HOURS = "unusual_hours"  # Activity outside normal hours
     FAILED_AUTH_SPIKE = "failed_auth_spike"  # >N failed auths in window
-    MASS_REVOCATION = "mass_revocation"      # >N revocations in short time
-    TRUST_ABUSE = "trust_abuse"              # Rapid trust/revoke cycles
+    MASS_REVOCATION = "mass_revocation"  # >N revocations in short time
+    TRUST_ABUSE = "trust_abuse"  # Rapid trust/revoke cycles
 
 
 @dataclass
@@ -152,17 +152,15 @@ class AnomalyDetector:
 
         # Event history per actor per anomaly type
         # Dict[AnomalyType, Dict[actor_did, List[timestamp]]]
-        self._events: dict[AnomalyType, dict[str, list[datetime]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        self._events: dict[AnomalyType, dict[str, list[datetime]]] = defaultdict(lambda: defaultdict(list))
 
         # Last alert time per actor per anomaly type (for cooldown)
         # Dict[AnomalyType, Dict[actor_did, datetime]]
         self._last_alerts: dict[AnomalyType, dict[str, datetime]] = defaultdict(dict)
 
         # Configurable normal hours (default 6 AM - 10 PM)
-        self._normal_hours_start: int = 6   # 6 AM
-        self._normal_hours_end: int = 22    # 10 PM
+        self._normal_hours_start: int = 6  # 6 AM
+        self._normal_hours_end: int = 22  # 10 PM
 
     def set_callback(self, callback: AlertCallback) -> None:
         """Set the callback function for alerts.
@@ -260,9 +258,7 @@ class AnomalyDetector:
         """Remove events outside the time window."""
         cutoff = now - timedelta(seconds=window_seconds)
         events = self._events[anomaly_type][actor_did]
-        self._events[anomaly_type][actor_did] = [
-            ts for ts in events if ts > cutoff
-        ]
+        self._events[anomaly_type][actor_did] = [ts for ts in events if ts > cutoff]
 
     def _check_cooldown(
         self,

@@ -23,10 +23,10 @@ class RedundancyLevel(Enum):
     - MINIMAL: 2 of 3 - 50% overhead, survives 1 failure (testing)
     """
 
-    MINIMAL = (2, 3)      # 50% overhead, survives 1 failure
-    PERSONAL = (3, 5)     # 67% overhead, survives 2 failures
-    FEDERATION = (5, 9)   # 80% overhead, survives 4 failures
-    PARANOID = (7, 15)    # 114% overhead, survives 8 failures
+    MINIMAL = (2, 3)  # 50% overhead, survives 1 failure
+    PERSONAL = (3, 5)  # 67% overhead, survives 2 failures
+    FEDERATION = (5, 9)  # 80% overhead, survives 4 failures
+    PARANOID = (7, 15)  # 114% overhead, survives 8 failures
 
     @property
     def data_shards(self) -> int:
@@ -82,13 +82,13 @@ class ShardMetadata:
     """Metadata for a single shard."""
 
     shard_id: UUID = field(default_factory=uuid4)
-    index: int = 0                    # Position in shard set (0 to n-1)
-    is_parity: bool = False           # True if this is a parity shard
-    size_bytes: int = 0               # Size of shard data
-    checksum: str = ""                # SHA-256 hash of shard data
+    index: int = 0  # Position in shard set (0 to n-1)
+    is_parity: bool = False  # True if this is a parity shard
+    size_bytes: int = 0  # Size of shard data
+    checksum: str = ""  # SHA-256 hash of shard data
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    backend_id: str | None = None     # Which backend stores this shard
-    location: str | None = None       # Backend-specific location
+    backend_id: str | None = None  # Which backend stores this shard
+    location: str | None = None  # Backend-specific location
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -107,12 +107,12 @@ class ShardMetadata:
     def from_dict(cls, data: dict[str, Any]) -> ShardMetadata:
         """Create from dictionary."""
         return cls(
-            shard_id=UUID(data["shard_id"]) if isinstance(data["shard_id"], str) else data["shard_id"],
+            shard_id=(UUID(data["shard_id"]) if isinstance(data["shard_id"], str) else data["shard_id"]),
             index=data["index"],
             is_parity=data.get("is_parity", False),
             size_bytes=data.get("size_bytes", 0),
             checksum=data.get("checksum", ""),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"],
+            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
             backend_id=data.get("backend_id"),
             location=data.get("location"),
         )
@@ -122,8 +122,8 @@ class ShardMetadata:
 class StorageShard:
     """A single shard of erasure-coded data."""
 
-    data: bytes                       # The actual shard data
-    metadata: ShardMetadata           # Shard metadata
+    data: bytes  # The actual shard data
+    metadata: ShardMetadata  # Shard metadata
 
     @property
     def index(self) -> int:
@@ -136,12 +136,14 @@ class StorageShard:
         if not self.metadata.checksum:
             return True  # No checksum to verify
         import hashlib
+
         actual = hashlib.sha256(self.data).hexdigest()
         return actual == self.metadata.checksum
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (data as base64)."""
         import base64
+
         return {
             "data": base64.b64encode(self.data).decode("ascii"),
             "metadata": self.metadata.to_dict(),
@@ -151,6 +153,7 @@ class StorageShard:
     def from_dict(cls, data: dict[str, Any]) -> StorageShard:
         """Create from dictionary."""
         import base64
+
         return cls(
             data=base64.b64decode(data["data"]),
             metadata=ShardMetadata.from_dict(data["metadata"]),
@@ -169,16 +172,16 @@ class ShardSet:
     shards: list[StorageShard | None] = field(default_factory=list)
 
     # Encoding parameters
-    data_shards_k: int = 3            # Number of data shards
-    total_shards_n: int = 5           # Total number of shards
+    data_shards_k: int = 3  # Number of data shards
+    total_shards_n: int = 5  # Total number of shards
 
     # Original data metadata
-    original_size: int = 0            # Size of original data
-    original_checksum: str = ""       # SHA-256 of original data
+    original_size: int = 0  # Size of original data
+    original_checksum: str = ""  # SHA-256 of original data
     content_type: str = "application/octet-stream"
 
     # Merkle tree for integrity
-    merkle_root: str = ""             # Root hash of Merkle tree
+    merkle_root: str = ""  # Root hash of Merkle tree
 
     # Timestamps
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -235,12 +238,9 @@ class ShardSet:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ShardSet:
         """Create from dictionary."""
-        shards = [
-            StorageShard.from_dict(s) if s else None
-            for s in data.get("shards", [])
-        ]
+        shards = [StorageShard.from_dict(s) if s else None for s in data.get("shards", [])]
         return cls(
-            set_id=UUID(data["set_id"]) if isinstance(data["set_id"], str) else data["set_id"],
+            set_id=(UUID(data["set_id"]) if isinstance(data["set_id"], str) else data["set_id"]),
             shards=shards,
             data_shards_k=data["data_shards_k"],
             total_shards_n=data["total_shards_n"],
@@ -248,8 +248,8 @@ class ShardSet:
             original_checksum=data.get("original_checksum", ""),
             content_type=data.get("content_type", "application/octet-stream"),
             merkle_root=data.get("merkle_root", ""),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"],
-            verified_at=datetime.fromisoformat(data["verified_at"]) if data.get("verified_at") else None,
+            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
+            verified_at=(datetime.fromisoformat(data["verified_at"]) if data.get("verified_at") else None),
             belief_id=UUID(data["belief_id"]) if data.get("belief_id") else None,
         )
 
@@ -270,6 +270,7 @@ class RecoveryResult:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         import base64
+
         return {
             "success": self.success,
             "data": base64.b64encode(self.data).decode("ascii") if self.data else None,

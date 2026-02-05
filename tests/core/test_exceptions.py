@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from valence.core.exceptions import (
     ConfigException,
     ConflictError,
@@ -11,14 +10,14 @@ from valence.core.exceptions import (
     EmbeddingException,
     MCPException,
     NotFoundError,
-    ValidationException,
     ValenceException,
+    ValidationException,
 )
-
 
 # ============================================================================
 # ValenceException Tests
 # ============================================================================
+
 
 class TestValenceException:
     """Tests for base ValenceException."""
@@ -67,6 +66,7 @@ class TestValenceException:
 # DatabaseException Tests
 # ============================================================================
 
+
 class TestDatabaseException:
     """Tests for DatabaseException."""
 
@@ -91,6 +91,7 @@ class TestDatabaseException:
 # ============================================================================
 # ValidationException Tests
 # ============================================================================
+
 
 class TestValidationException:
     """Tests for ValidationException."""
@@ -135,6 +136,7 @@ class TestValidationException:
 # ConfigException Tests
 # ============================================================================
 
+
 class TestConfigException:
     """Tests for ConfigException."""
 
@@ -170,6 +172,7 @@ class TestConfigException:
 # NotFoundError Tests
 # ============================================================================
 
+
 class TestNotFoundError:
     """Tests for NotFoundError."""
 
@@ -199,6 +202,7 @@ class TestNotFoundError:
 # ConflictError Tests
 # ============================================================================
 
+
 class TestConflictError:
     """Tests for ConflictError."""
 
@@ -225,6 +229,7 @@ class TestConflictError:
 # ============================================================================
 # EmbeddingException Tests
 # ============================================================================
+
 
 class TestEmbeddingException:
     """Tests for EmbeddingException."""
@@ -253,6 +258,7 @@ class TestEmbeddingException:
 # MCPException Tests
 # ============================================================================
 
+
 class TestMCPException:
     """Tests for MCPException."""
 
@@ -279,6 +285,7 @@ class TestMCPException:
 # ============================================================================
 # Exception Hierarchy Tests
 # ============================================================================
+
 
 class TestExceptionHierarchy:
     """Tests for exception class hierarchy."""
@@ -327,6 +334,7 @@ class TestExceptionHierarchy:
 # Serialization Tests
 # ============================================================================
 
+
 class TestExceptionSerialization:
     """Tests for exception serialization."""
 
@@ -351,6 +359,7 @@ class TestExceptionSerialization:
     def test_to_dict_json_serializable(self):
         """to_dict output should be JSON serializable."""
         import json
+
         exc = ValidationException("Bad input", field="email", value={"nested": "data"})
         d = exc.to_dict()
         # Should not raise

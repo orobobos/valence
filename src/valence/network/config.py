@@ -56,6 +56,7 @@ class PrivacyLevel(Enum):
               - Constant-rate sending enabled
               - Mix network integration (when available)
     """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -78,6 +79,7 @@ class BatchingConfig:
         batch_interval_ms: Send batch after this many milliseconds
         randomize_order: Shuffle message order within batch
     """
+
     enabled: bool = False
     min_batch_size: int = 2
     max_batch_size: int = 8
@@ -104,6 +106,7 @@ class TimingJitterConfig:
         max_delay_ms: Maximum additional delay
         distribution: "uniform" or "exponential"
     """
+
     enabled: bool = False
     min_delay_ms: int = 0
     max_delay_ms: int = 500
@@ -150,6 +153,7 @@ class ConstantRateConfig:
         allow_burst: Allow bursting above rate for queued messages
         max_burst_size: Maximum burst size if allowed
     """
+
     enabled: bool = False
     messages_per_minute: float = 10.0
     pad_to_size: int = 4096  # 4KB standard size
@@ -179,6 +183,7 @@ class MixNetworkConfig:
         max_hops: Maximum number of mix hops
         loop_cover_traffic: Generate loopback cover traffic
     """
+
     enabled: bool = False
     provider_url: str | None = None
     min_hops: int = 3
@@ -216,6 +221,7 @@ class TrafficAnalysisMitigationConfig:
         adaptive: Adjust settings based on network conditions
         metrics_enabled: Track timing metrics for debugging
     """
+
     privacy_level: PrivacyLevel = PrivacyLevel.LOW
     batching: BatchingConfig = field(default_factory=BatchingConfig)
     jitter: TimingJitterConfig = field(default_factory=TimingJitterConfig)
@@ -341,13 +347,9 @@ class TrafficAnalysisMitigationConfig:
             max_delay_ms += self.jitter.max_delay_ms
             if self.jitter.distribution == "exponential":
                 # Exponential mean is roughly (max-min)/2
-                avg_delay_ms += (
-                    self.jitter.max_delay_ms - self.jitter.min_delay_ms
-                ) // 2
+                avg_delay_ms += (self.jitter.max_delay_ms - self.jitter.min_delay_ms) // 2
             else:
-                avg_delay_ms += (
-                    self.jitter.min_delay_ms + self.jitter.max_delay_ms
-                ) // 2
+                avg_delay_ms += (self.jitter.min_delay_ms + self.jitter.max_delay_ms) // 2
 
         # Constant rate delay (worst case: waiting for next slot)
         if self.constant_rate.enabled:

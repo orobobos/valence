@@ -22,38 +22,42 @@ class ExtractionLevel(Enum):
     Higher abstraction levels are safer for wider sharing.
     """
 
-    THEMES = "themes"           # High-level themes only (most abstract)
-    KEY_POINTS = "key_points"   # Main points without detail
-    SUMMARY = "summary"         # Condensed summary preserving key info
-    ANONYMIZED = "anonymized"   # Full content with PII/identifiers removed
+    THEMES = "themes"  # High-level themes only (most abstract)
+    KEY_POINTS = "key_points"  # Main points without detail
+    SUMMARY = "summary"  # Condensed summary preserving key info
+    ANONYMIZED = "anonymized"  # Full content with PII/identifiers removed
 
 
 class ExtractionStatus(Enum):
     """Status of an extraction in the review workflow."""
 
     PENDING_REVIEW = "pending_review"  # Awaiting human approval
-    APPROVED = "approved"               # Approved for sharing
-    REJECTED = "rejected"               # Rejected, not shareable
-    MODIFIED = "modified"               # Approved with human modifications
+    APPROVED = "approved"  # Approved for sharing
+    REJECTED = "rejected"  # Rejected, not shareable
+    MODIFIED = "modified"  # Approved with human modifications
 
 
 class ExtractionError(Exception):
     """Base exception for extraction operations."""
+
     pass
 
 
 class ExtractorNotAvailableError(ExtractionError):
     """Raised when no AI extractor is configured."""
+
     pass
 
 
 class ExtractionNotFoundError(ExtractionError):
     """Raised when an extraction record is not found."""
+
     pass
 
 
 class ExtractionAlreadyReviewedError(ExtractionError):
     """Raised when trying to review an already-reviewed extraction."""
+
     pass
 
 
@@ -65,11 +69,11 @@ class ExtractionProvenance:
     allowing provenance chains to indicate transformation.
     """
 
-    source_id: str              # ID of source belief/content
-    source_hash: str            # Hash of source content for integrity
+    source_id: str  # ID of source belief/content
+    source_hash: str  # Hash of source content for integrity
     extracted_at: datetime
     extraction_level: ExtractionLevel
-    extractor_id: str           # Identifier for the extractor used
+    extractor_id: str  # Identifier for the extractor used
     extraction_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -105,7 +109,7 @@ class ExtractedInsight:
     """
 
     extraction_id: str
-    content: str                          # The extracted insight text
+    content: str  # The extracted insight text
     level: ExtractionLevel
     provenance: ExtractionProvenance
     status: ExtractionStatus = ExtractionStatus.PENDING_REVIEW
@@ -147,7 +151,7 @@ class ExtractedInsight:
             level=ExtractionLevel(data["level"]),
             provenance=ExtractionProvenance.from_dict(data["provenance"]),
             status=ExtractionStatus(data["status"]),
-            reviewed_at=datetime.fromisoformat(data["reviewed_at"]) if data.get("reviewed_at") else None,
+            reviewed_at=(datetime.fromisoformat(data["reviewed_at"]) if data.get("reviewed_at") else None),
             reviewed_by=data.get("reviewed_by"),
             review_notes=data.get("review_notes"),
             original_extraction=data.get("original_extraction"),
@@ -300,8 +304,26 @@ class MockInsightExtractor(InsightExtractor):
         words = content.lower().split()
         # Simulate finding themes based on word frequency
         word_freq: dict[str, int] = {}
-        stopwords = {"the", "a", "an", "is", "are", "was", "were", "be", "been",
-                     "to", "of", "and", "in", "that", "it", "for", "on", "with"}
+        stopwords = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "to",
+            "of",
+            "and",
+            "in",
+            "that",
+            "it",
+            "for",
+            "on",
+            "with",
+        }
         for word in words:
             word = word.strip(".,!?;:'\"")
             if word and len(word) > 3 and word not in stopwords:
@@ -323,7 +345,7 @@ class MockInsightExtractor(InsightExtractor):
             return "Key points: No clear points identified"
 
         # Take first few sentences as "key points"
-        key_sentences = sentences[:min(3, len(sentences))]
+        key_sentences = sentences[: min(3, len(sentences))]
         points = "\n".join(f"• {s}" for s in key_sentences)
         return f"Key points:\n{points}"
 
@@ -334,7 +356,7 @@ class MockInsightExtractor(InsightExtractor):
             return content
 
         # Simple truncation-based summary
-        summary_words = words[:max(20, len(words) // 3)]
+        summary_words = words[: max(20, len(words) // 3)]
         return " ".join(summary_words) + "..."
 
     def _extract_anonymized(self, content: str) -> str:
@@ -344,17 +366,17 @@ class MockInsightExtractor(InsightExtractor):
         result = content
 
         # Replace email-like patterns
-        result = re.sub(r'\b[\w.-]+@[\w.-]+\.\w+\b', '[EMAIL]', result)
+        result = re.sub(r"\b[\w.-]+@[\w.-]+\.\w+\b", "[EMAIL]", result)
 
         # Replace phone-like patterns
-        result = re.sub(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', '[PHONE]', result)
+        result = re.sub(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", "[PHONE]", result)
 
         # Replace potential names (capitalized words not at sentence start)
         # This is intentionally simplistic for the mock
-        result = re.sub(r'(?<!^)(?<![.!?]\s)\b[A-Z][a-z]+\b', '[NAME]', result)
+        result = re.sub(r"(?<!^)(?<![.!?]\s)\b[A-Z][a-z]+\b", "[NAME]", result)
 
         # Replace SSN-like patterns
-        result = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '[SSN]', result)
+        result = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]", result)
 
         return result
 
@@ -435,9 +457,7 @@ def approve_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -473,9 +493,7 @@ def reject_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -513,9 +531,7 @@ def modify_extraction(
         ExtractionAlreadyReviewedError: If already reviewed
     """
     if not insight.is_pending:
-        raise ExtractionAlreadyReviewedError(
-            f"Extraction {insight.extraction_id} is already {insight.status.value}"
-        )
+        raise ExtractionAlreadyReviewedError(f"Extraction {insight.extraction_id} is already {insight.status.value}")
 
     return ExtractedInsight(
         extraction_id=insight.extraction_id,
@@ -539,9 +555,7 @@ class RateLimitExceededError(ExtractionError):
         self.did = did
         self.limit = limit
         self.window_seconds = window_seconds
-        super().__init__(
-            f"Rate limit exceeded for {did}: {limit} extractions per {window_seconds}s"
-        )
+        super().__init__(f"Rate limit exceeded for {did}: {limit} extractions per {window_seconds}s")
 
 
 @dataclass
@@ -614,10 +628,7 @@ class ExtractionService:
             self._extraction_times[requester_did] = []
 
         # Clean up old entries outside the window
-        self._extraction_times[requester_did] = [
-            t for t in self._extraction_times[requester_did]
-            if t > window_start
-        ]
+        self._extraction_times[requester_did] = [t for t in self._extraction_times[requester_did] if t > window_start]
 
         # Check if limit exceeded
         if len(self._extraction_times[requester_did]) >= self._rate_limit.max_extractions_per_window:

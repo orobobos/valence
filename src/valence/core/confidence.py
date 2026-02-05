@@ -321,23 +321,59 @@ def aggregate_confidence(
     if method == "minimum":
         return DimensionalConfidence(
             overall=min(c.overall for c in confidences),
-            source_reliability=min((c.source_reliability for c in confidences if c.source_reliability is not None), default=None),
-            method_quality=min((c.method_quality for c in confidences if c.method_quality is not None), default=None),
-            internal_consistency=min((c.internal_consistency for c in confidences if c.internal_consistency is not None), default=None),
-            temporal_freshness=min((c.temporal_freshness for c in confidences if c.temporal_freshness is not None), default=None),
-            corroboration=min((c.corroboration for c in confidences if c.corroboration is not None), default=None),
-            domain_applicability=min((c.domain_applicability for c in confidences if c.domain_applicability is not None), default=None),
+            source_reliability=min(
+                (c.source_reliability for c in confidences if c.source_reliability is not None),
+                default=None,
+            ),
+            method_quality=min(
+                (c.method_quality for c in confidences if c.method_quality is not None),
+                default=None,
+            ),
+            internal_consistency=min(
+                (c.internal_consistency for c in confidences if c.internal_consistency is not None),
+                default=None,
+            ),
+            temporal_freshness=min(
+                (c.temporal_freshness for c in confidences if c.temporal_freshness is not None),
+                default=None,
+            ),
+            corroboration=min(
+                (c.corroboration for c in confidences if c.corroboration is not None),
+                default=None,
+            ),
+            domain_applicability=min(
+                (c.domain_applicability for c in confidences if c.domain_applicability is not None),
+                default=None,
+            ),
         )
 
     elif method == "maximum":
         return DimensionalConfidence(
             overall=max(c.overall for c in confidences),
-            source_reliability=max((c.source_reliability for c in confidences if c.source_reliability is not None), default=None),
-            method_quality=max((c.method_quality for c in confidences if c.method_quality is not None), default=None),
-            internal_consistency=max((c.internal_consistency for c in confidences if c.internal_consistency is not None), default=None),
-            temporal_freshness=max((c.temporal_freshness for c in confidences if c.temporal_freshness is not None), default=None),
-            corroboration=max((c.corroboration for c in confidences if c.corroboration is not None), default=None),
-            domain_applicability=max((c.domain_applicability for c in confidences if c.domain_applicability is not None), default=None),
+            source_reliability=max(
+                (c.source_reliability for c in confidences if c.source_reliability is not None),
+                default=None,
+            ),
+            method_quality=max(
+                (c.method_quality for c in confidences if c.method_quality is not None),
+                default=None,
+            ),
+            internal_consistency=max(
+                (c.internal_consistency for c in confidences if c.internal_consistency is not None),
+                default=None,
+            ),
+            temporal_freshness=max(
+                (c.temporal_freshness for c in confidences if c.temporal_freshness is not None),
+                default=None,
+            ),
+            corroboration=max(
+                (c.corroboration for c in confidences if c.corroboration is not None),
+                default=None,
+            ),
+            domain_applicability=max(
+                (c.domain_applicability for c in confidences if c.domain_applicability is not None),
+                default=None,
+            ),
         )
 
     elif method == "geometric":

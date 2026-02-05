@@ -178,7 +178,7 @@ class ReportMetadata:
             "report_id": self.report_id,
             "user_did": self.user_did,
             "requested_at": self.requested_at.isoformat(),
-            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "generated_at": (self.generated_at.isoformat() if self.generated_at else None),
             "scope": self.scope.to_dict(),
             "format": self.format.value,
             "status": self.status.value,
@@ -822,10 +822,7 @@ class ReportService:
             await self._report_store.save_report(report_id, report)
             await self._report_store.update_status(report_id, ReportStatus.COMPLETED)
 
-            logger.info(
-                f"Report {report_id} generated with "
-                f"{sum(metadata.record_counts.values())} total records"
-            )
+            logger.info(f"Report {report_id} generated with " f"{sum(metadata.record_counts.values())} total records")
 
             return report
 
@@ -869,9 +866,7 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
 
         if metadata.status != ReportStatus.COMPLETED:
-            raise ReportGenerationError(
-                f"Report {report_id} is not completed (status: {metadata.status.value})"
-            )
+            raise ReportGenerationError(f"Report {report_id} is not completed (status: {metadata.status.value})")
 
         report = await self._report_store.get_report(report_id)
         if report is None:

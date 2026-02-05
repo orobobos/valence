@@ -24,7 +24,10 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+    from cryptography.hazmat.primitives.asymmetric.x25519 import (
+        X25519PrivateKey,
+        X25519PublicKey,
+    )
 
     from .config import TrafficAnalysisMitigationConfig
     from .discovery import RouterInfo
@@ -232,17 +235,17 @@ class MessageHandler:
             # Queue message for later delivery
             if len(self.message_queue) >= self.config.max_queue_size:
                 self._stats["messages_dropped"] += 1
-                raise NoRoutersAvailableError(
-                    "No routers available and message queue full"
-                )
+                raise NoRoutersAvailableError("No routers available and message queue full")
 
-            self.message_queue.append(PendingMessage(
-                message_id=message_id,
-                recipient_id=recipient_id,
-                content=content,
-                recipient_public_key=recipient_public_key,
-                queued_at=time.time(),
-            ))
+            self.message_queue.append(
+                PendingMessage(
+                    message_id=message_id,
+                    recipient_id=recipient_id,
+                    content=content,
+                    recipient_public_key=recipient_public_key,
+                    queued_at=time.time(),
+                )
+            )
             self._stats["messages_queued"] += 1
             logger.debug(f"Message {message_id} queued (no routers available)")
             return message_id
@@ -448,10 +451,7 @@ class MessageHandler:
             except Exception as e:
                 logger.warning(f"on_ack_timeout callback error: {e}")
 
-        logger.warning(
-            f"Message {message_id} to {pending.recipient_id[:16]}... "
-            f"failed after {pending.retries} retries"
-        )
+        logger.warning(f"Message {message_id} to {pending.recipient_id[:16]}... " f"failed after {pending.retries} retries")
 
     def handle_ack(self, message_id: str, success: bool = True) -> None:
         """Handle acknowledgment for a sent message."""
@@ -475,9 +475,7 @@ class MessageHandler:
         self._stats["ack_successes"] += 1
 
         latency_ms = (ack.received_at - pending.sent_at) * 1000
-        logger.debug(
-            f"E2E ACK received for {message_id} (latency: {latency_ms:.1f}ms)"
-        )
+        logger.debug(f"E2E ACK received for {message_id} (latency: {latency_ms:.1f}ms)")
 
     def is_duplicate_message(self, message_id: str) -> bool:
         """Check if we've already seen this message."""
@@ -489,7 +487,7 @@ class MessageHandler:
         # Prune if too large
         if len(self.seen_messages) > self.config.max_seen_messages:
             seen_list = list(self.seen_messages)
-            self.seen_messages = set(seen_list[len(seen_list)//2:])
+            self.seen_messages = set(seen_list[len(seen_list) // 2 :])
 
         return False
 

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-import pytest
-
+from valence.core.confidence import DimensionalConfidence
 from valence.core.models import (
     Belief,
     BeliefEntity,
@@ -29,12 +28,11 @@ from valence.core.models import (
     TensionStatus,
     TensionType,
 )
-from valence.core.confidence import DimensionalConfidence
-
 
 # ============================================================================
 # Enum Tests
 # ============================================================================
+
 
 class TestBeliefStatus:
     """Tests for BeliefStatus enum."""
@@ -62,8 +60,13 @@ class TestEntityType:
     def test_all_values_exist(self):
         """All expected type values should exist."""
         expected = {
-            "PERSON", "ORGANIZATION", "TOOL", "CONCEPT",
-            "PROJECT", "LOCATION", "SERVICE"
+            "PERSON",
+            "ORGANIZATION",
+            "TOOL",
+            "CONCEPT",
+            "PROJECT",
+            "LOCATION",
+            "SERVICE",
         }
         actual = {t.name for t in EntityType}
         assert actual == expected
@@ -129,8 +132,10 @@ class TestTensionType:
     def test_all_values_exist(self):
         """All expected type values should exist."""
         expected = {
-            "CONTRADICTION", "TEMPORAL_CONFLICT",
-            "SCOPE_CONFLICT", "PARTIAL_OVERLAP"
+            "CONTRADICTION",
+            "TEMPORAL_CONFLICT",
+            "SCOPE_CONFLICT",
+            "PARTIAL_OVERLAP",
         }
         actual = {t.name for t in TensionType}
         assert actual == expected
@@ -159,6 +164,7 @@ class TestTensionStatus:
 # ============================================================================
 # Source Model Tests
 # ============================================================================
+
 
 class TestSource:
     """Tests for Source dataclass."""
@@ -234,6 +240,7 @@ class TestSource:
 # Entity Model Tests
 # ============================================================================
 
+
 class TestEntity:
     """Tests for Entity dataclass."""
 
@@ -294,6 +301,7 @@ class TestEntity:
 # ============================================================================
 # Belief Model Tests
 # ============================================================================
+
 
 class TestBelief:
     """Tests for Belief dataclass."""
@@ -407,6 +415,7 @@ class TestBelief:
 # BeliefEntity Model Tests
 # ============================================================================
 
+
 class TestBeliefEntity:
     """Tests for BeliefEntity dataclass."""
 
@@ -445,6 +454,7 @@ class TestBeliefEntity:
 # ============================================================================
 # Tension Model Tests
 # ============================================================================
+
 
 class TestTension:
     """Tests for Tension dataclass."""
@@ -497,6 +507,7 @@ class TestTension:
 # ============================================================================
 # Session Model Tests
 # ============================================================================
+
 
 class TestSession:
     """Tests for Session dataclass."""
@@ -563,6 +574,7 @@ class TestSession:
 # ============================================================================
 # Exchange Model Tests
 # ============================================================================
+
 
 class TestExchange:
     """Tests for Exchange dataclass."""
@@ -635,6 +647,7 @@ class TestExchange:
 # ============================================================================
 # Pattern Model Tests
 # ============================================================================
+
 
 class TestPattern:
     """Tests for Pattern dataclass."""
@@ -720,6 +733,7 @@ class TestPattern:
 # SessionInsight Model Tests
 # ============================================================================
 
+
 class TestSessionInsight:
     """Tests for SessionInsight dataclass."""
 
@@ -763,6 +777,7 @@ class TestSessionInsight:
 # ============================================================================
 # Edge Case Tests
 # ============================================================================
+
 
 class TestModelEdgeCases:
     """Edge case tests for models."""

@@ -14,8 +14,6 @@ import json
 import logging
 import re
 from io import StringIO
-from typing import Any
-from unittest.mock import MagicMock, patch, AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -23,7 +21,7 @@ import pytest
 
 class TestErrorMessageExposure:
     """Tests for error message information leakage.
-    
+
     Audit finding #8: Exception details returned to clients can leak
     database structure, file paths, and internal state.
     """
@@ -32,18 +30,18 @@ class TestErrorMessageExposure:
     async def test_internal_errors_not_exposed_in_response(self):
         """Internal error details must not be exposed in HTTP responses."""
         from starlette.responses import JSONResponse
-        
+
         # Simulate an internal error
         internal_error = Exception("PostgreSQL connection failed: host=db.internal port=5432 user=valence")
-        
+
         # The error response should be generic
         safe_response = JSONResponse(
             {"error": "internal_error", "error_code": "INTERNAL_ERROR"},
             status_code=500,
         )
-        
+
         body = safe_response.body.decode()
-        
+
         # Verify no sensitive info in response
         assert "PostgreSQL" not in body
         assert "db.internal" not in body
@@ -57,16 +55,16 @@ class TestErrorMessageExposure:
         # - Column names
         # - Constraint names
         # - SQL queries
-        
+
         raw_error = """
-        psycopg2.errors.UniqueViolation: duplicate key value violates 
+        psycopg2.errors.UniqueViolation: duplicate key value violates
         unique constraint "beliefs_federation_id_key"
         DETAIL: Key (federation_id)=(abc123) already exists.
         """
-        
+
         # None of this should reach the client
         safe_message = "duplicate_entry"
-        
+
         assert "beliefs" not in safe_message
         assert "federation_id" not in safe_message
         assert "abc123" not in safe_message
@@ -75,15 +73,15 @@ class TestErrorMessageExposure:
     async def test_stack_traces_not_in_response(self):
         """Stack traces must not be included in API responses."""
         import traceback
-        
+
         try:
             raise ValueError("Test error")
         except ValueError:
             trace = traceback.format_exc()
-        
+
         # Stack trace contains file paths and line numbers
         assert ".py" in trace  # Has file info
-        
+
         # Response should NOT contain this
         safe_response = {"error": "validation_error"}
         assert ".py" not in json.dumps(safe_response)
@@ -91,11 +89,10 @@ class TestErrorMessageExposure:
     @pytest.mark.asyncio
     async def test_federation_endpoint_sanitizes_errors(self):
         """Federation endpoints must sanitize error responses."""
-        from valence.server.federation_endpoints import federation_protocol
-        
+
         # The federation_protocol endpoint should catch exceptions
         # and return sanitized errors
-        
+
         # This is enforced by the try/except in federation_protocol
         # which should be updated to not return str(e)
         assert True  # Design requirement
@@ -112,7 +109,7 @@ class TestErrorMessageExposure:
             "rate_limited",
             "validation_error",
         }
-        
+
         # All our errors should use codes from this set (or similar)
         # Not raw exception messages
         assert len(valid_error_codes) > 0
@@ -124,25 +121,25 @@ class TestPIILeakage:
     def test_user_ids_not_in_error_responses(self):
         """User identifiers should not appear in error responses."""
         user_id = "user_12345@example.com"
-        
+
         # Error response should not contain user ID
         error_response = {
             "error": "authentication_failed",
             "error_code": "AUTH_FAILED",
         }
-        
+
         assert user_id not in json.dumps(error_response)
 
     def test_client_ids_minimal_in_errors(self):
         """Client IDs should be minimally exposed in errors."""
         # Only expose client_id if necessary for debugging
         # and only to authenticated users
-        
+
         error_response = {
             "error": "invalid_client",
             "error_code": "INVALID_CLIENT",
         }
-        
+
         # Don't include full client_id in error
         assert "client_secret" not in json.dumps(error_response)
 
@@ -155,10 +152,10 @@ class TestPIILeakage:
     def test_email_addresses_masked_in_logs(self):
         """Email addresses should be masked in log output."""
         email = "user@example.com"
-        
+
         # Masked version
         masked = re.sub(r"(.{2}).*@", r"\1***@", email)
-        
+
         assert masked != email
         assert "@" in masked
         assert "user@example.com" not in masked
@@ -167,16 +164,16 @@ class TestPIILeakage:
         """User belief content should not appear in error logs."""
         # Beliefs may contain sensitive personal information
         # Error logs should reference belief_id, not content
-        
+
         belief_content = "My secret password is hunter2"
         error_log = f"Error processing belief {uuid4()}: validation failed"
-        
+
         assert belief_content not in error_log
 
 
 class TestLoggingSecurityControls:
     """Tests for secure logging practices.
-    
+
     Audit finding #15: Debug logging may expose token fragments.
     """
 
@@ -186,23 +183,23 @@ class TestLoggingSecurityControls:
         log_capture = StringIO()
         handler = logging.StreamHandler(log_capture)
         handler.setLevel(logging.DEBUG)
-        
+
         logger = logging.getLogger("valence.test.security")
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
-        
+
         # Simulate logging around token operations
         fake_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.signature"
         logger.debug("Processing authentication request")
         logger.info("Token validated successfully")
-        logger.debug(f"Client authenticated: client_id=test-client")
-        
+        logger.debug("Client authenticated: client_id=test-client")
+
         log_output = log_capture.getvalue()
-        
+
         # Token should not appear
         assert fake_token not in log_output
         assert "eyJ" not in log_output
-        
+
         logger.removeHandler(handler)
 
     def test_passwords_never_logged(self):
@@ -210,53 +207,53 @@ class TestLoggingSecurityControls:
         log_capture = StringIO()
         handler = logging.StreamHandler(log_capture)
         handler.setLevel(logging.DEBUG)
-        
+
         logger = logging.getLogger("valence.test.security")
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
-        
+
         password = "super_secret_password_123"
-        
+
         # Good logging practice
         logger.debug("Authentication attempt for user: test_user")
         logger.info("Password validation completed")
-        
+
         log_output = log_capture.getvalue()
-        
+
         assert password not in log_output
-        
+
         logger.removeHandler(handler)
 
     def test_private_keys_never_logged(self):
         """Private keys must never be logged."""
         # Private keys are highly sensitive
         private_key_hex = "deadbeef" * 8
-        
+
         log_capture = StringIO()
         handler = logging.StreamHandler(log_capture)
         handler.setLevel(logging.DEBUG)
-        
+
         logger = logging.getLogger("valence.test.security")
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
-        
+
         # Good: Log that we're using a key, not the key itself
         logger.debug("Signing belief with node key")
         logger.debug("Federation identity configured")
-        
+
         log_output = log_capture.getvalue()
-        
+
         assert private_key_hex not in log_output
-        
+
         logger.removeHandler(handler)
 
     def test_log_sanitization_for_sensitive_fields(self):
         """Log helper should sanitize sensitive fields."""
         # ToolCallLogger or similar should sanitize sensitive fields
         # This is a design requirement - check that sensitive key patterns are defined
-        
+
         sensitive_patterns = ["password", "secret", "token", "key", "credential"]
-        
+
         # Verify we have a list of patterns to sanitize
         assert len(sensitive_patterns) > 0
 
@@ -274,36 +271,37 @@ class TestConfigurationExposure:
         """JWT secret must never appear in any API response."""
         # JWT secrets should never appear in any public response
         jwt_secret = "supersecretjwtkey123456789"
-        
+
         # Metadata endpoints should not expose JWT secret
         metadata = {
             "issuer": "https://example.com",
             "authorization_endpoint": "/oauth/authorize",
             "token_endpoint": "/oauth/token",
         }
-        
+
         assert jwt_secret not in json.dumps(metadata)
 
     def test_database_credentials_not_exposed(self):
         """Database credentials must not be exposed in any response."""
         db_password = "secret_db_password"
-        
+
         # Error response should not contain DB creds
         error_response = {
             "error": "internal_error",
             "message": "Database operation failed",
         }
-        
+
         assert db_password not in json.dumps(error_response)
 
     def test_private_key_not_in_did_document(self):
         """Private key must never appear in DID document."""
-        from valence.server.federation_endpoints import _build_did_document
         from unittest.mock import MagicMock
-        
+
+        from valence.server.federation_endpoints import _build_did_document
+
         private_key = "deadbeef" * 8
         public_key = "z6MkTest"
-        
+
         mock_settings = MagicMock()
         mock_settings.federation_enabled = True
         mock_settings.federation_private_key = private_key
@@ -313,13 +311,13 @@ class TestConfigurationExposure:
         mock_settings.federation_capabilities = ["belief_sync"]
         mock_settings.federation_node_name = "Test Node"
         mock_settings.federation_domains = ["test"]
-        
+
         did_doc = _build_did_document(mock_settings)
         did_doc_str = json.dumps(did_doc)
-        
+
         # Private key should not appear
         assert private_key not in did_doc_str
-        
+
         # But public key should
         assert public_key in did_doc_str
 
@@ -331,10 +329,10 @@ class TestConfigurationExposure:
             "/etc/valence",
             "C:\\Users\\valence",
         ]
-        
+
         error_response = {"error": "internal_error"}
         response_str = json.dumps(error_response)
-        
+
         for path in internal_paths:
             assert path not in response_str
 
@@ -349,7 +347,7 @@ class TestAPIResponseSecurity:
             "Server",  # Reveals server software
             "X-AspNet-Version",  # Reveals framework
         ]
-        
+
         # These should be removed by production web server config
         # Document the requirement
         assert len(sensitive_headers) > 0
@@ -358,16 +356,16 @@ class TestAPIResponseSecurity:
         """CORS should be properly configured to prevent data leakage."""
         # Overly permissive CORS (Access-Control-Allow-Origin: *)
         # can expose data to malicious sites
-        
+
         # Design requirement: Configure CORS appropriately for deployment
         assert True
 
     def test_content_type_properly_set(self):
         """Content-Type header should be set to prevent MIME sniffing attacks."""
         from starlette.responses import JSONResponse
-        
+
         response = JSONResponse({"test": "data"})
-        
+
         # Should have explicit content type
         content_type = response.media_type
         assert content_type == "application/json"
@@ -375,7 +373,7 @@ class TestAPIResponseSecurity:
     def test_no_sensitive_data_in_url_params(self):
         """Sensitive data should not be passed in URL parameters."""
         # URL params are logged, cached, and visible in browser history
-        
+
         # Tokens should be in headers or body, not URL
         # This is a design requirement for OAuth implementation
         assert True
@@ -394,9 +392,9 @@ class TestDebugModeProtection:
         """Verbose error messages should only be returned in debug mode."""
         # In production, return generic errors
         # In debug, can return more detail for development
-        
+
         production_error = {"error": "internal_error"}
         debug_error = {"error": "internal_error", "detail": "specific issue"}
-        
+
         # Production response should have less detail
         assert len(json.dumps(production_error)) < len(json.dumps(debug_error))

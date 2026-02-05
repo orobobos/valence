@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 class MessageType(StrEnum):
     """Federation protocol message types."""
+
     # Authentication
     AUTH_CHALLENGE = "AUTH_CHALLENGE"
     AUTH_CHALLENGE_RESPONSE = "AUTH_CHALLENGE_RESPONSE"
@@ -63,6 +64,7 @@ class MessageType(StrEnum):
 
 class ErrorCode(StrEnum):
     """Federation protocol error codes."""
+
     AUTH_FAILED = "AUTH_FAILED"
     TRUST_INSUFFICIENT = "TRUST_INSUFFICIENT"
     VISIBILITY_DENIED = "VISIBILITY_DENIED"
@@ -82,6 +84,7 @@ class ErrorCode(StrEnum):
 @dataclass
 class ProtocolMessage:
     """Base class for all protocol messages."""
+
     type: MessageType
     request_id: UUID = field(default_factory=uuid4)
     timestamp: datetime = field(default_factory=datetime.now)
@@ -97,6 +100,7 @@ class ProtocolMessage:
 @dataclass
 class ErrorMessage(ProtocolMessage):
     """Error response message."""
+
     type: MessageType = MessageType.ERROR
     error_code: ErrorCode = ErrorCode.INTERNAL_ERROR
     message: str = ""
@@ -104,11 +108,13 @@ class ErrorMessage(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "error_code": self.error_code.value,
-            "message": self.message,
-            "details": self.details,
-        })
+        result.update(
+            {
+                "error_code": self.error_code.value,
+                "message": self.message,
+                "details": self.details,
+            }
+        )
         return result
 
 
@@ -118,6 +124,7 @@ class ErrorMessage(ProtocolMessage):
 @dataclass
 class AuthChallengeRequest(ProtocolMessage):
     """Request an authentication challenge."""
+
     type: MessageType = MessageType.AUTH_CHALLENGE
     client_did: str = ""
 
@@ -130,22 +137,26 @@ class AuthChallengeRequest(ProtocolMessage):
 @dataclass
 class AuthChallengeResponse(ProtocolMessage):
     """Response with authentication challenge."""
+
     type: MessageType = MessageType.AUTH_CHALLENGE_RESPONSE
     challenge: str = ""
     expires_at: datetime = field(default_factory=lambda: datetime.now() + timedelta(minutes=5))
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "challenge": self.challenge,
-            "expires_at": self.expires_at.isoformat(),
-        })
+        result.update(
+            {
+                "challenge": self.challenge,
+                "expires_at": self.expires_at.isoformat(),
+            }
+        )
         return result
 
 
 @dataclass
 class AuthVerifyRequest(ProtocolMessage):
     """Verify authentication with signed challenge."""
+
     type: MessageType = MessageType.AUTH_VERIFY
     client_did: str = ""
     challenge: str = ""
@@ -153,27 +164,32 @@ class AuthVerifyRequest(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "client_did": self.client_did,
-            "challenge": self.challenge,
-            "signature": self.signature,
-        })
+        result.update(
+            {
+                "client_did": self.client_did,
+                "challenge": self.challenge,
+                "signature": self.signature,
+            }
+        )
         return result
 
 
 @dataclass
 class AuthVerifyResponse(ProtocolMessage):
     """Response with session token."""
+
     type: MessageType = MessageType.AUTH_VERIFY_RESPONSE
     session_token: str = ""
     expires_at: datetime = field(default_factory=lambda: datetime.now() + timedelta(hours=1))
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "session_token": self.session_token,
-            "expires_at": self.expires_at.isoformat(),
-        })
+        result.update(
+            {
+                "session_token": self.session_token,
+                "expires_at": self.expires_at.isoformat(),
+            }
+        )
         return result
 
 
@@ -183,6 +199,7 @@ class AuthVerifyResponse(ProtocolMessage):
 @dataclass
 class ShareBeliefRequest(ProtocolMessage):
     """Share beliefs with the federation."""
+
     type: MessageType = MessageType.SHARE_BELIEF
     beliefs: list[dict[str, Any]] = field(default_factory=list)
 
@@ -195,6 +212,7 @@ class ShareBeliefRequest(ProtocolMessage):
 @dataclass
 class ShareBeliefResponse(ProtocolMessage):
     """Response to belief sharing."""
+
     type: MessageType = MessageType.SHARE_BELIEF_RESPONSE
     accepted: int = 0
     rejected: int = 0
@@ -202,17 +220,20 @@ class ShareBeliefResponse(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "accepted": self.accepted,
-            "rejected": self.rejected,
-            "rejection_reasons": self.rejection_reasons,
-        })
+        result.update(
+            {
+                "accepted": self.accepted,
+                "rejected": self.rejected,
+                "rejection_reasons": self.rejection_reasons,
+            }
+        )
         return result
 
 
 @dataclass
 class RequestBeliefsRequest(ProtocolMessage):
     """Request beliefs from the federation."""
+
     type: MessageType = MessageType.REQUEST_BELIEFS
     requester_did: str = ""
     domain_filter: list[str] = field(default_factory=list)
@@ -223,22 +244,25 @@ class RequestBeliefsRequest(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "requester_did": self.requester_did,
-            "query": {
-                "domain_filter": self.domain_filter,
-                "semantic_query": self.semantic_query,
-                "min_confidence": self.min_confidence,
-                "limit": self.limit,
-            },
-            "cursor": self.cursor,
-        })
+        result.update(
+            {
+                "requester_did": self.requester_did,
+                "query": {
+                    "domain_filter": self.domain_filter,
+                    "semantic_query": self.semantic_query,
+                    "min_confidence": self.min_confidence,
+                    "limit": self.limit,
+                },
+                "cursor": self.cursor,
+            }
+        )
         return result
 
 
 @dataclass
 class BeliefsResponse(ProtocolMessage):
     """Response with beliefs."""
+
     type: MessageType = MessageType.BELIEFS_RESPONSE
     beliefs: list[dict[str, Any]] = field(default_factory=list)
     total_available: int = 0
@@ -246,11 +270,13 @@ class BeliefsResponse(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "beliefs": self.beliefs,
-            "total_available": self.total_available,
-            "cursor": self.cursor,
-        })
+        result.update(
+            {
+                "beliefs": self.beliefs,
+                "total_available": self.total_available,
+                "cursor": self.cursor,
+            }
+        )
         return result
 
 
@@ -260,6 +286,7 @@ class BeliefsResponse(ProtocolMessage):
 @dataclass
 class SyncRequest(ProtocolMessage):
     """Request sync from a peer."""
+
     type: MessageType = MessageType.SYNC_REQUEST
     since: datetime | None = None
     domains: list[str] = field(default_factory=list)
@@ -267,17 +294,20 @@ class SyncRequest(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "since": self.since.isoformat() if self.since else None,
-            "domains": self.domains,
-            "cursor": self.cursor,
-        })
+        result.update(
+            {
+                "since": self.since.isoformat() if self.since else None,
+                "domains": self.domains,
+                "cursor": self.cursor,
+            }
+        )
         return result
 
 
 @dataclass
 class SyncChange:
     """A single change in a sync response."""
+
     change_type: str  # belief_created, belief_superseded, belief_archived
     belief: dict[str, Any] | None = None
     old_belief_id: str | None = None
@@ -298,6 +328,7 @@ class SyncChange:
 @dataclass
 class SyncResponse(ProtocolMessage):
     """Response with sync changes."""
+
     type: MessageType = MessageType.SYNC_RESPONSE
     changes: list[SyncChange] = field(default_factory=list)
     cursor: str | None = None
@@ -305,11 +336,13 @@ class SyncResponse(ProtocolMessage):
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "changes": [c.to_dict() for c in self.changes],
-            "cursor": self.cursor,
-            "has_more": self.has_more,
-        })
+        result.update(
+            {
+                "changes": [c.to_dict() for c in self.changes],
+                "cursor": self.cursor,
+                "has_more": self.has_more,
+            }
+        )
         return result
 
 
@@ -319,32 +352,38 @@ class SyncResponse(ProtocolMessage):
 @dataclass
 class TrustAttestationRequest(ProtocolMessage):
     """Submit a trust attestation."""
+
     type: MessageType = MessageType.TRUST_ATTESTATION
     attestation: dict[str, Any] = field(default_factory=dict)
     issuer_signature: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "attestation": self.attestation,
-            "issuer_signature": self.issuer_signature,
-        })
+        result.update(
+            {
+                "attestation": self.attestation,
+                "issuer_signature": self.issuer_signature,
+            }
+        )
         return result
 
 
 @dataclass
 class TrustAttestationResponse(ProtocolMessage):
     """Response to a trust attestation."""
+
     type: MessageType = MessageType.TRUST_ATTESTATION_RESPONSE
     accepted: bool = False
     reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
-        result.update({
-            "accepted": self.accepted,
-            "reason": self.reason,
-        })
+        result.update(
+            {
+                "accepted": self.accepted,
+                "reason": self.reason,
+            }
+        )
         return result
 
 
@@ -518,7 +557,13 @@ def _process_incoming_belief(
         True if accepted, or rejection reason string
     """
     # Validate required fields
-    required_fields = ["federation_id", "origin_node_did", "content", "confidence", "origin_signature"]
+    required_fields = [
+        "federation_id",
+        "origin_node_did",
+        "content",
+        "confidence",
+        "origin_signature",
+    ]
     for field_name in required_fields:
         if field_name not in belief_data:
             return f"Missing required field: {field_name}"
@@ -531,7 +576,7 @@ def _process_incoming_belief(
     with get_cursor() as cur:
         cur.execute(
             "SELECT id FROM belief_provenance WHERE federation_id = %s",
-            (federation_id,)
+            (federation_id,),
         )
         if cur.fetchone():
             return "Belief already exists"
@@ -551,7 +596,7 @@ def _process_incoming_belief(
     with get_cursor() as cur:
         cur.execute(
             "SELECT public_key_multibase FROM federation_nodes WHERE did = %s",
-            (origin_node_did,)
+            (origin_node_did,),
         )
         row = cur.fetchone()
         if not row:
@@ -574,6 +619,7 @@ def _process_incoming_belief(
 
     # Validate federation embedding if provided
     from ..core.federation_embedding import validate_incoming_belief_embedding
+
     is_valid, embed_error = validate_incoming_belief_embedding(belief_data)
     if not is_valid:
         return f"Invalid federation embedding: {embed_error}"
@@ -582,6 +628,7 @@ def _process_incoming_belief(
     # If a highly similar belief exists, add corroboration instead of creating new
     try:
         from ..core.corroboration import process_incoming_belief_corroboration
+
         corroboration_result = process_incoming_belief_corroboration(
             content=content,
             source_did=origin_node_did,
@@ -613,7 +660,8 @@ def _process_incoming_belief(
 
     with get_cursor() as cur:
         # Insert belief
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO beliefs (
                 content, confidence, domain_path, valid_from, valid_until,
                 status, is_local, federation_id, visibility, share_level,
@@ -624,23 +672,26 @@ def _process_incoming_belief(
                 %s
             )
             RETURNING id
-        """, (
-            content,
-            json.dumps(confidence.to_dict()),
-            belief_data.get("domain_path", []),
-            belief_data.get("valid_from"),
-            belief_data.get("valid_until"),
-            federation_id,
-            visibility,
-            belief_data.get("share_level", "belief_only"),
-            sender_node_id,
-        ))
+        """,
+            (
+                content,
+                json.dumps(confidence.to_dict()),
+                belief_data.get("domain_path", []),
+                belief_data.get("valid_from"),
+                belief_data.get("valid_until"),
+                federation_id,
+                visibility,
+                belief_data.get("share_level", "belief_only"),
+                sender_node_id,
+            ),
+        )
         belief_row = cur.fetchone()
         belief_id = belief_row["id"]
 
         # Insert provenance
         federation_path = belief_data.get("federation_path", [])
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO belief_provenance (
                 belief_id, federation_id, origin_node_id, origin_belief_id,
                 origin_signature, signed_at, signature_verified,
@@ -650,26 +701,31 @@ def _process_incoming_belief(
                 (SELECT id FROM federation_nodes WHERE did = %s),
                 %s, %s, %s, TRUE, %s, %s, %s
             )
-        """, (
-            belief_id,
-            federation_id,
-            origin_node_did,
-            belief_data.get("id", federation_id),
-            belief_data["origin_signature"],
-            belief_data.get("signed_at", datetime.now()),
-            hop_count,
-            federation_path,
-            belief_data.get("share_level", "belief_only"),
-        ))
+        """,
+            (
+                belief_id,
+                federation_id,
+                origin_node_did,
+                belief_data.get("id", federation_id),
+                belief_data["origin_signature"],
+                belief_data.get("signed_at", datetime.now()),
+                hop_count,
+                federation_path,
+                belief_data.get("share_level", "belief_only"),
+            ),
+        )
 
         # Update sender's trust metrics
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE node_trust
             SET beliefs_received = beliefs_received + 1,
                 last_interaction_at = NOW(),
                 modified_at = NOW()
             WHERE node_id = %s
-        """, (sender_node_id,))
+        """,
+            (sender_node_id,),
+        )
 
     logger.info(f"Accepted federated belief {federation_id} from {origin_node_did}")
     return True
@@ -777,6 +833,7 @@ def _belief_row_to_federated(
         Federated belief dict, or None if not shareable
     """
     from ..core.config import get_federation_config
+
     settings = get_federation_config()
 
     share_level = row.get("share_level", "belief_only")
@@ -901,28 +958,34 @@ def handle_sync_request(
                 change = SyncChange(
                     change_type=change_type,
                     belief=belief_dict,
-                    old_belief_id=str(row["supersedes_id"]) if row.get("supersedes_id") else None,
+                    old_belief_id=(str(row["supersedes_id"]) if row.get("supersedes_id") else None),
                     timestamp=row["modified_at"],
                 )
                 changes.append(change)
 
     # Update sync metrics
     with get_cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE sync_state
             SET last_sync_at = NOW(),
                 beliefs_sent = beliefs_sent + %s,
                 modified_at = NOW()
             WHERE node_id = %s
-        """, (len(changes), requester_node_id))
+        """,
+            (len(changes), requester_node_id),
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE node_trust
             SET sync_requests_served = sync_requests_served + 1,
                 last_interaction_at = NOW(),
                 modified_at = NOW()
             WHERE node_id = %s
-        """, (requester_node_id,))
+        """,
+            (requester_node_id,),
+        )
 
     # Determine if there are more changes
     has_more = len(changes) == 100
@@ -1059,7 +1122,7 @@ async def handle_message(
                 with get_cursor() as cur:
                     cur.execute(
                         "SELECT public_key_multibase FROM federation_nodes WHERE did = %s",
-                        (message.client_did,)
+                        (message.client_did,),
                     )
                     row = cur.fetchone()
                     if row:
@@ -1084,10 +1147,7 @@ async def handle_message(
             # Try to look up sender by DID
             if sender_did:
                 with get_cursor() as cur:
-                    cur.execute(
-                        "SELECT id FROM federation_nodes WHERE did = %s",
-                        (sender_did,)
-                    )
+                    cur.execute("SELECT id FROM federation_nodes WHERE did = %s", (sender_did,))
                     row = cur.fetchone()
                     if row:
                         sender_node_id = row["id"]
@@ -1100,28 +1160,41 @@ async def handle_message(
 
         # Get sender trust
         from .trust import get_effective_trust
+
         sender_trust = get_effective_trust(sender_node_id)
 
         # Handle authenticated messages
         if msg_type == MessageType.SHARE_BELIEF:
             if isinstance(message, ShareBeliefRequest):
                 return handle_share_belief(message, sender_node_id, sender_trust)
-            return ErrorMessage(error_code=ErrorCode.INVALID_REQUEST, message="Invalid SHARE_BELIEF format")
+            return ErrorMessage(
+                error_code=ErrorCode.INVALID_REQUEST,
+                message="Invalid SHARE_BELIEF format",
+            )
 
         elif msg_type == MessageType.REQUEST_BELIEFS:
             if isinstance(message, RequestBeliefsRequest):
                 return handle_request_beliefs(message, sender_node_id, sender_trust)
-            return ErrorMessage(error_code=ErrorCode.INVALID_REQUEST, message="Invalid REQUEST_BELIEFS format")
+            return ErrorMessage(
+                error_code=ErrorCode.INVALID_REQUEST,
+                message="Invalid REQUEST_BELIEFS format",
+            )
 
         elif msg_type == MessageType.SYNC_REQUEST:
             if isinstance(message, SyncRequest):
                 return handle_sync_request(message, sender_node_id, sender_trust)
-            return ErrorMessage(error_code=ErrorCode.INVALID_REQUEST, message="Invalid SYNC_REQUEST format")
+            return ErrorMessage(
+                error_code=ErrorCode.INVALID_REQUEST,
+                message="Invalid SYNC_REQUEST format",
+            )
 
         elif msg_type == MessageType.TRUST_ATTESTATION:
             if isinstance(message, TrustAttestationRequest):
                 return _handle_trust_attestation(message, sender_node_id, sender_trust)
-            return ErrorMessage(error_code=ErrorCode.INVALID_REQUEST, message="Invalid TRUST_ATTESTATION format")
+            return ErrorMessage(
+                error_code=ErrorCode.INVALID_REQUEST,
+                message="Invalid TRUST_ATTESTATION format",
+            )
 
         # Unknown message type
         return ErrorMessage(
@@ -1165,10 +1238,7 @@ def _handle_trust_attestation(
 
         # Get subject node
         with get_cursor() as cur:
-            cur.execute(
-                "SELECT id FROM federation_nodes WHERE did = %s",
-                (subject_did,)
-            )
+            cur.execute("SELECT id FROM federation_nodes WHERE did = %s", (subject_did,))
             row = cur.fetchone()
             if not row:
                 return TrustAttestationResponse(

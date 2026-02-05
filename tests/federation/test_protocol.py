@@ -11,43 +11,40 @@ Tests cover:
 
 from __future__ import annotations
 
-import json
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Generator
-from unittest.mock import MagicMock, patch, AsyncMock
-from uuid import uuid4, UUID
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
-
 from valence.federation.protocol import (
-    MessageType,
-    ErrorCode,
-    ProtocolMessage,
-    ErrorMessage,
     AuthChallengeRequest,
     AuthChallengeResponse,
     AuthVerifyRequest,
     AuthVerifyResponse,
+    BeliefsResponse,
+    ErrorCode,
+    ErrorMessage,
+    MessageType,
+    ProtocolMessage,
+    RequestBeliefsRequest,
     ShareBeliefRequest,
     ShareBeliefResponse,
-    RequestBeliefsRequest,
-    BeliefsResponse,
-    SyncRequest,
     SyncChange,
+    SyncRequest,
     SyncResponse,
     TrustAttestationRequest,
     TrustAttestationResponse,
+    _pending_challenges,
     create_auth_challenge,
-    verify_auth_challenge,
-    handle_share_belief,
+    handle_message,
     handle_request_beliefs,
+    handle_share_belief,
     handle_sync_request,
     parse_message,
-    handle_message,
-    _pending_challenges,
+    verify_auth_challenge,
 )
-
 
 # =============================================================================
 # FIXTURES
@@ -66,6 +63,7 @@ def mock_cursor():
 @pytest.fixture
 def mock_get_cursor(mock_cursor):
     """Mock the get_cursor context manager."""
+
     @contextmanager
     def _mock_get_cursor(dict_cursor: bool = True) -> Generator:
         yield mock_cursor
@@ -130,7 +128,7 @@ class TestErrorCode:
             "INVALID_REQUEST",
             "NODE_NOT_FOUND",
         ]
-        
+
         for code_name in expected_codes:
             assert hasattr(ErrorCode, code_name)
 
@@ -146,7 +144,7 @@ class TestProtocolMessage:
     def test_protocol_message_creation(self):
         """Test creating a protocol message."""
         msg = ProtocolMessage(type=MessageType.ERROR)
-        
+
         assert msg.type == MessageType.ERROR
         assert msg.request_id is not None
         assert msg.timestamp is not None
@@ -155,7 +153,7 @@ class TestProtocolMessage:
         """Test converting message to dict."""
         msg = ProtocolMessage(type=MessageType.ERROR)
         result = msg.to_dict()
-        
+
         assert result["type"] == "ERROR"
         assert "request_id" in result
         assert "timestamp" in result
@@ -170,7 +168,7 @@ class TestErrorMessage:
             error_code=ErrorCode.AUTH_FAILED,
             message="Authentication failed",
         )
-        
+
         assert msg.type == MessageType.ERROR
         assert msg.error_code == ErrorCode.AUTH_FAILED
         assert msg.message == "Authentication failed"
@@ -183,7 +181,7 @@ class TestErrorMessage:
             details={"required": 0.5, "current": 0.1},
         )
         result = msg.to_dict()
-        
+
         assert result["error_code"] == "TRUST_INSUFFICIENT"
         assert result["message"] == "Trust too low"
         assert result["details"]["required"] == 0.5
@@ -200,7 +198,7 @@ class TestAuthChallengeRequest:
     def test_challenge_request_creation(self):
         """Test creating a challenge request."""
         msg = AuthChallengeRequest(client_did="did:vkb:web:test.example.com")
-        
+
         assert msg.type == MessageType.AUTH_CHALLENGE
         assert msg.client_did == "did:vkb:web:test.example.com"
 
@@ -208,7 +206,7 @@ class TestAuthChallengeRequest:
         """Test converting challenge request to dict."""
         msg = AuthChallengeRequest(client_did="did:vkb:web:test.example.com")
         result = msg.to_dict()
-        
+
         assert result["client_did"] == "did:vkb:web:test.example.com"
 
 
@@ -218,7 +216,7 @@ class TestAuthChallengeResponse:
     def test_challenge_response_creation(self):
         """Test creating a challenge response."""
         msg = AuthChallengeResponse(challenge="abc123")
-        
+
         assert msg.type == MessageType.AUTH_CHALLENGE_RESPONSE
         assert msg.challenge == "abc123"
         assert msg.expires_at is not None
@@ -227,7 +225,7 @@ class TestAuthChallengeResponse:
         """Test converting challenge response to dict."""
         msg = AuthChallengeResponse(challenge="xyz789")
         result = msg.to_dict()
-        
+
         assert result["challenge"] == "xyz789"
         assert "expires_at" in result
 
@@ -240,9 +238,9 @@ class TestAuthVerifyRequest:
         msg = AuthVerifyRequest(
             client_did="did:vkb:web:test.example.com",
             challenge="abc123",
-            signature="sig_data"
+            signature="sig_data",
         )
-        
+
         assert msg.type == MessageType.AUTH_VERIFY
         assert msg.client_did == "did:vkb:web:test.example.com"
         assert msg.challenge == "abc123"
@@ -255,7 +253,7 @@ class TestAuthVerifyResponse:
     def test_verify_response_creation(self):
         """Test creating a verify response."""
         msg = AuthVerifyResponse(session_token="token123")
-        
+
         assert msg.type == MessageType.AUTH_VERIFY_RESPONSE
         assert msg.session_token == "token123"
 
@@ -272,7 +270,7 @@ class TestShareBeliefRequest:
         """Test creating a share belief request."""
         beliefs = [{"content": "Test belief", "confidence": 0.8}]
         msg = ShareBeliefRequest(beliefs=beliefs)
-        
+
         assert msg.type == MessageType.SHARE_BELIEF
         assert len(msg.beliefs) == 1
         assert msg.beliefs[0]["content"] == "Test belief"
@@ -288,7 +286,7 @@ class TestShareBeliefResponse:
             rejected=2,
             rejection_reasons={"belief1": "Invalid signature"},
         )
-        
+
         assert msg.type == MessageType.SHARE_BELIEF_RESPONSE
         assert msg.accepted == 5
         assert msg.rejected == 2
@@ -305,7 +303,7 @@ class TestRequestBeliefsRequest:
             min_confidence=0.5,
             limit=20,
         )
-        
+
         assert msg.type == MessageType.REQUEST_BELIEFS
         assert msg.domain_filter == ["science"]
         assert msg.min_confidence == 0.5
@@ -322,7 +320,7 @@ class TestBeliefsResponse:
             total_available=100,
             cursor="cursor123",
         )
-        
+
         assert msg.type == MessageType.BELIEFS_RESPONSE
         assert len(msg.beliefs) == 1
         assert msg.total_available == 100
@@ -344,7 +342,7 @@ class TestSyncRequest:
             domains=["science", "tech"],
             cursor="cursor123",
         )
-        
+
         assert msg.type == MessageType.SYNC_REQUEST
         assert msg.since == since
         assert msg.domains == ["science", "tech"]
@@ -359,7 +357,7 @@ class TestSyncChange:
             change_type="belief_created",
             belief={"id": str(uuid4()), "content": "New belief"},
         )
-        
+
         assert change.change_type == "belief_created"
         assert change.belief is not None
 
@@ -371,7 +369,7 @@ class TestSyncChange:
             old_belief_id="old_123",
         )
         result = change.to_dict()
-        
+
         assert result["type"] == "belief_superseded"
         assert result["old_belief_id"] == "old_123"
 
@@ -390,7 +388,7 @@ class TestSyncResponse:
             cursor="new_cursor",
             has_more=True,
         )
-        
+
         assert msg.type == MessageType.SYNC_RESPONSE
         assert len(msg.changes) == 2
         assert msg.has_more is True
@@ -407,9 +405,9 @@ class TestCreateAuthChallenge:
     def test_create_challenge(self):
         """Test creating an auth challenge."""
         client_did = "did:vkb:web:test.example.com"
-        
+
         response = create_auth_challenge(client_did)
-        
+
         assert response.challenge is not None
         assert len(response.challenge) == 64  # 32 bytes hex = 64 chars
         assert response.expires_at > datetime.now()
@@ -417,9 +415,9 @@ class TestCreateAuthChallenge:
     def test_challenge_stored(self):
         """Test that challenge is stored in pending challenges."""
         client_did = "did:vkb:web:test.example.com"
-        
+
         response = create_auth_challenge(client_did)
-        
+
         assert client_did in _pending_challenges
         stored_challenge, expires_at = _pending_challenges[client_did]
         assert stored_challenge == response.challenge
@@ -436,7 +434,7 @@ class TestVerifyAuthChallenge:
             signature="sig",
             public_key_multibase="z6Mk...",
         )
-        
+
         assert isinstance(result, ErrorMessage)
         assert result.error_code == ErrorCode.AUTH_FAILED
         assert "No pending challenge" in result.message
@@ -445,15 +443,18 @@ class TestVerifyAuthChallenge:
         """Test verify with expired challenge."""
         client_did = "did:vkb:web:test.example.com"
         # Add expired challenge
-        _pending_challenges[client_did] = ("abc123", datetime.now() - timedelta(minutes=10))
-        
+        _pending_challenges[client_did] = (
+            "abc123",
+            datetime.now() - timedelta(minutes=10),
+        )
+
         result = verify_auth_challenge(
             client_did=client_did,
             challenge="abc123",
             signature="sig",
             public_key_multibase="z6Mk...",
         )
-        
+
         assert isinstance(result, ErrorMessage)
         assert result.error_code == ErrorCode.AUTH_FAILED
         assert "expired" in result.message.lower()
@@ -461,15 +462,18 @@ class TestVerifyAuthChallenge:
     def test_verify_challenge_mismatch(self):
         """Test verify with wrong challenge."""
         client_did = "did:vkb:web:test.example.com"
-        _pending_challenges[client_did] = ("correct_challenge", datetime.now() + timedelta(minutes=5))
-        
+        _pending_challenges[client_did] = (
+            "correct_challenge",
+            datetime.now() + timedelta(minutes=5),
+        )
+
         result = verify_auth_challenge(
             client_did=client_did,
             challenge="wrong_challenge",
             signature="sig",
             public_key_multibase="z6Mk...",
         )
-        
+
         assert isinstance(result, ErrorMessage)
         assert result.error_code == ErrorCode.AUTH_FAILED
         assert "mismatch" in result.message.lower()
@@ -486,13 +490,13 @@ class TestHandleShareBelief:
     def test_share_belief_empty_list(self):
         """Test sharing empty belief list."""
         request = ShareBeliefRequest(beliefs=[])
-        
+
         response = handle_share_belief(
             request,
             sender_node_id=uuid4(),
             sender_trust=0.5,
         )
-        
+
         assert isinstance(response, ShareBeliefResponse)
         assert response.accepted == 0
         assert response.rejected == 0
@@ -501,13 +505,13 @@ class TestHandleShareBelief:
         """Test sharing belief with missing fields."""
         beliefs = [{"content": "Test"}]  # Missing required fields
         request = ShareBeliefRequest(beliefs=beliefs)
-        
+
         response = handle_share_belief(
             request,
             sender_node_id=uuid4(),
             sender_trust=0.5,
         )
-        
+
         assert response.rejected == 1
         assert "Missing required field" in list(response.rejection_reasons.values())[0]
 
@@ -520,13 +524,13 @@ class TestHandleRequestBeliefs:
         request = RequestBeliefsRequest(
             requester_did="did:vkb:web:test.example.com",
         )
-        
+
         response = handle_request_beliefs(
             request,
             requester_node_id=uuid4(),
             requester_trust=0.05,  # Too low
         )
-        
+
         assert isinstance(response, ErrorMessage)
         assert response.error_code == ErrorCode.TRUST_INSUFFICIENT
 
@@ -534,23 +538,23 @@ class TestHandleRequestBeliefs:
         """Test successful belief request."""
         mock_get_cursor.fetchall.return_value = []
         mock_get_cursor.fetchone.return_value = {"total": 0}
-        
+
         request = RequestBeliefsRequest(
             requester_did="did:vkb:web:test.example.com",
         )
-        
+
         with patch("valence.server.config.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 federation_node_did="did:vkb:web:local",
                 federation_private_key=None,
             )
-            
+
             response = handle_request_beliefs(
                 request,
                 requester_node_id=uuid4(),
                 requester_trust=0.5,
             )
-        
+
         assert isinstance(response, BeliefsResponse)
 
 
@@ -565,37 +569,37 @@ class TestHandleSyncRequest:
     def test_sync_request_low_trust(self):
         """Test sync request with insufficient trust."""
         request = SyncRequest()
-        
+
         response = handle_sync_request(
             request,
             requester_node_id=uuid4(),
             requester_trust=0.1,  # Too low for sync
         )
-        
+
         assert isinstance(response, ErrorMessage)
         assert response.error_code == ErrorCode.TRUST_INSUFFICIENT
 
     def test_sync_request_success(self, mock_get_cursor):
         """Test successful sync request."""
         mock_get_cursor.fetchall.return_value = []
-        
+
         request = SyncRequest(
             since=datetime.now() - timedelta(days=1),
             domains=["test"],
         )
-        
+
         with patch("valence.server.config.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
                 federation_node_did="did:vkb:web:local",
                 federation_private_key=None,
             )
-            
+
             response = handle_sync_request(
                 request,
                 requester_node_id=uuid4(),
                 requester_trust=0.5,  # Enough for sync
             )
-        
+
         assert isinstance(response, SyncResponse)
         assert response.has_more is False
 
@@ -615,9 +619,9 @@ class TestParseMessage:
             "request_id": str(uuid4()),
             "client_did": "did:vkb:web:test.example.com",
         }
-        
+
         result = parse_message(data)
-        
+
         assert isinstance(result, AuthChallengeRequest)
         assert result.client_did == "did:vkb:web:test.example.com"
 
@@ -630,9 +634,9 @@ class TestParseMessage:
             "challenge": "abc123",
             "signature": "sig_data",
         }
-        
+
         result = parse_message(data)
-        
+
         assert isinstance(result, AuthVerifyRequest)
         assert result.challenge == "abc123"
 
@@ -643,9 +647,9 @@ class TestParseMessage:
             "request_id": str(uuid4()),
             "beliefs": [{"content": "Test"}],
         }
-        
+
         result = parse_message(data)
-        
+
         assert isinstance(result, ShareBeliefRequest)
         assert len(result.beliefs) == 1
 
@@ -661,9 +665,9 @@ class TestParseMessage:
                 "limit": 20,
             },
         }
-        
+
         result = parse_message(data)
-        
+
         assert isinstance(result, RequestBeliefsRequest)
         assert result.domain_filter == ["science"]
 
@@ -676,9 +680,9 @@ class TestParseMessage:
             "since": now.isoformat(),
             "domains": ["test"],
         }
-        
+
         result = parse_message(data)
-        
+
         assert isinstance(result, SyncRequest)
         assert result.domains == ["test"]
 
@@ -687,9 +691,9 @@ class TestParseMessage:
         data = {
             "type": "INVALID_TYPE",
         }
-        
+
         result = parse_message(data)
-        
+
         assert result is None
 
     def test_parse_missing_type(self):
@@ -697,9 +701,9 @@ class TestParseMessage:
         data = {
             "request_id": str(uuid4()),
         }
-        
+
         result = parse_message(data)
-        
+
         assert result is None
 
 
@@ -715,24 +719,24 @@ class TestHandleMessage:
     async def test_handle_auth_challenge(self):
         """Test handling AUTH_CHALLENGE message."""
         msg = AuthChallengeRequest(client_did="did:vkb:web:test.example.com")
-        
+
         result = await handle_message(msg)
-        
+
         assert isinstance(result, AuthChallengeResponse)
 
     @pytest.mark.asyncio
     async def test_handle_auth_verify_no_public_key(self, mock_get_cursor):
         """Test handling AUTH_VERIFY with unknown node."""
         mock_get_cursor.fetchone.return_value = None
-        
+
         msg = AuthVerifyRequest(
             client_did="did:vkb:web:unknown.example.com",
             challenge="abc123",
             signature="sig",
         )
-        
+
         result = await handle_message(msg)
-        
+
         assert isinstance(result, ErrorMessage)
         assert result.error_code == ErrorCode.NODE_NOT_FOUND
 
@@ -740,11 +744,11 @@ class TestHandleMessage:
     async def test_handle_message_no_sender(self, mock_get_cursor):
         """Test handling message without sender identification."""
         mock_get_cursor.fetchone.return_value = None
-        
+
         msg = ShareBeliefRequest(beliefs=[])
-        
+
         result = await handle_message(msg)
-        
+
         assert isinstance(result, ErrorMessage)
         assert result.error_code == ErrorCode.AUTH_FAILED
 
@@ -753,17 +757,17 @@ class TestHandleMessage:
         """Test handling SHARE_BELIEF with sender context."""
         sender_node_id = uuid4()
         mock_get_cursor.fetchone.return_value = {"id": sender_node_id}
-        
+
         msg = ShareBeliefRequest(beliefs=[])
-        
+
         with patch("valence.federation.trust.get_effective_trust") as mock_trust:
             mock_trust.return_value = 0.5
-            
+
             result = await handle_message(
                 msg,
                 sender_did="did:vkb:web:test.example.com",
             )
-        
+
         assert isinstance(result, ShareBeliefResponse)
 
     @pytest.mark.asyncio
@@ -775,24 +779,26 @@ class TestHandleMessage:
             {"total": 0},  # For counting query
         ]
         mock_get_cursor.fetchall.return_value = []
-        
+
         msg = RequestBeliefsRequest(
             requester_did="did:vkb:web:test.example.com",
         )
-        
-        with patch("valence.federation.trust.get_effective_trust") as mock_trust, \
-             patch("valence.server.config.get_settings") as mock_settings:
+
+        with (
+            patch("valence.federation.trust.get_effective_trust") as mock_trust,
+            patch("valence.server.config.get_settings") as mock_settings,
+        ):
             mock_trust.return_value = 0.5
             mock_settings.return_value = MagicMock(
                 federation_node_did="did:vkb:web:local",
                 federation_private_key=None,
             )
-            
+
             result = await handle_message(
                 msg,
                 sender_did="did:vkb:web:test.example.com",
             )
-        
+
         assert isinstance(result, BeliefsResponse)
 
     @pytest.mark.asyncio
@@ -801,22 +807,24 @@ class TestHandleMessage:
         sender_node_id = uuid4()
         mock_get_cursor.fetchone.return_value = {"id": sender_node_id}
         mock_get_cursor.fetchall.return_value = []
-        
+
         msg = SyncRequest()
-        
-        with patch("valence.federation.trust.get_effective_trust") as mock_trust, \
-             patch("valence.server.config.get_settings") as mock_settings:
+
+        with (
+            patch("valence.federation.trust.get_effective_trust") as mock_trust,
+            patch("valence.server.config.get_settings") as mock_settings,
+        ):
             mock_trust.return_value = 0.5
             mock_settings.return_value = MagicMock(
                 federation_node_did="did:vkb:web:local",
                 federation_private_key=None,
             )
-            
+
             result = await handle_message(
                 msg,
                 sender_did="did:vkb:web:test.example.com",
             )
-        
+
         assert isinstance(result, SyncResponse)
 
 
@@ -834,7 +842,7 @@ class TestTrustAttestationMessages:
             attestation={"subject_did": "did:vkb:web:target"},
             issuer_signature="sig_data",
         )
-        
+
         assert msg.type == MessageType.TRUST_ATTESTATION
         assert msg.attestation["subject_did"] == "did:vkb:web:target"
 
@@ -844,6 +852,6 @@ class TestTrustAttestationMessages:
             accepted=True,
             reason=None,
         )
-        
+
         assert msg.type == MessageType.TRUST_ATTESTATION_RESPONSE
         assert msg.accepted is True

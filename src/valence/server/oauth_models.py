@@ -113,9 +113,7 @@ class OAuthClientStore:
         try:
             with open(self.clients_file) as f:
                 data = json.load(f)
-            self._clients = {
-                c["client_id"]: OAuthClient.from_dict(c) for c in data.get("clients", [])
-            }
+            self._clients = {c["client_id"]: OAuthClient.from_dict(c) for c in data.get("clients", [])}
             logger.info(f"Loaded {len(self._clients)} OAuth clients from {self.clients_file}")
         except Exception as e:
             logger.error(f"Failed to load OAuth clients: {e}")

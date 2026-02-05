@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 DEFAULT_DECAY_FACTOR = 0.8  # Trust retained per hop
-DEFAULT_MAX_HOPS = 4        # Maximum propagation depth
-DEFAULT_CACHE_TTL = 300     # 5 minutes cache TTL
-DEFAULT_MIN_TRUST = 0.01    # Below this, don't propagate
+DEFAULT_MAX_HOPS = 4  # Maximum propagation depth
+DEFAULT_CACHE_TTL = 300  # 5 minutes cache TTL
+DEFAULT_MIN_TRUST = 0.01  # Below this, don't propagate
 DEFAULT_APPLY_RING_COEFFICIENT = True  # Apply ring dampening by default
 
 
@@ -62,8 +62,8 @@ class TransitiveTrustResult:
     from_node_id: UUID
     to_node_id: UUID
     direct_trust: float | None  # None if no direct relationship
-    transitive_trust: float     # Computed transitive trust
-    path_count: int             # Number of paths found
+    transitive_trust: float  # Computed transitive trust
+    path_count: int  # Number of paths found
     shortest_path_length: int | None  # Hops in shortest path
     computation_time_ms: float
     cached: bool = False
@@ -179,10 +179,7 @@ class TrustCache:
         Returns:
             Number of entries invalidated
         """
-        to_remove = [
-            key for key in self._cache
-            if key[0] == node_id or key[1] == node_id
-        ]
+        to_remove = [key for key in self._cache if key[0] == node_id or key[1] == node_id]
         for key in to_remove:
             del self._cache[key]
         return len(to_remove)
@@ -267,6 +264,7 @@ class TrustPropagation:
         """Get or create the ring coefficient calculator."""
         if self._ring_calculator is None:
             from .ring_coefficient import RingCoefficientCalculator
+
             self._ring_calculator = RingCoefficientCalculator()
         return self._ring_calculator
 
@@ -285,12 +283,14 @@ class TrustPropagation:
         try:
             with get_cursor() as cur:
                 # Get all nodes this node has trust relationships with
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT nt.node_id, nt.trust
                     FROM node_trust nt
                     JOIN federation_nodes fn ON fn.id = nt.node_id
                     WHERE fn.status != 'unreachable'
-                """)
+                """
+                )
                 rows = cur.fetchall()
 
                 results = []
@@ -298,13 +298,12 @@ class TrustPropagation:
                     trust_data = row["trust"]
                     if isinstance(trust_data, str):
                         import json
+
                         trust_data = json.loads(trust_data)
 
                     # Get domain-specific or overall trust
                     if domain and "domain_expertise" in trust_data:
-                        trust_score = trust_data["domain_expertise"].get(
-                            domain, trust_data.get("overall", 0.1)
-                        )
+                        trust_score = trust_data["domain_expertise"].get(domain, trust_data.get("overall", 0.1))
                     else:
                         trust_score = trust_data.get("overall", 0.1)
 
@@ -446,9 +445,7 @@ class TrustPropagation:
         paths_found: list[tuple[float, int, list[UUID]]] = []  # (trust, hops, path)
         rings_detected = 0
 
-        queue: list[tuple[UUID, float, int, set[UUID], list[UUID]]] = [
-            (source, 1.0, 0, {source}, [source])
-        ]
+        queue: list[tuple[UUID, float, int, set[UUID], list[UUID]]] = [(source, 1.0, 0, {source}, [source])]
 
         while queue:
             current, path_trust, hops, visited, path = queue.pop(0)
@@ -479,15 +476,19 @@ class TrustPropagation:
                     queue.append((neighbor, new_trust, new_hops, new_visited, new_path))
 
         if not paths_found:
-            return direct, 0 if direct == 0 else 1, 1 if direct > 0 else None, 1.0, rings_detected
+            return (
+                direct,
+                0 if direct == 0 else 1,
+                1 if direct > 0 else None,
+                1.0,
+                rings_detected,
+            )
 
         # Calculate ring coefficient for paths
         ring_coefficient = 1.0
         if self.apply_ring_coefficient and rings_detected > 0:
             # Apply ring dampening based on graph structure
-            ring_coefficient = self.ring_calculator.calculate_path_coefficient(
-                [source, target], graph
-            )
+            ring_coefficient = self.ring_calculator.calculate_path_coefficient([source, target], graph)
             self.stats["rings_detected"] += rings_detected
 
         # Aggregate paths using max (could also use weighted sum)
@@ -537,9 +538,7 @@ class TrustPropagation:
 
         for target_id in all_nodes:
             if target_id != from_node_id:
-                results[target_id] = self.compute_transitive_trust(
-                    from_node_id, target_id, domain
-                )
+                results[target_id] = self.compute_transitive_trust(from_node_id, target_id, domain)
 
         return results
 
@@ -548,9 +547,7 @@ class TrustPropagation:
         return {
             **self.stats,
             "cache_size": self.cache.size,
-            "cache_hit_rate": (
-                self.stats["cache_hits"] / max(1, self.stats["computations"])
-            ),
+            "cache_hit_rate": (self.stats["cache_hits"] / max(1, self.stats["computations"])),
             "ring_coefficient_enabled": self.apply_ring_coefficient,
         }
 
@@ -645,9 +642,7 @@ def weight_query_results_by_trust(
             if isinstance(source_node_id, str):
                 source_node_id = UUID(source_node_id)
 
-            trust_result = propagation.compute_transitive_trust(
-                from_node_id, source_node_id, domain
-            )
+            trust_result = propagation.compute_transitive_trust(from_node_id, source_node_id, domain)
             result_copy[weight_field] = trust_result.effective_trust
             result_copy["_trust_details"] = {
                 "direct": trust_result.direct_trust,
@@ -701,9 +696,7 @@ def compute_transitive_trust(
     domain: str | None = None,
 ) -> TransitiveTrustResult:
     """Compute transitive trust (convenience function)."""
-    return get_trust_propagation().compute_transitive_trust(
-        from_node_id, to_node_id, domain
-    )
+    return get_trust_propagation().compute_transitive_trust(from_node_id, to_node_id, domain)
 
 
 def invalidate_trust_cache(node_id: UUID | None = None) -> int:

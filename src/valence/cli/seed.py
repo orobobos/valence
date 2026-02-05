@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 def get_config_from_env() -> dict[str, Any]:
     """Get seed node configuration from core config."""
     from ..core.config import get_config
+
     core_config = get_config()
     config: dict[str, Any] = {}
 
@@ -127,6 +128,7 @@ async def cmd_start(args: argparse.Namespace) -> int:
 async def cmd_status(args: argparse.Namespace) -> int:
     """Check seed node status."""
     from ..core.config import get_config
+
     url = args.url
 
     # Default to local if no URL provided
@@ -182,6 +184,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
 async def cmd_discover(args: argparse.Namespace) -> int:
     """Discover routers from a seed node."""
     from ..core.config import get_config
+
     url = args.url
 
     # Default to local if no URL provided
@@ -304,7 +307,8 @@ Environment Variables:
     )
 
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Verbose output",
     )
@@ -318,12 +322,14 @@ Environment Variables:
         description="Start the seed node server to handle router discovery.",
     )
     start_parser.add_argument(
-        "--host", "-H",
+        "--host",
+        "-H",
         default=None,
         help="Host to bind to (default: 0.0.0.0)",
     )
     start_parser.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         type=int,
         default=None,
         help="Port to listen on (default: 8470)",
@@ -347,12 +353,14 @@ Environment Variables:
         description="Check the status of a local or remote seed node.",
     )
     status_parser.add_argument(
-        "--url", "-u",
+        "--url",
+        "-u",
         default=None,
         help="Seed node URL (default: local)",
     )
     status_parser.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         type=int,
         default=None,
         help="Port for local seed (default: 8470)",
@@ -370,29 +378,34 @@ Environment Variables:
         description="Query a seed node for available routers.",
     )
     discover_parser.add_argument(
-        "--url", "-u",
+        "--url",
+        "-u",
         default=None,
         help="Seed node URL (default: local)",
     )
     discover_parser.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         type=int,
         default=None,
         help="Port for local seed (default: 8470)",
     )
     discover_parser.add_argument(
-        "--count", "-n",
+        "--count",
+        "-n",
         type=int,
         default=5,
         help="Number of routers to request (default: 5)",
     )
     discover_parser.add_argument(
-        "--region", "-r",
+        "--region",
+        "-r",
         default=None,
         help="Preferred region",
     )
     discover_parser.add_argument(
-        "--feature", "-f",
+        "--feature",
+        "-f",
         action="append",
         default=[],
         help="Required feature (can be repeated)",

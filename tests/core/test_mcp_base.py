@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import patch
 
 import pytest
-
 from valence.core.exceptions import DatabaseException, ValidationException
-
 
 # ============================================================================
 # success_response Tests
 # ============================================================================
+
 
 class TestSuccessResponse:
     """Tests for success_response helper function."""
@@ -51,6 +49,7 @@ class TestSuccessResponse:
 # error_response Tests
 # ============================================================================
 
+
 class TestErrorResponse:
     """Tests for error_response helper function."""
 
@@ -76,6 +75,7 @@ class TestErrorResponse:
 # ============================================================================
 # not_found_response Tests
 # ============================================================================
+
 
 class TestNotFoundResponse:
     """Tests for not_found_response helper function."""
@@ -103,6 +103,7 @@ class TestNotFoundResponse:
 # ============================================================================
 # ToolRouter Tests
 # ============================================================================
+
 
 class TestToolRouter:
     """Tests for ToolRouter class."""
@@ -196,6 +197,7 @@ class TestToolRouter:
 # MCPServerBase Tests
 # ============================================================================
 
+
 class TestMCPServerBase:
     """Tests for MCPServerBase abstract class."""
 
@@ -269,6 +271,7 @@ class TestMCPServerBase:
 # MCPServerBase._handle_tool_call Tests
 # ============================================================================
 
+
 class TestMCPServerBaseHandleToolCall:
     """Tests for MCPServerBase._handle_tool_call method."""
 
@@ -334,6 +337,7 @@ class TestMCPServerBaseHandleToolCall:
 # ============================================================================
 # MCPServerBase.run Tests
 # ============================================================================
+
 
 class TestMCPServerBaseRun:
     """Tests for MCPServerBase.run method."""

@@ -25,21 +25,25 @@ class ProposalStatus(Enum):
 
 class ElevationError(Exception):
     """Base exception for elevation operations."""
+
     pass
 
 
 class ProposalNotFoundError(ElevationError):
     """Raised when a proposal is not found."""
+
     pass
 
 
 class ProposalAlreadyResolvedError(ElevationError):
     """Raised when trying to approve/reject an already resolved proposal."""
+
     pass
 
 
 class InvalidElevationError(ElevationError):
     """Raised when an elevation request is invalid."""
+
     pass
 
 
@@ -93,7 +97,7 @@ class ElevationProposal:
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
             "resolved_by": self.resolved_by,
             "rejection_reason": self.rejection_reason,
-            "redacted_content": self.redacted_content.decode("utf-8") if self.redacted_content else None,
+            "redacted_content": (self.redacted_content.decode("utf-8") if self.redacted_content else None),
             "redaction_notes": self.redaction_notes,
             "metadata": self.metadata,
         }
@@ -110,10 +114,10 @@ class ElevationProposal:
             reason=data["reason"],
             status=ProposalStatus(data["status"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None,
+            resolved_at=(datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None),
             resolved_by=data.get("resolved_by"),
             rejection_reason=data.get("rejection_reason"),
-            redacted_content=data["redacted_content"].encode("utf-8") if data.get("redacted_content") else None,
+            redacted_content=(data["redacted_content"].encode("utf-8") if data.get("redacted_content") else None),
             redaction_notes=data.get("redaction_notes"),
             metadata=data.get("metadata", {}),
         )
@@ -189,8 +193,7 @@ def propose_elevation(
     """
     if not _is_valid_elevation(from_level, to_level):
         raise InvalidElevationError(
-            f"Cannot elevate from {from_level.value} to {to_level.value}: "
-            f"target level must be more public than source level"
+            f"Cannot elevate from {from_level.value} to {to_level.value}: " f"target level must be more public than source level"
         )
 
     return ElevationProposal(
@@ -230,9 +233,7 @@ def approve_elevation(
         ProposalAlreadyResolvedError: If proposal is not pending
     """
     if proposal.is_resolved:
-        raise ProposalAlreadyResolvedError(
-            f"Proposal {proposal.proposal_id} is already {proposal.status.value}"
-        )
+        raise ProposalAlreadyResolvedError(f"Proposal {proposal.proposal_id} is already {proposal.status.value}")
 
     # Create new proposal with approved status
     return ElevationProposal(
@@ -272,9 +273,7 @@ def reject_elevation(
         ProposalAlreadyResolvedError: If proposal is not pending
     """
     if proposal.is_resolved:
-        raise ProposalAlreadyResolvedError(
-            f"Proposal {proposal.proposal_id} is already {proposal.status.value}"
-        )
+        raise ProposalAlreadyResolvedError(f"Proposal {proposal.proposal_id} is already {proposal.status.value}")
 
     return ElevationProposal(
         proposal_id=proposal.proposal_id,

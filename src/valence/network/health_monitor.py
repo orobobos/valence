@@ -189,7 +189,7 @@ class HealthMonitor:
         for peer_id, peer_data in self._peer_observations.items():
             obs = peer_data.get(router_id)
             if obs:
-                obs_age = now - obs.last_seen if hasattr(obs, 'last_seen') else float('inf')
+                obs_age = now - obs.last_seen if hasattr(obs, "last_seen") else float("inf")
                 if obs_age <= self.config.observation_max_age:
                     peer_obs_list.append(obs)
 
@@ -207,8 +207,7 @@ class HealthMonitor:
 
         # Combine with weights
         if own_score is not None and peer_score is not None:
-            return (own_score * self.config.own_observation_weight +
-                    peer_score * self.config.peer_observation_weight)
+            return own_score * self.config.own_observation_weight + peer_score * self.config.peer_observation_weight
         elif own_score is not None:
             return own_score
         elif peer_score is not None:
@@ -246,12 +245,12 @@ class HealthMonitor:
 
         recent_obs = []
         for router_id, obs in self._own_observations.items():
-            obs_age = now - obs.last_seen if obs.last_seen > 0 else float('inf')
+            obs_age = now - obs.last_seen if obs.last_seen > 0 else float("inf")
             if obs_age <= self.config.observation_max_age:
                 recent_obs.append((obs_age, obs))
 
         recent_obs.sort(key=lambda x: x[0])
-        return [obs for _, obs in recent_obs[:self.config.max_observations_per_gossip]]
+        return [obs for _, obs in recent_obs[: self.config.max_observations_per_gossip]]
 
     def handle_gossip(self, gossip: HealthGossip) -> None:
         """Handle incoming health gossip from a peer."""
@@ -273,10 +272,7 @@ class HealthMonitor:
 
         self._prune_peer_observations()
 
-        logger.debug(
-            f"Received gossip from {source[:16]}... with "
-            f"{len(gossip.observations)} observations"
-        )
+        logger.debug(f"Received gossip from {source[:16]}... with " f"{len(gossip.observations)} observations")
 
     def _prune_peer_observations(self) -> None:
         """Prune old or excess peer observations."""
@@ -288,7 +284,7 @@ class HealthMonitor:
             peer_data = self._peer_observations[peer_id]
             for router_id in list(peer_data.keys()):
                 obs = peer_data[router_id]
-                obs_age = now - obs.last_seen if obs.last_seen > 0 else float('inf')
+                obs_age = now - obs.last_seen if obs.last_seen > 0 else float("inf")
                 if obs_age > self.config.observation_max_age:
                     del peer_data[router_id]
 
@@ -319,13 +315,8 @@ class HealthMonitor:
             aggregated_scores[router_id] = round(self.get_aggregated_health(router_id), 3)
 
         return {
-            "own_observations": {
-                router_id: obs.to_dict()
-                for router_id, obs in self._own_observations.items()
-            },
-            "peer_observation_count": sum(
-                len(peer_data) for peer_data in self._peer_observations.values()
-            ),
+            "own_observations": {router_id: obs.to_dict() for router_id, obs in self._own_observations.items()},
+            "peer_observation_count": sum(len(peer_data) for peer_data in self._peer_observations.values()),
             "peers_with_observations": len(self._peer_observations),
             "aggregated_health_scores": aggregated_scores,
         }
@@ -411,7 +402,7 @@ class HealthMonitor:
 
         if len(delivery_rates) > 1:
             variance = sum((r - avg_delivery) ** 2 for r in delivery_rates) / len(delivery_rates)
-            delivery_stddev = variance ** 0.5
+            delivery_stddev = variance**0.5
         else:
             delivery_stddev = 0.05
 
@@ -419,7 +410,7 @@ class HealthMonitor:
             avg_latency = sum(latencies) / len(latencies)
             if len(latencies) > 1:
                 lat_variance = sum((lat - avg_latency) ** 2 for lat in latencies) / len(latencies)
-                latency_stddev = lat_variance ** 0.5
+                latency_stddev = lat_variance**0.5
             else:
                 latency_stddev = 50.0
         else:
@@ -458,6 +449,7 @@ class HealthMonitor:
 
         if baseline is None:
             from .messages import NetworkBaseline
+
             baseline = NetworkBaseline()
 
         evidence_list: list[MisbehaviorEvidence] = []
@@ -467,40 +459,42 @@ class HealthMonitor:
         # Check delivery rate
         delivery_rate = metrics.delivery_rate
         if delivery_rate < self.config.delivery_rate_threshold:
-            if baseline.is_delivery_rate_anomalous(
-                delivery_rate, self.config.latency_threshold_stddevs
-            ):
-                evidence_list.append(MisbehaviorEvidence(
-                    misbehavior_type=MisbehaviorType.MESSAGE_DROP,
-                    delivery_rate_baseline=baseline.avg_delivery_rate,
-                    delivery_rate_observed=delivery_rate,
-                    description=f"Delivery rate {delivery_rate:.1%} below threshold"
-                ))
+            if baseline.is_delivery_rate_anomalous(delivery_rate, self.config.latency_threshold_stddevs):
+                evidence_list.append(
+                    MisbehaviorEvidence(
+                        misbehavior_type=MisbehaviorType.MESSAGE_DROP,
+                        delivery_rate_baseline=baseline.avg_delivery_rate,
+                        delivery_rate_observed=delivery_rate,
+                        description=f"Delivery rate {delivery_rate:.1%} below threshold",
+                    )
+                )
                 anomaly_score += 0.4
                 misbehavior_type = MisbehaviorType.MESSAGE_DROP
 
         # Check ACK failure rate
         ack_failure_rate = 1.0 - metrics.ack_success_rate
         if ack_failure_rate > self.config.ack_failure_threshold:
-            evidence_list.append(MisbehaviorEvidence(
-                misbehavior_type=MisbehaviorType.ACK_FAILURE,
-                description=f"ACK failure rate {ack_failure_rate:.1%} exceeds threshold"
-            ))
+            evidence_list.append(
+                MisbehaviorEvidence(
+                    misbehavior_type=MisbehaviorType.ACK_FAILURE,
+                    description=f"ACK failure rate {ack_failure_rate:.1%} exceeds threshold",
+                )
+            )
             anomaly_score += 0.3
             if not misbehavior_type:
                 misbehavior_type = MisbehaviorType.ACK_FAILURE
 
         # Check latency
         if metrics.latency_samples > 0 and metrics.avg_latency_ms > 0:
-            if baseline.is_latency_anomalous(
-                metrics.avg_latency_ms, self.config.latency_threshold_stddevs
-            ):
-                evidence_list.append(MisbehaviorEvidence(
-                    misbehavior_type=MisbehaviorType.MESSAGE_DELAY,
-                    expected_latency_ms=baseline.avg_latency_ms,
-                    actual_latency_ms=metrics.avg_latency_ms,
-                    description=f"Latency {metrics.avg_latency_ms:.1f}ms exceeds baseline"
-                ))
+            if baseline.is_latency_anomalous(metrics.avg_latency_ms, self.config.latency_threshold_stddevs):
+                evidence_list.append(
+                    MisbehaviorEvidence(
+                        misbehavior_type=MisbehaviorType.MESSAGE_DELAY,
+                        expected_latency_ms=baseline.avg_latency_ms,
+                        actual_latency_ms=metrics.avg_latency_ms,
+                        description=f"Latency {metrics.avg_latency_ms:.1f}ms exceeds baseline",
+                    )
+                )
                 anomaly_score += 0.3
                 if not misbehavior_type:
                     misbehavior_type = MisbehaviorType.MESSAGE_DELAY
@@ -522,7 +516,7 @@ class HealthMonitor:
             reporter_id=self.node_id,
             router_id=router_id,
             misbehavior_type=misbehavior_type,
-            evidence=evidence_list[:self.config.max_evidence_per_report],
+            evidence=evidence_list[: self.config.max_evidence_per_report],
             metrics=metrics,
             severity=severity,
         )
@@ -530,10 +524,7 @@ class HealthMonitor:
         self._flagged_routers[router_id] = report
         self._stats["routers_flagged"] += 1
 
-        logger.warning(
-            f"FLAGGED ROUTER {router_id[:16]}... for {misbehavior_type}: "
-            f"severity={severity:.2f}"
-        )
+        logger.warning(f"FLAGGED ROUTER {router_id[:16]}... for {misbehavior_type}: " f"severity={severity:.2f}")
 
         if self.on_router_flagged:
             try:
@@ -627,10 +618,7 @@ class HealthMonitor:
 
         # Prune old events
         cutoff = now - self.config.anomaly_window
-        self._failure_events = [
-            e for e in self._failure_events
-            if e["timestamp"] >= cutoff
-        ]
+        self._failure_events = [e for e in self._failure_events if e["timestamp"] >= cutoff]
 
         self._detect_anomalies()
 
@@ -639,10 +627,7 @@ class HealthMonitor:
         now = time.time()
         cutoff = now - self.config.anomaly_window
 
-        recent_failures = [
-            e for e in self._failure_events
-            if e["timestamp"] >= cutoff
-        ]
+        recent_failures = [e for e in self._failure_events if e["timestamp"] >= cutoff]
 
         if len(recent_failures) < self.config.anomaly_threshold:
             return None
@@ -672,14 +657,10 @@ class HealthMonitor:
 
                 # Keep only recent anomalies
                 one_hour_ago = now - 3600
-                self._anomaly_alerts = [
-                    a for a in self._anomaly_alerts
-                    if a["detected_at"] >= one_hour_ago
-                ]
+                self._anomaly_alerts = [a for a in self._anomaly_alerts if a["detected_at"] >= one_hour_ago]
 
                 logger.warning(
-                    f"ECLIPSE ANOMALY DETECTED: {len(unique_routers)} routers "
-                    f"experienced '{failure_type}' within {self.config.anomaly_window}s"
+                    f"ECLIPSE ANOMALY DETECTED: {len(unique_routers)} routers " f"experienced '{failure_type}' within {self.config.anomaly_window}s"
                 )
 
                 return anomaly
@@ -714,10 +695,7 @@ class HealthMonitor:
         missed = self._missed_pings.get(router_id, 0) + 1
         self._missed_pings[router_id] = missed
 
-        logger.warning(
-            f"Ping timeout for router {router_id[:16]}... "
-            f"({missed}/{self.config.missed_pings_threshold} missed)"
-        )
+        logger.warning(f"Ping timeout for router {router_id[:16]}... " f"({missed}/{self.config.missed_pings_threshold} missed)")
 
         return missed >= self.config.missed_pings_threshold
 

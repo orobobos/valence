@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ============================================================================
 # check_env_vars Tests
 # ============================================================================
+
 
 class TestCheckEnvVars:
     """Tests for check_env_vars function."""
@@ -72,6 +71,7 @@ class TestCheckEnvVars:
 # check_database_connection Tests
 # ============================================================================
 
+
 class TestCheckDatabaseConnection:
     """Tests for check_database_connection function."""
 
@@ -86,6 +86,7 @@ class TestCheckDatabaseConnection:
     def test_import_error(self, env_with_db_vars):
         """Should handle psycopg2 not installed."""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -95,6 +96,7 @@ class TestCheckDatabaseConnection:
 
         # Need to reload module to test import behavior
         import importlib
+
         import valence.core.health
 
         with patch.object(builtins, "__import__", mock_import):
@@ -133,6 +135,7 @@ class TestCheckDatabaseConnection:
 # ============================================================================
 # check_pgvector Tests
 # ============================================================================
+
 
 class TestCheckPgvector:
     """Tests for check_pgvector function."""
@@ -185,12 +188,13 @@ class TestCheckPgvector:
 # check_schema Tests
 # ============================================================================
 
+
 class TestCheckSchema:
     """Tests for check_schema function."""
 
     def test_all_tables_present(self, mock_psycopg2, env_with_db_vars):
         """Should return True when all tables exist."""
-        from valence.core.health import check_schema, REQUIRED_TABLES
+        from valence.core.health import check_schema
 
         # Mock table_exists to return True for all tables
         mock_psycopg2["cursor"].fetchone.return_value = (True,)
@@ -213,8 +217,8 @@ class TestCheckSchema:
 
     def test_database_exception_treated_as_missing(self, env_with_db_vars):
         """Should treat DatabaseException as missing table."""
-        from valence.core.health import check_schema
         from valence.core.exceptions import DatabaseException
+        from valence.core.health import check_schema
 
         with patch("valence.core.health.table_exists") as mock_exists:
             mock_exists.side_effect = DatabaseException("Connection failed")
@@ -228,6 +232,7 @@ class TestCheckSchema:
 # ============================================================================
 # HealthStatus Tests
 # ============================================================================
+
 
 class TestHealthStatus:
     """Tests for HealthStatus dataclass."""
@@ -270,6 +275,7 @@ class TestHealthStatus:
 # run_health_check Tests
 # ============================================================================
 
+
 class TestRunHealthCheck:
     """Tests for run_health_check function."""
 
@@ -287,9 +293,7 @@ class TestRunHealthCheck:
             with patch("valence.core.health.check_pgvector", return_value=(True, None)):
                 with patch("valence.core.health.check_schema", return_value=(True, [])):
                     with patch("valence.core.health.DatabaseStats") as mock_stats:
-                        mock_stats.collect.return_value = MagicMock(
-                            to_dict=lambda: {"beliefs": 10}
-                        )
+                        mock_stats.collect.return_value = MagicMock(to_dict=lambda: {"beliefs": 10})
                         status = run_health_check()
                         assert status.healthy is True
                         assert status.database_connected is True
@@ -314,7 +318,10 @@ class TestRunHealthCheck:
         monkeypatch.setenv("VKB_DB_NAME", "valence")
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
-        with patch("valence.core.health.check_database_connection", return_value=(False, "Connection refused")):
+        with patch(
+            "valence.core.health.check_database_connection",
+            return_value=(False, "Connection refused"),
+        ):
             status = run_health_check()
             assert status.healthy is False
             assert status.database_connected is False
@@ -330,7 +337,10 @@ class TestRunHealthCheck:
 
         with patch("valence.core.health.check_database_connection", return_value=(True, None)):
             with patch("valence.core.health.check_pgvector", return_value=(True, None)):
-                with patch("valence.core.health.check_schema", return_value=(False, ["beliefs", "entities"])):
+                with patch(
+                    "valence.core.health.check_schema",
+                    return_value=(False, ["beliefs", "entities"]),
+                ):
                     status = run_health_check()
                     assert status.healthy is False
                     assert "Missing required tables" in status.error
@@ -345,12 +355,13 @@ class TestRunHealthCheck:
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
         with patch("valence.core.health.check_database_connection", return_value=(True, None)):
-            with patch("valence.core.health.check_pgvector", return_value=(False, "Not installed")):
+            with patch(
+                "valence.core.health.check_pgvector",
+                return_value=(False, "Not installed"),
+            ):
                 with patch("valence.core.health.check_schema", return_value=(True, [])):
                     with patch("valence.core.health.DatabaseStats") as mock_stats:
-                        mock_stats.collect.return_value = MagicMock(
-                            to_dict=lambda: {}
-                        )
+                        mock_stats.collect.return_value = MagicMock(to_dict=lambda: {})
                         status = run_health_check()
                         assert status.healthy is True  # Still healthy
                         assert status.pgvector_available is False
@@ -360,6 +371,7 @@ class TestRunHealthCheck:
 # ============================================================================
 # startup_checks Tests
 # ============================================================================
+
 
 class TestStartupChecks:
     """Tests for startup_checks function."""
@@ -385,6 +397,7 @@ class TestStartupChecks:
 # require_healthy Tests
 # ============================================================================
 
+
 class TestRequireHealthy:
     """Tests for require_healthy function."""
 
@@ -407,13 +420,14 @@ class TestRequireHealthy:
 # validate_environment Tests
 # ============================================================================
 
+
 class TestValidateEnvironment:
     """Tests for validate_environment function."""
 
     def test_raises_on_missing_vars(self, clean_env):
         """Should raise ConfigException when vars missing."""
-        from valence.core.health import validate_environment
         from valence.core.exceptions import ConfigException
+        from valence.core.health import validate_environment
 
         with pytest.raises(ConfigException):
             validate_environment()
@@ -434,26 +448,30 @@ class TestValidateEnvironment:
 # validate_database Tests
 # ============================================================================
 
+
 class TestValidateDatabase:
     """Tests for validate_database function."""
 
     def test_raises_on_connection_failure(self, monkeypatch):
         """Should raise DatabaseException on connection failure."""
-        from valence.core.health import validate_database
         from valence.core.exceptions import DatabaseException
+        from valence.core.health import validate_database
 
         monkeypatch.setenv("VKB_DB_HOST", "localhost")
         monkeypatch.setenv("VKB_DB_NAME", "valence")
         monkeypatch.setenv("VKB_DB_USER", "valence")
 
-        with patch("valence.core.health.check_database_connection", return_value=(False, "Failed")):
+        with patch(
+            "valence.core.health.check_database_connection",
+            return_value=(False, "Failed"),
+        ):
             with pytest.raises(DatabaseException, match="Database connection failed"):
                 validate_database()
 
     def test_raises_on_schema_failure(self, monkeypatch):
         """Should raise DatabaseException on schema failure."""
-        from valence.core.health import validate_database
         from valence.core.exceptions import DatabaseException
+        from valence.core.health import validate_database
 
         monkeypatch.setenv("VKB_DB_HOST", "localhost")
         monkeypatch.setenv("VKB_DB_NAME", "valence")
@@ -469,6 +487,7 @@ class TestValidateDatabase:
 # cli_health_check Tests
 # ============================================================================
 
+
 class TestCliHealthCheck:
     """Tests for cli_health_check function."""
 
@@ -482,6 +501,7 @@ class TestCliHealthCheck:
 
         with patch("valence.core.health.run_health_check") as mock_check:
             from valence.core.health import HealthStatus
+
             mock_check.return_value = HealthStatus(
                 healthy=True,
                 database_connected=True,
@@ -508,6 +528,7 @@ class TestCliHealthCheck:
 
         with patch("valence.core.health.run_health_check") as mock_check:
             from valence.core.health import HealthStatus
+
             mock_check.return_value = HealthStatus(
                 healthy=False,
                 missing_env_vars=["VKB_DB_HOST"],

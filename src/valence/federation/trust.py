@@ -51,11 +51,11 @@ logger = logging.getLogger(__name__)
 
 # Trust signal impact weights
 SIGNAL_WEIGHTS = {
-    "corroboration": 0.02,      # Per corroborated belief
-    "dispute": -0.05,           # Per disputed belief
-    "endorsement": 0.10,        # Per endorsement received
-    "sync_success": 0.005,      # Per successful sync
-    "sync_failure": -0.01,      # Per failed sync
+    "corroboration": 0.02,  # Per corroborated belief
+    "dispute": -0.05,  # Per disputed belief
+    "endorsement": 0.10,  # Per endorsement received
+    "sync_success": 0.005,  # Per successful sync
+    "sync_failure": -0.01,  # Per failed sync
     "aggregation_participation": 0.01,  # Per aggregation contribution
 }
 

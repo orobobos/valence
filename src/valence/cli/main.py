@@ -24,13 +24,13 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Try to load .env from common locations
-for env_path in [Path.cwd() / '.env', Path.home() / '.valence' / '.env']:
+for env_path in [Path.cwd() / ".env", Path.home() / ".valence" / ".env"]:
     if env_path.exists():
         with open(env_path) as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
                     os.environ.setdefault(key.strip(), value.strip())
         break
 
@@ -56,6 +56,7 @@ def get_db_connection():
 def get_embedding(text: str) -> list[float] | None:
     """Generate embedding using OpenAI."""
     from ..core.config import get_config
+
     config = get_config()
     api_key = config.openai_api_key
     if not api_key:
@@ -63,11 +64,9 @@ def get_embedding(text: str) -> list[float] | None:
 
     try:
         from openai import OpenAI
+
         client = OpenAI(api_key=api_key)
-        response = client.embeddings.create(
-            model='text-embedding-3-small',
-            input=text
-        )
+        response = client.embeddings.create(model="text-embedding-3-small", input=text)
         return response.data[0].embedding
     except Exception as e:
         print(f"⚠️  Embedding failed: {e}", file=sys.stderr)
@@ -78,7 +77,7 @@ def format_confidence(conf: dict) -> str:
     """Format confidence for display."""
     if not conf:
         return "?"
-    overall = conf.get('overall', 0)
+    overall = conf.get("overall", 0)
     if isinstance(overall, (int, float)):
         return f"{overall:.0%}"
     return str(overall)[:5]
@@ -88,6 +87,7 @@ def format_confidence(conf: dict) -> str:
 # Multi-Signal Ranking (Valence Query Protocol)
 # ============================================================================
 
+
 def compute_confidence_score(belief: dict) -> float:
     """
     Compute aggregated confidence score from 6D confidence vector.
@@ -96,39 +96,34 @@ def compute_confidence_score(belief: dict) -> float:
     Falls back to JSONB 'overall' field for backward compatibility.
     """
     # Try 6D confidence columns first
-    src = belief.get('confidence_source', 0.5)
-    meth = belief.get('confidence_method', 0.5)
-    cons = belief.get('confidence_consistency', 1.0)
-    fresh = belief.get('confidence_freshness', 1.0)
-    corr = belief.get('confidence_corroboration', 0.1)
-    app = belief.get('confidence_applicability', 0.8)
+    src = belief.get("confidence_source", 0.5)
+    meth = belief.get("confidence_method", 0.5)
+    cons = belief.get("confidence_consistency", 1.0)
+    fresh = belief.get("confidence_freshness", 1.0)
+    corr = belief.get("confidence_corroboration", 0.1)
+    app = belief.get("confidence_applicability", 0.8)
 
     # Check if 6D columns are populated (not default placeholder)
-    has_6d = any([
-        belief.get('confidence_source') is not None,
-        belief.get('confidence_method') is not None,
-    ])
+    has_6d = any(
+        [
+            belief.get("confidence_source") is not None,
+            belief.get("confidence_method") is not None,
+        ]
+    )
 
     if has_6d:
         # Geometric mean with spec weights
         # w_sr=0.25, w_mq=0.20, w_ic=0.15, w_tf=0.15, w_cor=0.15, w_da=0.10
         try:
-            score = (
-                (src ** 0.25) *
-                (meth ** 0.20) *
-                (cons ** 0.15) *
-                (fresh ** 0.15) *
-                (corr ** 0.15) *
-                (app ** 0.10)
-            )
+            score = (src**0.25) * (meth**0.20) * (cons**0.15) * (fresh**0.15) * (corr**0.15) * (app**0.10)
             return min(1.0, max(0.0, score))
         except (ValueError, ZeroDivisionError):
             pass
 
     # Fallback to JSONB overall
-    conf = belief.get('confidence', {})
+    conf = belief.get("confidence", {})
     if isinstance(conf, dict):
-        overall = conf.get('overall', 0.5)
+        overall = conf.get("overall", 0.5)
         if isinstance(overall, (int, float)):
             return min(1.0, max(0.0, float(overall)))
 
@@ -191,7 +186,7 @@ def multi_signal_rank(
     ranked = []
     for r in results:
         # Semantic score (already computed from embedding similarity)
-        semantic = r.get('similarity', 0.0)
+        semantic = r.get("similarity", 0.0)
         if isinstance(semantic, (int, float)):
             semantic = min(1.0, max(0.0, float(semantic)))
         else:
@@ -205,30 +200,38 @@ def multi_signal_rank(
             continue
 
         # Recency score
-        created_at = r.get('created_at')
+        created_at = r.get("created_at")
         recency = compute_recency_score(created_at) if created_at else 0.5
 
         # Final score
-        final_score = (
-            semantic_weight * semantic +
-            confidence_weight * confidence +
-            recency_weight * recency
-        )
+        final_score = semantic_weight * semantic + confidence_weight * confidence + recency_weight * recency
 
-        r['final_score'] = final_score
+        r["final_score"] = final_score
 
         if explain:
-            r['score_breakdown'] = {
-                'semantic': {'value': semantic, 'weight': semantic_weight, 'contribution': semantic_weight * semantic},
-                'confidence': {'value': confidence, 'weight': confidence_weight, 'contribution': confidence_weight * confidence},
-                'recency': {'value': recency, 'weight': recency_weight, 'contribution': recency_weight * recency},
-                'final': final_score,
+            r["score_breakdown"] = {
+                "semantic": {
+                    "value": semantic,
+                    "weight": semantic_weight,
+                    "contribution": semantic_weight * semantic,
+                },
+                "confidence": {
+                    "value": confidence,
+                    "weight": confidence_weight,
+                    "contribution": confidence_weight * confidence,
+                },
+                "recency": {
+                    "value": recency,
+                    "weight": recency_weight,
+                    "contribution": recency_weight * recency,
+                },
+                "final": final_score,
             }
 
         ranked.append(r)
 
     # Sort by final score descending
-    ranked.sort(key=lambda x: x.get('final_score', 0), reverse=True)
+    ranked.sort(key=lambda x: x.get("final_score", 0), reverse=True)
 
     return ranked
 
@@ -262,6 +265,7 @@ def format_age(dt: datetime) -> str:
 # INIT Command
 # ============================================================================
 
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Initialize valence database."""
     import psycopg2
@@ -284,18 +288,20 @@ def cmd_init(args: argparse.Namespace) -> int:
         cur = conn.cursor()
 
         # Check if beliefs table exists
-        cur.execute("""
+        cur.execute(
+            """
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_name = 'beliefs'
             )
-        """)
-        exists = cur.fetchone()['exists']
+        """
+        )
+        exists = cur.fetchone()["exists"]
 
         if exists and not args.force:
             print(f"✅ Database already initialized at {db_host}:{db_port}/{db_name}")
             cur.execute("SELECT COUNT(*) as count FROM beliefs")
-            count = cur.fetchone()['count']
+            count = cur.fetchone()["count"]
             print(f"   📊 {count} beliefs stored")
             conn.close()
             return 0
@@ -314,8 +320,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("🔨 Creating schema...")
 
     # Read and execute schema
-    Path(__file__).parent.parent / 'substrate'
-    Path(__file__).parent.parent.parent.parent / 'migrations'
+    Path(__file__).parent.parent / "substrate"
+    Path(__file__).parent.parent.parent.parent / "migrations"
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -327,7 +333,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
         # Create core tables if they don't exist
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS sources (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 type TEXT NOT NULL,
@@ -338,9 +345,11 @@ def cmd_init(args: argparse.Namespace) -> int:
                 metadata JSONB DEFAULT '{}',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS beliefs (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 content TEXT NOT NULL,
@@ -370,9 +379,11 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 modified_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS entities (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name TEXT NOT NULL,
@@ -383,15 +394,19 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 modified_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """)
+        """
+        )
 
         # Partial unique index for non-aliased entities
-        cur.execute("""
+        cur.execute(
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name_type_unique
             ON entities(name, type) WHERE canonical_id IS NULL
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS belief_entities (
                 belief_id UUID REFERENCES beliefs(id) ON DELETE CASCADE,
                 entity_id UUID REFERENCES entities(id) ON DELETE CASCADE,
@@ -399,9 +414,11 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (belief_id, entity_id)
             )
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS tensions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 belief_a_id UUID REFERENCES beliefs(id) ON DELETE CASCADE,
@@ -414,9 +431,11 @@ def cmd_init(args: argparse.Namespace) -> int:
                 resolved_at TIMESTAMPTZ,
                 detected_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS belief_derivations (
                 belief_id UUID PRIMARY KEY REFERENCES beliefs(id) ON DELETE CASCADE,
                 derivation_type TEXT NOT NULL DEFAULT 'assumption',
@@ -424,9 +443,11 @@ def cmd_init(args: argparse.Namespace) -> int:
                 confidence_rationale TEXT,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """)
+        """
+        )
 
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS derivation_sources (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 belief_id UUID NOT NULL REFERENCES beliefs(id) ON DELETE CASCADE,
@@ -435,7 +456,8 @@ def cmd_init(args: argparse.Namespace) -> int:
                 contribution_type TEXT DEFAULT 'primary',
                 weight REAL DEFAULT 1.0
             )
-        """)
+        """
+        )
 
         # Create indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)")
@@ -445,13 +467,15 @@ def cmd_init(args: argparse.Namespace) -> int:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_derivation_sources_belief ON derivation_sources(belief_id)")
 
         # Create text search
-        cur.execute("""
+        cur.execute(
+            """
             DO $$ BEGIN
                 ALTER TABLE beliefs ADD COLUMN content_tsv tsvector
                     GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
             EXCEPTION WHEN duplicate_column THEN NULL;
             END $$
-        """)
+        """
+        )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_tsv ON beliefs USING GIN(content_tsv)")
 
         conn.commit()
@@ -478,6 +502,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 # ============================================================================
 # ADD Command
 # ============================================================================
+
 
 def cmd_add(args: argparse.Namespace) -> int:
     """Add a new belief."""
@@ -510,7 +535,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
     # Parse derivation info
-    derivation_type = args.derivation_type or 'observation'
+    derivation_type = args.derivation_type or "observation"
     derived_from = args.derived_from  # UUID of source belief
 
     try:
@@ -518,27 +543,36 @@ def cmd_add(args: argparse.Namespace) -> int:
         cur = conn.cursor()
 
         # Insert belief
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO beliefs (content, confidence, domain_path, embedding, extraction_method)
             VALUES (%s, %s, %s, %s::vector, %s)
             RETURNING id, created_at
-        """, (content, json.dumps(confidence), domains, embedding_str, derivation_type))
+        """,
+            (content, json.dumps(confidence), domains, embedding_str, derivation_type),
+        )
 
         row = cur.fetchone()
-        belief_id = row['id']
+        belief_id = row["id"]
 
         # Add derivation record
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO belief_derivations (belief_id, derivation_type, method_description)
             VALUES (%s, %s, %s)
-        """, (belief_id, derivation_type, args.method or None))
+        """,
+            (belief_id, derivation_type, args.method or None),
+        )
 
         # Link derived_from if provided
         if derived_from:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO derivation_sources (belief_id, source_belief_id, contribution_type)
                 VALUES (%s, %s, 'primary')
-            """, (belief_id, derived_from))
+            """,
+                (belief_id, derived_from),
+            )
 
         conn.commit()
 
@@ -566,12 +600,13 @@ def cmd_add(args: argparse.Namespace) -> int:
 # QUERY Command
 # ============================================================================
 
+
 def cmd_query(args: argparse.Namespace) -> int:
     """Search beliefs with multi-signal ranking and derivation chains."""
     query = args.query
 
     # Use federated query if scope is federated
-    if hasattr(args, 'scope') and args.scope == 'federated':
+    if hasattr(args, "scope") and args.scope == "federated":
         return cmd_query_federated(args)
 
     try:
@@ -584,9 +619,9 @@ def cmd_query(args: argparse.Namespace) -> int:
         results = []
 
         # Get ranking weights from args (with defaults)
-        recency_weight = getattr(args, 'recency_weight', 0.15) or 0.15
-        min_confidence = getattr(args, 'min_confidence', None)
-        explain = getattr(args, 'explain', False)
+        recency_weight = getattr(args, "recency_weight", 0.15) or 0.15
+        min_confidence = getattr(args, "min_confidence", None)
+        explain = getattr(args, "explain", False)
 
         # Semantic weight adjusts based on recency weight
         # Default: semantic=0.50, confidence=0.35, recency=0.15
@@ -604,7 +639,8 @@ def cmd_query(args: argparse.Namespace) -> int:
             embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
             # Semantic search with derivation info AND 6D confidence columns
-            cur.execute("""
+            cur.execute(
+                """
                 WITH ranked AS (
                     SELECT
                         b.id,
@@ -642,13 +678,16 @@ def cmd_query(args: argparse.Namespace) -> int:
                     WHERE ds.belief_id = r.id) as derivation_sources
                 FROM ranked r
                 WHERE r.similarity >= %s
-            """, (embedding_str, embedding_str, args.limit * 2, args.threshold))  # Get extra for filtering
+            """,
+                (embedding_str, embedding_str, args.limit * 2, args.threshold),
+            )  # Get extra for filtering
 
             results = cur.fetchall()
 
         # Fallback to text search if no embedding or no results
         if not results:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     b.id,
                     b.content,
@@ -681,7 +720,9 @@ def cmd_query(args: argparse.Namespace) -> int:
                   AND b.superseded_by_id IS NULL
                 ORDER BY ts_rank(b.content_tsv, websearch_to_tsquery('english', %s)) DESC
                 LIMIT %s
-            """, (query, query, query, args.limit * 2))
+            """,
+                (query, query, query, args.limit * 2),
+            )
 
             results = cur.fetchall()
 
@@ -690,7 +731,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 
         # Domain filter
         if args.domain:
-            results = [r for r in results if args.domain in (r.get('domain_path') or [])]
+            results = [r for r in results if args.domain in (r.get("domain_path") or [])]
 
         # Apply multi-signal ranking
         results = multi_signal_rank(
@@ -703,7 +744,7 @@ def cmd_query(args: argparse.Namespace) -> int:
         )
 
         # Limit results after ranking
-        results = results[:args.limit]
+        results = results[: args.limit]
 
         if not results:
             print(f"🔍 No beliefs found for: {query}")
@@ -715,8 +756,8 @@ def cmd_query(args: argparse.Namespace) -> int:
         print()
 
         for i, r in enumerate(results, 1):
-            final_score = r.get('final_score', 0)
-            sim = r.get('similarity', 0)
+            final_score = r.get("final_score", 0)
+            sim = r.get("similarity", 0)
 
             # Header
             print(f"{'─' * 60}")
@@ -724,60 +765,68 @@ def cmd_query(args: argparse.Namespace) -> int:
 
             # Show final score and components
             conf_score = compute_confidence_score(r)
-            created_at = r.get('created_at')
+            created_at = r.get("created_at")
             age_str = format_age(created_at) if created_at else "unknown"
             print(f"    ID: {str(r['id'])[:8]}  Score: {final_score:.0%}  Confidence: {conf_score:.0%}  Semantic: {sim:.0%}  Age: {age_str}")
 
-            if r.get('domain_path'):
+            if r.get("domain_path"):
                 print(f"    Domains: {', '.join(r['domain_path'])}")
 
             # Show score breakdown if explain mode
-            if explain and r.get('score_breakdown'):
-                bd = r['score_breakdown']
+            if explain and r.get("score_breakdown"):
+                bd = r["score_breakdown"]
                 print("    ┌─ Score Breakdown:")
                 print(f"    │  Semantic:   {bd['semantic']['value']:.2f} × {bd['semantic']['weight']:.2f} = {bd['semantic']['contribution']:.3f}")
-                print(f"    │  Confidence: {bd['confidence']['value']:.2f} × {bd['confidence']['weight']:.2f} = {bd['confidence']['contribution']:.3f}")
+                print(
+                    f"    │  Confidence: {bd['confidence']['value']:.2f} × {bd['confidence']['weight']:.2f} = {bd['confidence']['contribution']:.3f}"
+                )
                 print(f"    │  Recency:    {bd['recency']['value']:.2f} × {bd['recency']['weight']:.2f} = {bd['recency']['contribution']:.3f}")
                 print(f"    │  Final:      {bd['final']:.3f}")
                 print("    └─")
 
             # === DERIVATION CHAIN ===
-            derivation_type = r.get('derivation_type') or r.get('extraction_method') or 'unknown'
+            derivation_type = r.get("derivation_type") or r.get("extraction_method") or "unknown"
             print(f"    ┌─ Derivation: {derivation_type}")
 
-            if r.get('method_description'):
+            if r.get("method_description"):
                 print(f"    │  Method: {r['method_description']}")
 
-            if r.get('confidence_rationale'):
+            if r.get("confidence_rationale"):
                 print(f"    │  Rationale: {r['confidence_rationale']}")
 
             # Show source beliefs
-            sources = r.get('derivation_sources') or []
+            sources = r.get("derivation_sources") or []
             if sources:
                 for src in sources:
-                    if src.get('source_belief_id'):
+                    if src.get("source_belief_id"):
                         # Fetch source belief content
-                        cur.execute("SELECT content FROM beliefs WHERE id = %s", (src['source_belief_id'],))
+                        cur.execute(
+                            "SELECT content FROM beliefs WHERE id = %s",
+                            (src["source_belief_id"],),
+                        )
                         src_row = cur.fetchone()
-                        src_content = src_row['content'][:50] if src_row else '?'
+                        src_content = src_row["content"][:50] if src_row else "?"
                         print(f"    │  ← Derived from ({src.get('contribution_type', 'primary')}): {src_content}...")
-                    elif src.get('external_ref'):
+                    elif src.get("external_ref"):
                         print(f"    │  ← External: {src['external_ref']}")
 
             # Show supersession chain if exists
-            if r.get('supersedes_id'):
+            if r.get("supersedes_id"):
                 print(f"    │  ⟳ Supersedes: {str(r['supersedes_id'])[:8]}...")
                 # Optionally walk the chain
                 if args.chain:
                     chain = []
-                    current = r['supersedes_id']
+                    current = r["supersedes_id"]
                     depth = 0
                     while current and depth < 5:
-                        cur.execute("SELECT id, content, supersedes_id FROM beliefs WHERE id = %s", (current,))
+                        cur.execute(
+                            "SELECT id, content, supersedes_id FROM beliefs WHERE id = %s",
+                            (current,),
+                        )
                         chain_row = cur.fetchone()
                         if chain_row:
                             chain.append(f"{chain_row['content'][:40]}...")
-                            current = chain_row['supersedes_id']
+                            current = chain_row["supersedes_id"]
                             depth += 1
                         else:
                             break
@@ -793,6 +842,7 @@ def cmd_query(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Query failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
     finally:
@@ -804,6 +854,7 @@ def cmd_query(args: argparse.Namespace) -> int:
 # FEDERATED QUERY
 # ============================================================================
 
+
 def cmd_query_federated(args: argparse.Namespace) -> int:
     """Search beliefs with source attribution (federated scope)."""
     from ..federation.peer_sync import query_federated
@@ -811,7 +862,7 @@ def cmd_query_federated(args: argparse.Namespace) -> int:
     try:
         results = query_federated(
             query_text=args.query,
-            scope=getattr(args, 'scope', 'local'),
+            scope=getattr(args, "scope", "local"),
             domain_filter=[args.domain] if args.domain else None,
             limit=args.limit,
             threshold=args.threshold,
@@ -843,7 +894,7 @@ def cmd_query_federated(args: argparse.Namespace) -> int:
                 print(f"    🔗 Source: {r.origin_did} (trust: {trust_pct})")
 
                 # Show original vs weighted confidence
-                original = r.confidence.get('_original_overall')
+                original = r.confidence.get("_original_overall")
                 if original:
                     print(f"       Original confidence: {original:.0%} → weighted: {r.effective_confidence:.0%}")
 
@@ -854,6 +905,7 @@ def cmd_query_federated(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Query failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -861,6 +913,7 @@ def cmd_query_federated(args: argparse.Namespace) -> int:
 # ============================================================================
 # LIST Command
 # ============================================================================
+
 
 def cmd_list(args: argparse.Namespace) -> int:
     """List recent beliefs."""
@@ -900,11 +953,11 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(f"📚 {len(results)} belief(s)" + (f" in domain '{args.domain}'" if args.domain else "") + "\n")
 
         for r in results:
-            conf = format_confidence(r.get('confidence', {}))
-            age = format_age(r.get('created_at'))
-            deriv_raw = r.get('derivation_type') or '?'
-            deriv = deriv_raw[:6] if deriv_raw else '?'
-            content = r['content'][:55] + '...' if len(r['content']) > 55 else r['content']
+            conf = format_confidence(r.get("confidence", {}))
+            age = format_age(r.get("created_at"))
+            deriv_raw = r.get("derivation_type") or "?"
+            deriv = deriv_raw[:6] if deriv_raw else "?"
+            content = r["content"][:55] + "..." if len(r["content"]) > 55 else r["content"]
 
             print(f"  {str(r['id'])[:8]}  [{conf:>4}] [{age:>3}] [{deriv:>6}]  {content}")
 
@@ -921,6 +974,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 # ============================================================================
 # CONFLICTS Command
 # ============================================================================
+
 
 def cmd_conflicts(args: argparse.Namespace) -> int:
     """Detect beliefs that may contradict each other.
@@ -939,7 +993,8 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
 
         # Find pairs of beliefs with high semantic similarity
         # that might be contradictions
-        cur.execute("""
+        cur.execute(
+            """
             WITH belief_pairs AS (
                 SELECT
                     b1.id as id_a,
@@ -970,7 +1025,9 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
                 WHERE (t.belief_a_id = belief_pairs.id_a AND t.belief_b_id = belief_pairs.id_b)
                    OR (t.belief_a_id = belief_pairs.id_b AND t.belief_b_id = belief_pairs.id_a)
             )
-        """, (threshold,))
+        """,
+            (threshold,),
+        )
 
         pairs = cur.fetchall()
 
@@ -980,13 +1037,31 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
 
         # Analyze each pair for contradiction signals
         conflicts = []
-        negation_words = {'not', 'never', 'no', "n't", 'cannot', 'without', 'neither',
-                         'none', 'nobody', 'nothing', 'nowhere', 'false', 'incorrect',
-                         'wrong', 'fail', 'reject', 'deny', 'refuse', 'avoid'}
+        negation_words = {
+            "not",
+            "never",
+            "no",
+            "n't",
+            "cannot",
+            "without",
+            "neither",
+            "none",
+            "nobody",
+            "nothing",
+            "nowhere",
+            "false",
+            "incorrect",
+            "wrong",
+            "fail",
+            "reject",
+            "deny",
+            "refuse",
+            "avoid",
+        }
 
         for pair in pairs:
-            content_a = pair['content_a'].lower()
-            content_b = pair['content_b'].lower()
+            content_a = pair["content_a"].lower()
+            content_b = pair["content_b"].lower()
 
             words_a = set(content_a.split())
             words_b = set(content_b.split())
@@ -1006,9 +1081,15 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
             # Check for opposite conclusions (simple heuristic)
             # e.g., "X is good" vs "X is bad"
             opposites = [
-                ('good', 'bad'), ('right', 'wrong'), ('true', 'false'),
-                ('should', 'should not'), ('always', 'never'), ('prefer', 'avoid'),
-                ('like', 'dislike'), ('works', 'fails'), ('correct', 'incorrect'),
+                ("good", "bad"),
+                ("right", "wrong"),
+                ("true", "false"),
+                ("should", "should not"),
+                ("always", "never"),
+                ("prefer", "avoid"),
+                ("like", "dislike"),
+                ("works", "fails"),
+                ("correct", "incorrect"),
             ]
 
             for pos, neg in opposites:
@@ -1018,19 +1099,21 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
                     break
 
             # High similarity + some conflict signal = potential contradiction
-            if conflict_signal > 0.2 or pair['similarity'] > 0.92:
-                conflicts.append({
-                    **pair,
-                    'conflict_score': conflict_signal + (pair['similarity'] - threshold) * 0.5,
-                    'reason': ', '.join(reason) if reason else 'high similarity'
-                })
+            if conflict_signal > 0.2 or pair["similarity"] > 0.92:
+                conflicts.append(
+                    {
+                        **pair,
+                        "conflict_score": conflict_signal + (pair["similarity"] - threshold) * 0.5,
+                        "reason": ", ".join(reason) if reason else "high similarity",
+                    }
+                )
 
         if not conflicts:
             print("✅ Found similar beliefs but no likely contradictions")
             return 0
 
         # Sort by conflict score
-        conflicts.sort(key=lambda x: x['conflict_score'], reverse=True)
+        conflicts.sort(key=lambda x: x["conflict_score"], reverse=True)
 
         print(f"⚠️  Found {len(conflicts)} potential conflict(s):\n")
 
@@ -1045,17 +1128,20 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
 
             if args.auto_record:
                 # Record as tension
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO tensions (belief_a_id, belief_b_id, type, description, severity)
                     VALUES (%s, %s, 'contradiction', %s, %s)
                     ON CONFLICT DO NOTHING
                     RETURNING id
-                """, (
-                    c['id_a'],
-                    c['id_b'],
-                    f"Auto-detected: {c['reason']}",
-                    'high' if c['conflict_score'] > 0.5 else 'medium'
-                ))
+                """,
+                    (
+                        c["id_a"],
+                        c["id_b"],
+                        f"Auto-detected: {c['reason']}",
+                        "high" if c["conflict_score"] > 0.5 else "medium",
+                    ),
+                )
                 tension_row = cur.fetchone()
                 if tension_row:
                     print(f"  📝 Recorded as tension: {str(tension_row['id'])[:8]}")
@@ -1071,6 +1157,7 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Conflict detection failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
     finally:
@@ -1082,6 +1169,7 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
 # STATS Command
 # ============================================================================
 
+
 def cmd_stats(args: argparse.Namespace) -> int:
     """Show database statistics."""
     try:
@@ -1089,31 +1177,31 @@ def cmd_stats(args: argparse.Namespace) -> int:
         cur = conn.cursor()
 
         cur.execute("SELECT COUNT(*) as total FROM beliefs")
-        total = cur.fetchone()['total']
+        total = cur.fetchone()["total"]
 
         cur.execute("SELECT COUNT(*) as active FROM beliefs WHERE status = 'active' AND superseded_by_id IS NULL")
-        active = cur.fetchone()['active']
+        active = cur.fetchone()["active"]
 
         cur.execute("SELECT COUNT(*) as with_emb FROM beliefs WHERE embedding IS NOT NULL")
-        with_embedding = cur.fetchone()['with_emb']
+        with_embedding = cur.fetchone()["with_emb"]
 
         cur.execute("SELECT COUNT(*) as tensions FROM tensions WHERE status = 'detected'")
-        tensions = cur.fetchone()['tensions']
+        tensions = cur.fetchone()["tensions"]
 
         try:
             cur.execute("SELECT COUNT(DISTINCT d) as count FROM beliefs, LATERAL unnest(domain_path) as d")
-            domains = cur.fetchone()['count']
+            domains = cur.fetchone()["count"]
         except (Exception,) as e:
             logger.debug(f"Could not count domains (column may not exist): {e}")
             domains = 0
 
         cur.execute("SELECT COUNT(*) as derivations FROM belief_derivations")
-        derivations = cur.fetchone()['derivations']
+        derivations = cur.fetchone()["derivations"]
 
         # Count federated beliefs
         try:
             cur.execute("SELECT COUNT(*) as federated FROM beliefs WHERE is_local = FALSE")
-            federated = cur.fetchone()['federated']
+            federated = cur.fetchone()["federated"]
         except (Exception,) as e:
             logger.debug(f"Could not count federated beliefs (column may not exist): {e}")
             federated = 0
@@ -1142,6 +1230,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
 # ============================================================================
 # PEER Commands
 # ============================================================================
+
 
 def cmd_peer_add(args: argparse.Namespace) -> int:
     """Add a trusted peer to the local registry."""
@@ -1187,7 +1276,7 @@ def cmd_peer_list(args: argparse.Namespace) -> int:
         print(f"👥 {len(peers)} trusted peer(s)\n")
 
         for p in peers:
-            trust_bar = '█' * int(p.trust_level * 10) + '░' * (10 - int(p.trust_level * 10))
+            trust_bar = "█" * int(p.trust_level * 10) + "░" * (10 - int(p.trust_level * 10))
             name_str = f" ({p.name})" if p.name else ""
             last_sync = format_age(p.last_sync_at) if p.last_sync_at else "never"
 
@@ -1225,11 +1314,11 @@ def cmd_peer_remove(args: argparse.Namespace) -> int:
 
 def cmd_peer(args: argparse.Namespace) -> int:
     """Dispatch peer subcommands."""
-    if args.peer_command == 'add':
+    if args.peer_command == "add":
         return cmd_peer_add(args)
-    elif args.peer_command == 'list':
+    elif args.peer_command == "list":
         return cmd_peer_list(args)
-    elif args.peer_command == 'remove':
+    elif args.peer_command == "remove":
         return cmd_peer_remove(args)
     else:
         print(f"Unknown peer command: {args.peer_command}")
@@ -1239,6 +1328,7 @@ def cmd_peer(args: argparse.Namespace) -> int:
 # ============================================================================
 # EXPORT Command
 # ============================================================================
+
 
 def cmd_export(args: argparse.Namespace) -> int:
     """Export beliefs for sharing with a peer."""
@@ -1261,7 +1351,7 @@ def cmd_export(args: argparse.Namespace) -> int:
         json_output = package.to_json()
 
         if args.output:
-            with open(args.output, 'w') as f:
+            with open(args.output, "w") as f:
                 f.write(json_output)
             print(f"✅ Exported {len(package.beliefs)} beliefs to {args.output}")
         else:
@@ -1282,6 +1372,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Export failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -1290,14 +1381,16 @@ def cmd_export(args: argparse.Namespace) -> int:
 # IMPORT Command
 # ============================================================================
 
+
 def cmd_import(args: argparse.Namespace) -> int:
     """Import beliefs from a peer."""
     from ..federation.peer_sync import ExportPackage, get_trust_registry, import_beliefs
 
     try:
         # Read input file
-        if args.file == '-':
+        if args.file == "-":
             import sys
+
             json_str = sys.stdin.read()
         else:
             with open(args.file) as f:
@@ -1357,6 +1450,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Import failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -1365,11 +1459,12 @@ def cmd_import(args: argparse.Namespace) -> int:
 # Main Entry Point
 # ============================================================================
 
+
 def app() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
-        prog='valence',
-        description='Personal knowledge substrate for AI agents',
+        prog="valence",
+        description="Personal knowledge substrate for AI agents",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1390,149 +1485,218 @@ Federation (Week 2):
   valence peer list                       Show trusted peers
   valence export --to <did> -o file.json  Export beliefs for peer
   valence import file.json --from <did>   Import from peer
-        """
+        """,
     )
 
-    subparsers = parser.add_subparsers(dest='command', required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     # init
-    init_parser = subparsers.add_parser('init', help='Initialize database schema')
-    init_parser.add_argument('--force', '-f', action='store_true', help='Recreate schema even if exists')
+    init_parser = subparsers.add_parser("init", help="Initialize database schema")
+    init_parser.add_argument("--force", "-f", action="store_true", help="Recreate schema even if exists")
 
     # add
-    add_parser = subparsers.add_parser('add', help='Add a new belief')
-    add_parser.add_argument('content', help='Belief content')
-    add_parser.add_argument('--confidence', '-c', help='Confidence (JSON or float 0-1)')
-    add_parser.add_argument('--domain', '-d', action='append', help='Domain tag (repeatable)')
-    add_parser.add_argument('--derivation-type', '-t',
-                          choices=['observation', 'inference', 'aggregation', 'hearsay', 'assumption', 'correction', 'synthesis'],
-                          default='observation', help='How this belief was derived')
-    add_parser.add_argument('--derived-from', help='UUID of source belief this was derived from')
-    add_parser.add_argument('--method', '-m', help='Method description for derivation')
+    add_parser = subparsers.add_parser("add", help="Add a new belief")
+    add_parser.add_argument("content", help="Belief content")
+    add_parser.add_argument("--confidence", "-c", help="Confidence (JSON or float 0-1)")
+    add_parser.add_argument("--domain", "-d", action="append", help="Domain tag (repeatable)")
+    add_parser.add_argument(
+        "--derivation-type",
+        "-t",
+        choices=[
+            "observation",
+            "inference",
+            "aggregation",
+            "hearsay",
+            "assumption",
+            "correction",
+            "synthesis",
+        ],
+        default="observation",
+        help="How this belief was derived",
+    )
+    add_parser.add_argument("--derived-from", help="UUID of source belief this was derived from")
+    add_parser.add_argument("--method", "-m", help="Method description for derivation")
 
     # query
-    query_parser = subparsers.add_parser('query', help='Search beliefs with multi-signal ranking')
-    query_parser.add_argument('query', help='Search query')
-    query_parser.add_argument('--limit', '-n', type=int, default=10, help='Max results')
-    query_parser.add_argument('--threshold', '-t', type=float, default=0.3, help='Min semantic similarity')
-    query_parser.add_argument('--domain', '-d', help='Filter by domain')
-    query_parser.add_argument('--chain', action='store_true', help='Show full supersession chains')
-    query_parser.add_argument('--scope', '-s', choices=['local', 'federated'], default='local',
-                            help='Search scope: local (default) or federated (include peer beliefs)')
+    query_parser = subparsers.add_parser("query", help="Search beliefs with multi-signal ranking")
+    query_parser.add_argument("query", help="Search query")
+    query_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
+    query_parser.add_argument("--threshold", "-t", type=float, default=0.3, help="Min semantic similarity")
+    query_parser.add_argument("--domain", "-d", help="Filter by domain")
+    query_parser.add_argument("--chain", action="store_true", help="Show full supersession chains")
+    query_parser.add_argument(
+        "--scope",
+        "-s",
+        choices=["local", "federated"],
+        default="local",
+        help="Search scope: local (default) or federated (include peer beliefs)",
+    )
     # Multi-signal ranking options (Valence Query Protocol)
-    query_parser.add_argument('--recency-weight', '-r', type=float, default=0.15,
-                            help='Recency weight 0.0-1.0 (default 0.15). Higher = prefer newer beliefs')
-    query_parser.add_argument('--min-confidence', '-c', type=float, default=None,
-                            help='Filter beliefs below this confidence threshold (0.0-1.0)')
-    query_parser.add_argument('--explain', '-e', action='store_true',
-                            help='Show detailed score breakdown per result')
+    query_parser.add_argument(
+        "--recency-weight",
+        "-r",
+        type=float,
+        default=0.15,
+        help="Recency weight 0.0-1.0 (default 0.15). Higher = prefer newer beliefs",
+    )
+    query_parser.add_argument(
+        "--min-confidence",
+        "-c",
+        type=float,
+        default=None,
+        help="Filter beliefs below this confidence threshold (0.0-1.0)",
+    )
+    query_parser.add_argument(
+        "--explain",
+        "-e",
+        action="store_true",
+        help="Show detailed score breakdown per result",
+    )
 
     # list
-    list_parser = subparsers.add_parser('list', help='List recent beliefs')
-    list_parser.add_argument('--limit', '-n', type=int, default=10, help='Max results')
-    list_parser.add_argument('--domain', '-d', help='Filter by domain')
+    list_parser = subparsers.add_parser("list", help="List recent beliefs")
+    list_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
+    list_parser.add_argument("--domain", "-d", help="Filter by domain")
 
     # conflicts
-    conflicts_parser = subparsers.add_parser('conflicts', help='Detect contradicting beliefs')
-    conflicts_parser.add_argument('--threshold', '-t', type=float, default=0.85,
-                                 help='Similarity threshold for conflict detection')
-    conflicts_parser.add_argument('--auto-record', '-r', action='store_true',
-                                 help='Automatically record detected conflicts as tensions')
+    conflicts_parser = subparsers.add_parser("conflicts", help="Detect contradicting beliefs")
+    conflicts_parser.add_argument(
+        "--threshold",
+        "-t",
+        type=float,
+        default=0.85,
+        help="Similarity threshold for conflict detection",
+    )
+    conflicts_parser.add_argument(
+        "--auto-record",
+        "-r",
+        action="store_true",
+        help="Automatically record detected conflicts as tensions",
+    )
 
     # stats
-    subparsers.add_parser('stats', help='Show database statistics')
+    subparsers.add_parser("stats", help="Show database statistics")
 
     # ========================================================================
     # DISCOVER command (Network bootstrap)
     # ========================================================================
 
-    discover_parser = subparsers.add_parser('discover', help='Discover network routers via seeds')
-    discover_parser.add_argument('--seed', '-s', action='append', dest='seeds',
-                                help='Custom seed URL (repeatable)')
-    discover_parser.add_argument('--count', '-n', type=int, default=5,
-                                help='Number of routers to request (default: 5)')
-    discover_parser.add_argument('--region', '-r', help='Preferred region')
-    discover_parser.add_argument('--feature', '-f', action='append', dest='features',
-                                help='Required feature (repeatable)')
-    discover_parser.add_argument('--refresh', action='store_true',
-                                help='Force refresh (bypass cache)')
-    discover_parser.add_argument('--no-verify', action='store_true',
-                                help='Skip router signature verification')
-    discover_parser.add_argument('--json', '-j', action='store_true',
-                                help='Output as JSON')
-    discover_parser.add_argument('--stats', action='store_true',
-                                help='Show discovery statistics')
+    discover_parser = subparsers.add_parser("discover", help="Discover network routers via seeds")
+    discover_parser.add_argument(
+        "--seed",
+        "-s",
+        action="append",
+        dest="seeds",
+        help="Custom seed URL (repeatable)",
+    )
+    discover_parser.add_argument(
+        "--count",
+        "-n",
+        type=int,
+        default=5,
+        help="Number of routers to request (default: 5)",
+    )
+    discover_parser.add_argument("--region", "-r", help="Preferred region")
+    discover_parser.add_argument(
+        "--feature",
+        "-f",
+        action="append",
+        dest="features",
+        help="Required feature (repeatable)",
+    )
+    discover_parser.add_argument("--refresh", action="store_true", help="Force refresh (bypass cache)")
+    discover_parser.add_argument("--no-verify", action="store_true", help="Skip router signature verification")
+    discover_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    discover_parser.add_argument("--stats", action="store_true", help="Show discovery statistics")
 
     # ========================================================================
     # PEER commands (Week 2 Federation)
     # ========================================================================
 
-    peer_parser = subparsers.add_parser('peer', help='Manage trusted peers')
-    peer_subparsers = peer_parser.add_subparsers(dest='peer_command', required=True)
+    peer_parser = subparsers.add_parser("peer", help="Manage trusted peers")
+    peer_subparsers = peer_parser.add_subparsers(dest="peer_command", required=True)
 
     # peer add
-    peer_add_parser = peer_subparsers.add_parser('add', help='Add or update a trusted peer')
-    peer_add_parser.add_argument('did', help='Peer DID (e.g., did:vkb:web:alice.example.com)')
-    peer_add_parser.add_argument('--trust', type=float, required=True,
-                                help='Trust level 0.0-1.0 (e.g., 0.8 for 80%% trust)')
-    peer_add_parser.add_argument('--name', help='Human-readable name for this peer')
-    peer_add_parser.add_argument('--notes', help='Notes about this peer')
+    peer_add_parser = peer_subparsers.add_parser("add", help="Add or update a trusted peer")
+    peer_add_parser.add_argument("did", help="Peer DID (e.g., did:vkb:web:alice.example.com)")
+    peer_add_parser.add_argument(
+        "--trust",
+        type=float,
+        required=True,
+        help="Trust level 0.0-1.0 (e.g., 0.8 for 80%% trust)",
+    )
+    peer_add_parser.add_argument("--name", help="Human-readable name for this peer")
+    peer_add_parser.add_argument("--notes", help="Notes about this peer")
 
     # peer list
-    peer_subparsers.add_parser('list', help='List trusted peers')
+    peer_subparsers.add_parser("list", help="List trusted peers")
 
     # peer remove
-    peer_remove_parser = peer_subparsers.add_parser('remove', help='Remove a peer')
-    peer_remove_parser.add_argument('did', help='Peer DID to remove')
+    peer_remove_parser = peer_subparsers.add_parser("remove", help="Remove a peer")
+    peer_remove_parser.add_argument("did", help="Peer DID to remove")
 
     # ========================================================================
     # EXPORT command
     # ========================================================================
 
-    export_parser = subparsers.add_parser('export', help='Export beliefs for sharing')
-    export_parser.add_argument('--to', dest='to', help='Recipient DID (for filtering)')
-    export_parser.add_argument('--output', '-o', help='Output file (default: stdout)')
-    export_parser.add_argument('--domain', '-d', action='append', help='Filter by domain')
-    export_parser.add_argument('--min-confidence', type=float, default=0.0,
-                              help='Minimum confidence threshold')
-    export_parser.add_argument('--limit', '-n', type=int, default=1000, help='Max beliefs')
-    export_parser.add_argument('--include-federated', action='store_true',
-                              help='Include beliefs received from other peers')
+    export_parser = subparsers.add_parser("export", help="Export beliefs for sharing")
+    export_parser.add_argument("--to", dest="to", help="Recipient DID (for filtering)")
+    export_parser.add_argument("--output", "-o", help="Output file (default: stdout)")
+    export_parser.add_argument("--domain", "-d", action="append", help="Filter by domain")
+    export_parser.add_argument("--min-confidence", type=float, default=0.0, help="Minimum confidence threshold")
+    export_parser.add_argument("--limit", "-n", type=int, default=1000, help="Max beliefs")
+    export_parser.add_argument(
+        "--include-federated",
+        action="store_true",
+        help="Include beliefs received from other peers",
+    )
 
     # ========================================================================
     # IMPORT command
     # ========================================================================
 
-    import_parser = subparsers.add_parser('import', help='Import beliefs from a peer')
-    import_parser.add_argument('file', help='Import file (JSON) or - for stdin')
-    import_parser.add_argument('--from', dest='source', help='Source peer DID (overrides package)')
-    import_parser.add_argument('--trust', type=float,
-                              help='Override trust level (otherwise uses registry)')
+    import_parser = subparsers.add_parser("import", help="Import beliefs from a peer")
+    import_parser.add_argument("file", help="Import file (JSON) or - for stdin")
+    import_parser.add_argument("--from", dest="source", help="Source peer DID (overrides package)")
+    import_parser.add_argument("--trust", type=float, help="Override trust level (otherwise uses registry)")
 
     # ========================================================================
     # TRUST commands
     # ========================================================================
 
-    trust_parser = subparsers.add_parser('trust', help='Trust network management')
-    trust_subparsers = trust_parser.add_subparsers(dest='trust_command', required=True)
+    trust_parser = subparsers.add_parser("trust", help="Trust network management")
+    trust_subparsers = trust_parser.add_subparsers(dest="trust_command", required=True)
 
     # trust check
-    trust_check_parser = trust_subparsers.add_parser('check', help='Check for trust concentration issues')
-    trust_check_parser.add_argument('--json', '-j', action='store_true',
-                                   help='Output as JSON')
-    trust_check_parser.add_argument('--single-threshold', type=float, default=None,
-                                   help='Custom threshold for single node dominance (default: 30%%)')
-    trust_check_parser.add_argument('--top3-threshold', type=float, default=None,
-                                   help='Custom threshold for top 3 nodes dominance (default: 50%%)')
-    trust_check_parser.add_argument('--min-sources', type=int, default=None,
-                                   help='Minimum trusted sources (default: 3)')
+    trust_check_parser = trust_subparsers.add_parser("check", help="Check for trust concentration issues")
+    trust_check_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    trust_check_parser.add_argument(
+        "--single-threshold",
+        type=float,
+        default=None,
+        help="Custom threshold for single node dominance (default: 30%%)",
+    )
+    trust_check_parser.add_argument(
+        "--top3-threshold",
+        type=float,
+        default=None,
+        help="Custom threshold for top 3 nodes dominance (default: 50%%)",
+    )
+    trust_check_parser.add_argument(
+        "--min-sources",
+        type=int,
+        default=None,
+        help="Minimum trusted sources (default: 3)",
+    )
 
     # ========================================================================
     # MIGRATE-VISIBILITY command
     # ========================================================================
 
-    subparsers.add_parser('migrate-visibility',
-                         help='Migrate existing beliefs from visibility to SharePolicy')
+    subparsers.add_parser(
+        "migrate-visibility",
+        help="Migrate existing beliefs from visibility to SharePolicy",
+    )
 
     return parser
 
@@ -1540,6 +1704,7 @@ Federation (Week 2):
 # ============================================================================
 # DISCOVER Command (Network Bootstrap)
 # ============================================================================
+
 
 def cmd_discover(args: argparse.Namespace) -> int:
     """Discover network routers via seed nodes."""
@@ -1585,6 +1750,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
         # JSON output
         if args.json:
             import json
+
             output = {
                 "routers": [r.to_dict() for r in routers],
                 "count": len(routers),
@@ -1642,6 +1808,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
 # TRUST Commands
 # ============================================================================
 
+
 def cmd_trust_check(args: argparse.Namespace) -> int:
     """Check for trust concentration issues in the federation network."""
     from ..federation.trust import check_trust_concentration
@@ -1677,8 +1844,7 @@ def cmd_trust_check(args: argparse.Namespace) -> int:
         print(f"   Top node share:   {report.top_node_share:.1%}")
         print(f"   Top 3 share:      {report.top_3_share:.1%}")
         if report.gini_coefficient is not None:
-            gini_desc = "equal" if report.gini_coefficient < 0.3 else (
-                "moderate" if report.gini_coefficient < 0.5 else "concentrated")
+            gini_desc = "equal" if report.gini_coefficient < 0.3 else ("moderate" if report.gini_coefficient < 0.5 else "concentrated")
             print(f"   Gini coefficient: {report.gini_coefficient:.2f} ({gini_desc})")
 
         # Warnings
@@ -1700,13 +1866,14 @@ def cmd_trust_check(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Trust check failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
 
 def cmd_trust(args: argparse.Namespace) -> int:
     """Dispatch trust subcommands."""
-    if args.trust_command == 'check':
+    if args.trust_command == "check":
         return cmd_trust_check(args)
     else:
         print(f"Unknown trust command: {args.trust_command}")
@@ -1716,6 +1883,7 @@ def cmd_trust(args: argparse.Namespace) -> int:
 # ============================================================================
 # MIGRATE-VISIBILITY Command
 # ============================================================================
+
 
 def cmd_migrate_visibility(args: argparse.Namespace) -> int:
     """Migrate existing beliefs from old visibility to SharePolicy."""
@@ -1728,20 +1896,24 @@ def cmd_migrate_visibility(args: argparse.Namespace) -> int:
 
         # Check if share_policy column exists
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             SELECT EXISTS (
                 SELECT FROM information_schema.columns
                 WHERE table_name = 'beliefs' AND column_name = 'share_policy'
             )
-        """)
-        has_column = cur.fetchone()['exists']
+        """
+        )
+        has_column = cur.fetchone()["exists"]
 
         if not has_column:
             print("⚠️  share_policy column not found. Adding it...")
-            cur.execute("""
+            cur.execute(
+                """
                 ALTER TABLE beliefs
                 ADD COLUMN IF NOT EXISTS share_policy JSONB
-            """)
+            """
+            )
             conn.commit()
             print("✅ share_policy column added")
 
@@ -1755,7 +1927,7 @@ def cmd_migrate_visibility(args: argparse.Namespace) -> int:
         print(f"   Needed migration:  {result['needed_migration']}")
         print(f"   Migrated:          {result['migrated']}")
 
-        if result['needed_migration'] == 0:
+        if result["needed_migration"] == 0:
             print("\n✅ All beliefs already have share_policy set")
         else:
             print(f"\n✅ Successfully migrated {result['needed_migration']} beliefs")
@@ -1766,6 +1938,7 @@ def cmd_migrate_visibility(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"❌ Migration failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -1776,18 +1949,18 @@ def main() -> int:
     args = parser.parse_args()
 
     commands = {
-        'init': cmd_init,
-        'add': cmd_add,
-        'query': cmd_query,
-        'list': cmd_list,
-        'conflicts': cmd_conflicts,
-        'stats': cmd_stats,
-        'discover': cmd_discover,
-        'peer': cmd_peer,
-        'export': cmd_export,
-        'import': cmd_import,
-        'trust': cmd_trust,
-        'migrate-visibility': cmd_migrate_visibility,
+        "init": cmd_init,
+        "add": cmd_add,
+        "query": cmd_query,
+        "list": cmd_list,
+        "conflicts": cmd_conflicts,
+        "stats": cmd_stats,
+        "discover": cmd_discover,
+        "peer": cmd_peer,
+        "export": cmd_export,
+        "import": cmd_import,
+        "trust": cmd_trust,
+        "migrate-visibility": cmd_migrate_visibility,
     }
 
     handler = commands.get(args.command)
@@ -1798,5 +1971,5 @@ def main() -> int:
     return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

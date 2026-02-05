@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -49,10 +48,10 @@ class TestMigration009LocalEmbeddings:
         assert "idx_beliefs_embedding_384" in migration_sql
         assert "idx_vkb_exchanges_embedding_384" in migration_sql
         assert "idx_vkb_patterns_embedding_384" in migration_sql
-        
+
         # Check for vector_cosine_ops
         assert "vector_cosine_ops" in migration_sql
-        
+
         # HNSW parameters
         assert "m = 16" in migration_sql
         assert "ef_construction = 64" in migration_sql
@@ -142,12 +141,12 @@ class TestMigration009Integration:
         """Migration SQL should be valid PostgreSQL syntax (basic check)."""
         migration_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings.sql"
         sql = migration_path.read_text()
-        
+
         # Basic syntax checks
         assert sql.count("(") == sql.count(")"), "Mismatched parentheses"
         assert "--" in sql, "Should have comments"
         assert ";" in sql, "Should have statement terminators"
-        
+
         # Check for common SQL errors
         assert "ALTER TABLES" not in sql, "Invalid: ALTER TABLES (should be ALTER TABLE)"
         assert "CREAT INDEX" not in sql, "Typo: CREAT INDEX"
@@ -157,7 +156,7 @@ class TestMigration009Integration:
         """Rollback SQL should be valid PostgreSQL syntax (basic check)."""
         rollback_path = Path(__file__).parent.parent.parent / "migrations" / "009-local-embeddings-rollback.sql"
         sql = rollback_path.read_text()
-        
+
         # Basic syntax checks
         assert sql.count("(") == sql.count(")"), "Mismatched parentheses"
         assert "--" in sql, "Should have comments"

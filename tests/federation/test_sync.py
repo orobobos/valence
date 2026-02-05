@@ -11,30 +11,27 @@ Tests cover:
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timedelta
-from typing import Generator
-from unittest.mock import MagicMock, patch, AsyncMock
-from uuid import uuid4, UUID
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
-
-from valence.federation.sync import (
-    get_sync_state,
-    update_sync_state,
-    queue_belief_for_sync,
-    get_pending_sync_items,
-    mark_sync_item_sent,
-    mark_sync_item_failed,
-    SyncManager,
-    update_vector_clock,
-    compare_vector_clocks,
-    trigger_sync,
-    get_sync_status,
-)
 from valence.federation.models import SyncStatus
-
+from valence.federation.sync import (
+    SyncManager,
+    compare_vector_clocks,
+    get_pending_sync_items,
+    get_sync_state,
+    get_sync_status,
+    mark_sync_item_failed,
+    mark_sync_item_sent,
+    queue_belief_for_sync,
+    trigger_sync,
+    update_sync_state,
+    update_vector_clock,
+)
 
 # =============================================================================
 # FIXTURES
@@ -53,6 +50,7 @@ def mock_cursor():
 @pytest.fixture
 def mock_get_cursor(mock_cursor):
     """Mock the get_cursor context manager."""
+
     @contextmanager
     def _mock_get_cursor(dict_cursor: bool = True) -> Generator:
         yield mock_cursor
@@ -64,10 +62,8 @@ def mock_get_cursor(mock_cursor):
 @pytest.fixture
 def sample_sync_state_row():
     """Create a sample sync state row."""
-    def _factory(
-        node_id: UUID | None = None,
-        **kwargs
-    ):
+
+    def _factory(node_id: UUID | None = None, **kwargs):
         now = datetime.now()
         return {
             "id": uuid4(),
@@ -86,17 +82,15 @@ def sample_sync_state_row():
             "created_at": kwargs.get("created_at", now),
             "modified_at": kwargs.get("modified_at", now),
         }
+
     return _factory
 
 
 @pytest.fixture
 def sample_queue_item_row():
     """Create a sample sync queue item row."""
-    def _factory(
-        id: UUID | None = None,
-        belief_id: UUID | None = None,
-        **kwargs
-    ):
+
+    def _factory(id: UUID | None = None, belief_id: UUID | None = None, **kwargs):
         now = datetime.now()
         return {
             "id": id or uuid4(),
@@ -112,6 +106,7 @@ def sample_queue_item_row():
             "last_error": kwargs.get("last_error"),
             "created_at": kwargs.get("created_at", now),
         }
+
     return _factory
 
 
@@ -171,11 +166,7 @@ class TestUpdateSyncState:
         """Test updating sync state cursors."""
         node_id = uuid4()
 
-        result = update_sync_state(
-            node_id,
-            last_received_cursor="cursor123",
-            last_sent_cursor="cursor456"
-        )
+        result = update_sync_state(node_id, last_received_cursor="cursor123", last_sent_cursor="cursor456")
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -186,11 +177,7 @@ class TestUpdateSyncState:
         """Test updating sync state with beliefs delta."""
         node_id = uuid4()
 
-        result = update_sync_state(
-            node_id,
-            beliefs_sent_delta=5,
-            beliefs_received_delta=10
-        )
+        result = update_sync_state(node_id, beliefs_sent_delta=5, beliefs_received_delta=10)
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -252,11 +239,7 @@ class TestQueueBeliefForSync:
         belief_id = uuid4()
         target_node_id = uuid4()
 
-        result = queue_belief_for_sync(
-            belief_id,
-            target_node_id=target_node_id,
-            priority=1
-        )
+        result = queue_belief_for_sync(belief_id, target_node_id=target_node_id, priority=1)
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -411,13 +394,14 @@ class TestSyncManager:
     @pytest.mark.asyncio
     async def test_sync_manager_process_outbound_queue(self):
         """Test processing outbound queue."""
-        with patch("valence.federation.sync.get_settings") as mock_settings, \
-             patch("valence.federation.sync.get_cursor") as mock_cursor_ctx, \
-             patch("valence.federation.sync.get_pending_sync_items") as mock_pending, \
-             patch("valence.federation.sync.get_node_trust") as mock_trust:
-            
+        with (
+            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_cursor") as mock_cursor_ctx,
+            patch("valence.federation.sync.get_pending_sync_items") as mock_pending,
+            patch("valence.federation.sync.get_node_trust") as mock_trust,
+        ):
             mock_settings.return_value = MagicMock(federation_sync_interval_seconds=60)
-            
+
             # Mock cursor
             cursor = MagicMock()
             cursor.fetchall.return_value = []  # No active nodes
@@ -433,9 +417,10 @@ class TestSyncManager:
     @pytest.mark.asyncio
     async def test_sync_manager_belief_to_federated(self):
         """Test converting belief to federated format."""
-        with patch("valence.federation.sync.get_settings") as mock_settings, \
-             patch("valence.federation.identity.sign_belief_content") as mock_sign:
-            
+        with (
+            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.identity.sign_belief_content") as mock_sign,
+        ):
             mock_settings.return_value = MagicMock(
                 federation_node_did="did:vkb:web:test.example.com",
                 federation_private_key="0123456789abcdef",
@@ -574,9 +559,10 @@ class TestTriggerSync:
     @pytest.mark.asyncio
     async def test_trigger_sync_all_nodes(self):
         """Test triggering sync for all nodes."""
-        with patch("valence.federation.sync.get_settings") as mock_settings, \
-             patch("valence.federation.sync.SyncManager") as MockManager:
-            
+        with (
+            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.SyncManager") as MockManager,
+        ):
             mock_settings.return_value = MagicMock()
             mock_manager = MagicMock()
             mock_manager._sync_with_peers = AsyncMock()
@@ -591,24 +577,22 @@ class TestTriggerSync:
     async def test_trigger_sync_specific_node(self):
         """Test triggering sync for specific node."""
         node_id = uuid4()
-        
-        with patch("valence.federation.sync.get_settings") as mock_settings, \
-             patch("valence.federation.sync.get_node_by_id") as mock_get_node, \
-             patch("valence.federation.sync.get_node_trust") as mock_get_trust, \
-             patch("valence.federation.sync.get_sync_state") as mock_get_state, \
-             patch("valence.federation.sync.SyncManager") as MockManager:
-            
+
+        with (
+            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_node_by_id") as mock_get_node,
+            patch("valence.federation.sync.get_node_trust") as mock_get_trust,
+            patch("valence.federation.sync.get_sync_state") as mock_get_state,
+            patch("valence.federation.sync.SyncManager") as MockManager,
+        ):
             mock_settings.return_value = MagicMock()
             mock_node = MagicMock()
             mock_node.did = "did:vkb:web:test.example.com"
             mock_node.federation_endpoint = "https://test.example.com/federation"
             mock_get_node.return_value = mock_node
             mock_get_trust.return_value = MagicMock(overall=0.5)
-            mock_get_state.return_value = MagicMock(
-                last_received_cursor=None,
-                last_sync_at=None
-            )
-            
+            mock_get_state.return_value = MagicMock(last_received_cursor=None, last_sync_at=None)
+
             mock_manager = MagicMock()
             mock_manager._pull_from_node = AsyncMock()
             MockManager.return_value = mock_manager
@@ -621,9 +605,10 @@ class TestTriggerSync:
     @pytest.mark.asyncio
     async def test_trigger_sync_node_not_found(self):
         """Test triggering sync when node not found."""
-        with patch("valence.federation.sync.get_settings") as mock_settings, \
-             patch("valence.federation.sync.get_node_by_id") as mock_get_node:
-            
+        with (
+            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_node_by_id") as mock_get_node,
+        ):
             mock_settings.return_value = MagicMock()
             mock_get_node.return_value = None
 

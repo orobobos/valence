@@ -67,12 +67,12 @@ PREFERENCE_MULTIPLIERS = {
 
 # Trust concentration thresholds
 CONCENTRATION_THRESHOLDS = {
-    "single_node_warning": 0.30,      # Warn if single node holds >30% of trust
-    "single_node_critical": 0.50,     # Critical if single node holds >50%
-    "top_3_warning": 0.50,            # Warn if top 3 nodes hold >50% of trust
-    "top_3_critical": 0.70,           # Critical if top 3 nodes hold >70%
-    "min_trusted_sources": 3,         # Minimum independent sources for healthy network
-    "min_trust_to_count": 0.1,        # Minimum trust level to count as a "source"
+    "single_node_warning": 0.30,  # Warn if single node holds >30% of trust
+    "single_node_critical": 0.50,  # Critical if single node holds >50%
+    "top_3_warning": 0.50,  # Warn if top 3 nodes hold >50% of trust
+    "top_3_critical": 0.70,  # Critical if top 3 nodes hold >70%
+    "min_trusted_sources": 3,  # Minimum independent sources for healthy network
+    "min_trust_to_count": 0.1,  # Minimum trust level to count as a "source"
 }
 
 
@@ -194,11 +194,14 @@ class TrustPolicy:
             with get_cursor() as cur:
                 # Find nodes that haven't interacted recently
                 threshold = datetime.now() - timedelta(days=7)
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT nt.* FROM node_trust nt
                     WHERE nt.last_interaction_at < %s
                     OR nt.last_interaction_at IS NULL
-                """, (threshold,))
+                """,
+                    (threshold,),
+                )
                 rows = cur.fetchall()
 
                 for row in rows:
@@ -242,20 +245,20 @@ class TrustPolicy:
         days_in_phase = (datetime.now() - node.phase_started_at).days
 
         # Determine total interactions
-        total_interactions = (
-            node_trust.beliefs_received +
-            node_trust.sync_requests_served +
-            node_trust.aggregation_participations
-        )
+        total_interactions = node_trust.beliefs_received + node_trust.sync_requests_served + node_trust.aggregation_participations
 
         # Check for demotion first (trust fell too low)
         if current_phase != TrustPhase.OBSERVER:
-            prev_phases = [TrustPhase.OBSERVER, TrustPhase.CONTRIBUTOR, TrustPhase.PARTICIPANT]
+            prev_phases = [
+                TrustPhase.OBSERVER,
+                TrustPhase.CONTRIBUTOR,
+                TrustPhase.PARTICIPANT,
+            ]
             current_idx = prev_phases.index(current_phase) if current_phase in prev_phases else len(prev_phases)
 
             for i in range(current_idx - 1, -1, -1):
                 phase = prev_phases[i]
-                req = PHASE_TRANSITION[prev_phases[i + 1] if i + 1 < len(prev_phases) else TrustPhase.ANCHOR]
+                req = PHASE_TRANSITION[(prev_phases[i + 1] if i + 1 < len(prev_phases) else TrustPhase.ANCHOR)]
                 if node_trust.overall < req["min_trust"] * 0.8:  # 20% below threshold
                     return phase
 
@@ -302,7 +305,8 @@ class TrustPolicy:
         """
         try:
             with get_cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     UPDATE federation_nodes
                     SET trust_phase = %s,
                         phase_started_at = NOW(),
@@ -312,7 +316,9 @@ class TrustPolicy:
                             %s::jsonb
                         )
                     WHERE id = %s
-                """, (new_phase.value, f'"{reason}"' if reason else 'null', node_id))
+                """,
+                    (new_phase.value, f'"{reason}"' if reason else "null", node_id),
+                )
 
                 logger.info(f"Node {node_id} transitioned to phase {new_phase.value}: {reason}")
                 return True
@@ -381,7 +387,8 @@ class TrustPolicy:
         try:
             with get_cursor() as cur:
                 # Get all nodes with their trust data
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT
                         fn.id,
                         fn.name,
@@ -390,28 +397,33 @@ class TrustPolicy:
                     FROM federation_nodes fn
                     LEFT JOIN node_trust nt ON fn.id = nt.node_id
                     ORDER BY trust_score DESC
-                """)
+                """
+                )
                 rows = cur.fetchall()
 
                 for row in rows:
                     total_nodes += 1
                     if row.get("status") != "unreachable":
                         active_nodes += 1
-                    node_trusts.append((
-                        row["id"],
-                        row.get("name"),
-                        float(row.get("trust_score", 0.1)),
-                    ))
+                    node_trusts.append(
+                        (
+                            row["id"],
+                            row.get("name"),
+                            float(row.get("trust_score", 0.1)),
+                        )
+                    )
 
         except Exception as e:
             logger.warning(f"Error fetching trust data: {e}")
             # Return empty report on error
             return TrustConcentrationReport(
-                warnings=[TrustConcentrationWarning(
-                    warning_type="error",
-                    severity=WarningSeverity.WARNING,
-                    message=f"Could not analyze trust concentration: {e}",
-                )],
+                warnings=[
+                    TrustConcentrationWarning(
+                        warning_type="error",
+                        severity=WarningSeverity.WARNING,
+                        message=f"Could not analyze trust concentration: {e}",
+                    )
+                ],
                 analyzed_at=datetime.now(),
             )
 
@@ -448,35 +460,39 @@ class TrustPolicy:
         single_critical = thresholds.get("single_node_critical", 0.50)
 
         if top_node_share > single_critical:
-            warnings.append(TrustConcentrationWarning(
-                warning_type="single_node_dominant",
-                severity=WarningSeverity.CRITICAL,
-                message=f"Single node holds {top_node_share:.0%} of network trust (>{single_critical:.0%} threshold)",
-                node_id=top_node_id,
-                node_name=top_node_name,
-                trust_share=top_node_share,
-                recommendation="Diversify trust by adding more trusted sources or reducing trust in dominant node",
-                details={
-                    "node_trust": top_node_trust,
-                    "total_trust": total_trust,
-                    "threshold": single_critical,
-                },
-            ))
+            warnings.append(
+                TrustConcentrationWarning(
+                    warning_type="single_node_dominant",
+                    severity=WarningSeverity.CRITICAL,
+                    message=f"Single node holds {top_node_share:.0%} of network trust (>{single_critical:.0%} threshold)",
+                    node_id=top_node_id,
+                    node_name=top_node_name,
+                    trust_share=top_node_share,
+                    recommendation="Diversify trust by adding more trusted sources or reducing trust in dominant node",
+                    details={
+                        "node_trust": top_node_trust,
+                        "total_trust": total_trust,
+                        "threshold": single_critical,
+                    },
+                )
+            )
         elif top_node_share > single_warning:
-            warnings.append(TrustConcentrationWarning(
-                warning_type="single_node_dominant",
-                severity=WarningSeverity.WARNING,
-                message=f"Single node holds {top_node_share:.0%} of network trust (>{single_warning:.0%} threshold)",
-                node_id=top_node_id,
-                node_name=top_node_name,
-                trust_share=top_node_share,
-                recommendation="Consider diversifying trust sources",
-                details={
-                    "node_trust": top_node_trust,
-                    "total_trust": total_trust,
-                    "threshold": single_warning,
-                },
-            ))
+            warnings.append(
+                TrustConcentrationWarning(
+                    warning_type="single_node_dominant",
+                    severity=WarningSeverity.WARNING,
+                    message=f"Single node holds {top_node_share:.0%} of network trust (>{single_warning:.0%} threshold)",
+                    node_id=top_node_id,
+                    node_name=top_node_name,
+                    trust_share=top_node_share,
+                    recommendation="Consider diversifying trust sources",
+                    details={
+                        "node_trust": top_node_trust,
+                        "total_trust": total_trust,
+                        "threshold": single_warning,
+                    },
+                )
+            )
 
         # Check for top 3 nodes dominance
         top_3_warning = thresholds.get("top_3_warning", 0.50)
@@ -484,56 +500,56 @@ class TrustPolicy:
 
         if len(node_trusts) >= 3:
             if top_3_share > top_3_critical:
-                warnings.append(TrustConcentrationWarning(
-                    warning_type="top_nodes_dominant",
-                    severity=WarningSeverity.CRITICAL,
-                    message=f"Top 3 nodes hold {top_3_share:.0%} of network trust (>{top_3_critical:.0%} threshold)",
-                    trust_share=top_3_share,
-                    recommendation="Network trust is highly concentrated - add more diverse trusted sources",
-                    details={
-                        "top_3_nodes": [
-                            {"node_id": str(nid), "name": name, "trust": t}
-                            for nid, name, t in node_trusts[:3]
-                        ],
-                        "total_trust": total_trust,
-                        "threshold": top_3_critical,
-                    },
-                ))
+                warnings.append(
+                    TrustConcentrationWarning(
+                        warning_type="top_nodes_dominant",
+                        severity=WarningSeverity.CRITICAL,
+                        message=f"Top 3 nodes hold {top_3_share:.0%} of network trust (>{top_3_critical:.0%} threshold)",
+                        trust_share=top_3_share,
+                        recommendation="Network trust is highly concentrated - add more diverse trusted sources",
+                        details={
+                            "top_3_nodes": [{"node_id": str(nid), "name": name, "trust": t} for nid, name, t in node_trusts[:3]],
+                            "total_trust": total_trust,
+                            "threshold": top_3_critical,
+                        },
+                    )
+                )
             elif top_3_share > top_3_warning:
-                warnings.append(TrustConcentrationWarning(
-                    warning_type="top_nodes_dominant",
-                    severity=WarningSeverity.WARNING,
-                    message=f"Top 3 nodes hold {top_3_share:.0%} of network trust (>{top_3_warning:.0%} threshold)",
-                    trust_share=top_3_share,
-                    recommendation="Consider adding more trusted sources for better distribution",
-                    details={
-                        "top_3_nodes": [
-                            {"node_id": str(nid), "name": name, "trust": t}
-                            for nid, name, t in node_trusts[:3]
-                        ],
-                        "total_trust": total_trust,
-                        "threshold": top_3_warning,
-                    },
-                ))
+                warnings.append(
+                    TrustConcentrationWarning(
+                        warning_type="top_nodes_dominant",
+                        severity=WarningSeverity.WARNING,
+                        message=f"Top 3 nodes hold {top_3_share:.0%} of network trust (>{top_3_warning:.0%} threshold)",
+                        trust_share=top_3_share,
+                        recommendation="Consider adding more trusted sources for better distribution",
+                        details={
+                            "top_3_nodes": [{"node_id": str(nid), "name": name, "trust": t} for nid, name, t in node_trusts[:3]],
+                            "total_trust": total_trust,
+                            "threshold": top_3_warning,
+                        },
+                    )
+                )
 
         # Check for too few trusted sources
         min_sources = int(thresholds.get("min_trusted_sources", 3))
 
         if trusted_sources < min_sources:
             severity = WarningSeverity.CRITICAL if trusted_sources < 2 else WarningSeverity.WARNING
-            warnings.append(TrustConcentrationWarning(
-                warning_type="few_sources",
-                severity=severity,
-                message=f"Only {trusted_sources} trusted source(s) (minimum {min_sources} recommended)",
-                trust_share=trusted_sources / max(len(node_trusts), 1),
-                recommendation=f"Add at least {min_sources - trusted_sources} more trusted sources for network resilience",
-                details={
-                    "trusted_sources": trusted_sources,
-                    "total_nodes": len(node_trusts),
-                    "min_trust_threshold": min_trust_threshold,
-                    "min_recommended": min_sources,
-                },
-            ))
+            warnings.append(
+                TrustConcentrationWarning(
+                    warning_type="few_sources",
+                    severity=severity,
+                    message=f"Only {trusted_sources} trusted source(s) (minimum {min_sources} recommended)",
+                    trust_share=trusted_sources / max(len(node_trusts), 1),
+                    recommendation=f"Add at least {min_sources - trusted_sources} more trusted sources for network resilience",
+                    details={
+                        "trusted_sources": trusted_sources,
+                        "total_nodes": len(node_trusts),
+                        "min_trust_threshold": min_trust_threshold,
+                        "min_recommended": min_sources,
+                    },
+                )
+            )
 
         return TrustConcentrationReport(
             warnings=warnings,

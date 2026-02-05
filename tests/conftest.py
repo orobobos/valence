@@ -231,7 +231,10 @@ def entity_row_factory():
     """Factory for creating entity database rows."""
 
     def factory(
-        id: UUID | None = None, name: str = "Test Entity", type: str = "concept", **kwargs
+        id: UUID | None = None,
+        name: str = "Test Entity",
+        type: str = "concept",
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -253,7 +256,10 @@ def session_row_factory():
     """Factory for creating session database rows."""
 
     def factory(
-        id: UUID | None = None, platform: str = "claude-code", status: str = "active", **kwargs
+        id: UUID | None = None,
+        platform: str = "claude-code",
+        status: str = "active",
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {

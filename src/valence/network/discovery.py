@@ -149,16 +149,19 @@ class SeedHealth:
 
 class DiscoveryError(Exception):
     """Base exception for discovery errors."""
+
     pass
 
 
 class NoSeedsAvailableError(DiscoveryError):
     """Raised when no seeds could be reached."""
+
     pass
 
 
 class SignatureVerificationError(DiscoveryError):
     """Raised when router signature verification fails."""
+
     pass
 
 
@@ -266,10 +269,12 @@ class DiscoveryClient:
     """
 
     # Hardcoded bootstrap seeds (can be overridden)
-    default_seeds: list[str] = field(default_factory=lambda: [
-        "https://seed1.valence.network:8470",
-        "https://seed2.valence.network:8470",
-    ])
+    default_seeds: list[str] = field(
+        default_factory=lambda: [
+            "https://seed1.valence.network:8470",
+            "https://seed2.valence.network:8470",
+        ]
+    )
 
     # Custom seeds added by user/config
     custom_seeds: list[str] = field(default_factory=list)
@@ -285,8 +290,8 @@ class DiscoveryClient:
     seed_cache_timestamp: float = 0
 
     # TTL settings (in seconds)
-    router_cache_ttl: int = 6 * 3600   # 6 hours
-    seed_cache_ttl: int = 24 * 3600    # 24 hours
+    router_cache_ttl: int = 6 * 3600  # 6 hours
+    seed_cache_ttl: int = 24 * 3600  # 24 hours
 
     # Request timeout (seconds)
     request_timeout: float = 10.0
@@ -310,14 +315,16 @@ class DiscoveryClient:
     _revocation_list_path: str | None = field(default=None)
 
     # Statistics
-    _stats: dict[str, int] = field(default_factory=lambda: {
-        "queries": 0,
-        "cache_hits": 0,
-        "seed_failures": 0,
-        "signature_failures": 0,
-        "seed_successes": 0,
-        "revoked_seeds_skipped": 0,  # Issue #121
-    })
+    _stats: dict[str, int] = field(
+        default_factory=lambda: {
+            "queries": 0,
+            "cache_hits": 0,
+            "seed_failures": 0,
+            "signature_failures": 0,
+            "seed_successes": 0,
+            "revoked_seeds_skipped": 0,  # Issue #121
+        }
+    )
 
     # -------------------------------------------------------------------------
     # PUBLIC API
@@ -380,9 +387,7 @@ class DiscoveryClient:
                     self._update_router_cache(routers)
                     # Track last successful seed for future queries
                     self.last_successful_seed = seed_url
-                    logger.info(
-                        f"Discovered {len(routers)} routers from {seed_url}"
-                    )
+                    logger.info(f"Discovered {len(routers)} routers from {seed_url}")
                     return routers
             except Exception as e:
                 self._stats["seed_failures"] += 1
@@ -391,9 +396,7 @@ class DiscoveryClient:
                 continue  # Try next seed
 
         # All seeds failed
-        raise NoSeedsAvailableError(
-            f"Could not reach any seed. Last error: {last_error}"
-        )
+        raise NoSeedsAvailableError(f"Could not reach any seed. Last error: {last_error}")
 
     def add_seed(self, seed_url: str) -> None:
         """
@@ -465,20 +468,14 @@ class DiscoveryClient:
                     async with session.post(url, json=report_data) as resp:
                         if resp.status == 200:
                             submitted = True
-                            logger.info(
-                                f"Submitted misbehavior report for router "
-                                f"{report.router_id[:16]}... to {seed_url}"
-                            )
+                            logger.info(f"Submitted misbehavior report for router " f"{report.router_id[:16]}... to {seed_url}")
                             # Track seed success
                             health = self._get_seed_health(seed_url)
                             health.record_success(0)  # No latency tracking for reports
                             self._stats["seed_successes"] += 1
                             break  # One successful submission is enough
                         else:
-                            logger.warning(
-                                f"Seed {seed_url} rejected misbehavior report: "
-                                f"HTTP {resp.status}"
-                            )
+                            logger.warning(f"Seed {seed_url} rejected misbehavior report: " f"HTTP {resp.status}")
             except Exception as e:
                 logger.debug(f"Failed to submit report to {seed_url}: {e}")
                 continue
@@ -636,9 +633,7 @@ class DiscoveryClient:
                 ) as resp:
                     if resp.status != 200:
                         health.record_failure()
-                        raise DiscoveryError(
-                            f"Seed returned HTTP {resp.status}: {await resp.text()}"
-                        )
+                        raise DiscoveryError(f"Seed returned HTTP {resp.status}: {await resp.text()}")
 
                     data = await resp.json()
 
@@ -662,9 +657,7 @@ class DiscoveryClient:
                 if self.verify_signatures:
                     if not self._verify_router_signature(router_data):
                         self._stats["signature_failures"] += 1
-                        logger.warning(
-                            f"Invalid signature for router {router_data.get('router_id', 'unknown')[:20]}..."
-                        )
+                        logger.warning(f"Invalid signature for router {router_data.get('router_id', 'unknown')[:20]}...")
                         continue
 
                 router = RouterInfo.from_dict(router_data)
@@ -893,22 +886,59 @@ class DiscoveryClient:
         # Full mapping is in seed.py; this covers the most common cases
         continent_map = {
             # North America
-            "US": "NA", "CA": "NA", "MX": "NA",
+            "US": "NA",
+            "CA": "NA",
+            "MX": "NA",
             # South America
-            "BR": "SA", "AR": "SA", "CL": "SA", "CO": "SA",
+            "BR": "SA",
+            "AR": "SA",
+            "CL": "SA",
+            "CO": "SA",
             # Europe
-            "GB": "EU", "DE": "EU", "FR": "EU", "IT": "EU", "ES": "EU",
-            "NL": "EU", "BE": "EU", "CH": "EU", "AT": "EU", "SE": "EU",
-            "NO": "EU", "DK": "EU", "FI": "EU", "IE": "EU", "PL": "EU",
-            "PT": "EU", "CZ": "EU", "RO": "EU", "UA": "EU", "RU": "EU",
+            "GB": "EU",
+            "DE": "EU",
+            "FR": "EU",
+            "IT": "EU",
+            "ES": "EU",
+            "NL": "EU",
+            "BE": "EU",
+            "CH": "EU",
+            "AT": "EU",
+            "SE": "EU",
+            "NO": "EU",
+            "DK": "EU",
+            "FI": "EU",
+            "IE": "EU",
+            "PL": "EU",
+            "PT": "EU",
+            "CZ": "EU",
+            "RO": "EU",
+            "UA": "EU",
+            "RU": "EU",
             # Asia
-            "CN": "AS", "JP": "AS", "KR": "AS", "IN": "AS", "ID": "AS",
-            "TH": "AS", "VN": "AS", "MY": "AS", "SG": "AS", "PH": "AS",
-            "TW": "AS", "HK": "AS", "IL": "AS", "AE": "AS", "SA": "AS",
+            "CN": "AS",
+            "JP": "AS",
+            "KR": "AS",
+            "IN": "AS",
+            "ID": "AS",
+            "TH": "AS",
+            "VN": "AS",
+            "MY": "AS",
+            "SG": "AS",
+            "PH": "AS",
+            "TW": "AS",
+            "HK": "AS",
+            "IL": "AS",
+            "AE": "AS",
+            "SA": "AS",
             # Africa
-            "ZA": "AF", "EG": "AF", "NG": "AF", "KE": "AF",
+            "ZA": "AF",
+            "EG": "AF",
+            "NG": "AF",
+            "KE": "AF",
             # Oceania
-            "AU": "OC", "NZ": "OC",
+            "AU": "OC",
+            "NZ": "OC",
         }
         return continent_map.get(country_code.upper())
 
@@ -971,9 +1001,7 @@ class DiscoveryClient:
             else:
                 health = self._get_seed_health(self.last_successful_seed)
                 # Only prefer if success rate > 50% and had success in last 24h
-                if health.success_rate > 0.5 and (
-                    time.time() - health.last_success < 86400 if health.last_success > 0 else True
-                ):
+                if health.success_rate > 0.5 and (time.time() - health.last_success < 86400 if health.last_success > 0 else True):
                     seeds.append(self.last_successful_seed)
                     seen.add(self.last_successful_seed)
 
@@ -1016,16 +1044,18 @@ class DiscoveryClient:
 
         for seed_url in seeds:
             health = self._get_seed_health(seed_url)
-            report.append({
-                "url": seed_url,
-                "success_count": health.success_count,
-                "failure_count": health.failure_count,
-                "success_rate": round(health.success_rate, 3),
-                "avg_latency_ms": round(health.avg_latency_ms, 1),
-                "health_score": round(health.health_score, 3),
-                "last_success": health.last_success,
-                "last_failure": health.last_failure,
-            })
+            report.append(
+                {
+                    "url": seed_url,
+                    "success_count": health.success_count,
+                    "failure_count": health.failure_count,
+                    "success_rate": round(health.success_rate, 3),
+                    "avg_latency_ms": round(health.avg_latency_ms, 1),
+                    "health_score": round(health.health_score, 3),
+                    "last_success": health.last_success,
+                    "last_failure": health.last_failure,
+                }
+            )
 
         # Sort by health score (health_score is always a float)
         report.sort(key=lambda x: float(x.get("health_score", 0)), reverse=True)
@@ -1143,10 +1173,7 @@ class DiscoveryClient:
                 loaded_count += 1
 
         self._revocation_list_path = file_path
-        logger.info(
-            f"Loaded {loaded_count} seed revocations from {file_path} "
-            f"(version={revocation_list.version})"
-        )
+        logger.info(f"Loaded {loaded_count} seed revocations from {file_path} " f"(version={revocation_list.version})")
 
         return loaded_count, errors
 
@@ -1197,9 +1224,7 @@ class DiscoveryClient:
                     self.add_revoked_seed(seed_id)
                     loaded_count += 1
 
-        logger.info(
-            f"Fetched {loaded_count} seed revocations from {seed_url}"
-        )
+        logger.info(f"Fetched {loaded_count} seed revocations from {seed_url}")
 
         return loaded_count, errors
 

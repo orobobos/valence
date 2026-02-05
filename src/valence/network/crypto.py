@@ -20,8 +20,14 @@ import os
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -29,6 +35,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 @dataclass
 class KeyPair:
     """Generic keypair container for raw bytes."""
+
     private_key: bytes
     public_key: bytes
 
@@ -48,7 +55,7 @@ def generate_encryption_keypair() -> tuple[X25519PrivateKey, X25519PublicKey]:
 def encrypt_message(
     content: bytes,
     recipient_public_key: X25519PublicKey,
-    sender_private_key: Ed25519PrivateKey
+    sender_private_key: Ed25519PrivateKey,
 ) -> dict:
     """
     Encrypt a message for a recipient.
@@ -76,12 +83,7 @@ def encrypt_message(
     shared_secret = ephemeral_private.exchange(recipient_public_key)
 
     # Derive DEK using HKDF
-    dek = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"valence-relay-v1"
-    ).derive(shared_secret)
+    dek = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1").derive(shared_secret)
 
     # Encrypt content with AES-256-GCM
     nonce = os.urandom(12)
@@ -102,14 +104,14 @@ def encrypt_message(
     return {
         "payload": payload,
         "signature": signature.hex(),
-        "sender_public": sender_private_key.public_key().public_bytes_raw().hex()
+        "sender_public": sender_private_key.public_key().public_bytes_raw().hex(),
     }
 
 
 def decrypt_message(
     encrypted: dict,
     recipient_private_key: X25519PrivateKey,
-    sender_public_key: Ed25519PublicKey
+    sender_public_key: Ed25519PublicKey,
 ) -> bytes:
     """
     Decrypt a message.
@@ -139,20 +141,13 @@ def decrypt_message(
     sender_public_key.verify(signature, payload_bytes)  # Raises InvalidSignature on failure
 
     # Extract ephemeral public key
-    ephemeral_public = X25519PublicKey.from_public_bytes(
-        bytes.fromhex(encrypted["payload"]["ephemeral_public"])
-    )
+    ephemeral_public = X25519PublicKey.from_public_bytes(bytes.fromhex(encrypted["payload"]["ephemeral_public"]))
 
     # Derive shared secret via ECDH
     shared_secret = recipient_private_key.exchange(ephemeral_public)
 
     # Derive DEK using HKDF
-    dek = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"valence-relay-v1"
-    ).derive(shared_secret)
+    dek = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1").derive(shared_secret)
 
     # Decrypt
     nonce = bytes.fromhex(encrypted["payload"]["nonce"])
@@ -177,6 +172,7 @@ class OnionLayer:
     - The encrypted payload for this hop
     - Routing info (next hop, or final delivery)
     """
+
     encrypted_payload: bytes
     next_hop: str | None  # Router ID or None for exit
 
@@ -188,6 +184,7 @@ class CircuitKeyMaterial:
 
     Generated during circuit creation via DH key exchange.
     """
+
     ephemeral_private: X25519PrivateKey
     ephemeral_public: X25519PublicKey
     shared_key: bytes  # 32-byte AES key
@@ -217,7 +214,7 @@ def derive_circuit_key(
         algorithm=hashes.SHA256(),
         length=32,
         salt=None,
-        info=f"valence-circuit-v1:{circuit_id}".encode()
+        info=f"valence-circuit-v1:{circuit_id}".encode(),
     ).derive(shared_secret)
 
     return key
@@ -261,12 +258,12 @@ def encrypt_onion_layer(
 
     # Build routing header
     if next_hop:
-        has_next = b'\x01'
+        has_next = b"\x01"
         # Pad next_hop to fixed 64 bytes for uniform layer size
-        next_hop_bytes = next_hop.encode()[:64].ljust(64, b'\x00')
+        next_hop_bytes = next_hop.encode()[:64].ljust(64, b"\x00")
     else:
-        has_next = b'\x00'
-        next_hop_bytes = b'\x00' * 64
+        has_next = b"\x00"
+        next_hop_bytes = b"\x00" * 64
 
     # Prepend routing header to content before encryption
     plaintext = has_next + next_hop_bytes + content
@@ -309,7 +306,7 @@ def decrypt_onion_layer(
 
     if has_next:
         # Strip null padding from next_hop
-        next_hop = next_hop_bytes.rstrip(b'\x00').decode()
+        next_hop = next_hop_bytes.rstrip(b"\x00").decode()
     else:
         next_hop = None
 

@@ -141,11 +141,7 @@ class TrustEdge:
         """Equality based on DIDs and domain."""
         if not isinstance(other, TrustEdge):
             return False
-        return (
-            self.source_did == other.source_did
-            and self.target_did == other.target_did
-            and self.domain == other.domain
-        )
+        return self.source_did == other.source_did and self.target_did == other.target_did and self.domain == other.domain
 
     @property
     def overall_trust(self) -> float:
@@ -301,15 +297,17 @@ class TrustEdge:
 
         if new_values:
             for dim_name, dim_value in new_values.items():
-                if dim_name in ("competence", "integrity", "confidentiality", "judgment"):
+                if dim_name in (
+                    "competence",
+                    "integrity",
+                    "confidentiality",
+                    "judgment",
+                ):
                     if not 0.0 <= dim_value <= 1.0:
                         raise ValueError(f"{dim_name} must be between 0.0 and 1.0, got {dim_value}")
                     setattr(self, dim_name, dim_value)
 
-        logger.debug(
-            f"Refreshed trust edge {self.source_did} -> {self.target_did}: "
-            f"last_refreshed={self.last_refreshed}"
-        )
+        logger.debug(f"Refreshed trust edge {self.source_did} -> {self.target_did}: " f"last_refreshed={self.last_refreshed}")
 
         return self
 
@@ -455,7 +453,7 @@ class TrustEdge:
             "delegation_depth": self.delegation_depth,
             "decay_rate": self.decay_rate,
             "decay_model": self.decay_model.value,
-            "last_refreshed": self.last_refreshed.isoformat() if self.last_refreshed else None,
+            "last_refreshed": (self.last_refreshed.isoformat() if self.last_refreshed else None),
             "id": str(self.id) if self.id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -590,18 +588,14 @@ def compute_delegated_trust(
     elif delegated_edge.delegation_depth == 0:
         result_depth = max(0, direct_edge.delegation_depth - 1)
     else:
-        result_depth = max(
-            0, min(direct_edge.delegation_depth, delegated_edge.delegation_depth) - 1
-        )
+        result_depth = max(0, min(direct_edge.delegation_depth, delegated_edge.delegation_depth) - 1)
 
     return TrustEdge(
         source_did=direct_edge.source_did,
         target_did=delegated_edge.target_did,
         competence=delegate_dimension(direct_edge.competence, delegated_edge.competence),
         integrity=delegate_dimension(direct_edge.integrity, delegated_edge.integrity),
-        confidentiality=delegate_dimension(
-            direct_edge.confidentiality, delegated_edge.confidentiality
-        ),
+        confidentiality=delegate_dimension(direct_edge.confidentiality, delegated_edge.confidentiality),
         # For judgment of C, we also apply A's trust in B's judgment
         judgment=delegate_dimension(direct_edge.judgment, delegated_edge.judgment),
         domain=delegated_edge.domain,  # Use the target edge's domain
@@ -714,9 +708,7 @@ def compute_transitive_trust(
         # Chain the edges
         result = path[0]
         for next_edge in path[1:]:
-            delegated = compute_delegated_trust(
-                result, next_edge, respect_delegation=respect_delegation
-            )
+            delegated = compute_delegated_trust(result, next_edge, respect_delegation=respect_delegation)
             if delegated is None:
                 # Delegation not allowed along this path
                 break
@@ -1588,9 +1580,7 @@ class TrustService:
         for edge in source_edges:
             if edge.can_delegate:
                 # delegation_depth=0 means no limit, otherwise it's the max hops allowed
-                initial_depth: int | None = (
-                    edge.delegation_depth if edge.delegation_depth > 0 else None
-                )
+                initial_depth: int | None = edge.delegation_depth if edge.delegation_depth > 0 else None
                 queue.append((edge.target_did, [edge], initial_depth))
 
         found_paths: list[list[TrustEdge4D]] = []
@@ -1916,11 +1906,7 @@ class FederationTrustEdge:
         """Equality based on federation IDs and domain."""
         if not isinstance(other, FederationTrustEdge):
             return False
-        return (
-            self.source_federation == other.source_federation
-            and self.target_federation == other.target_federation
-            and self.domain == other.domain
-        )
+        return self.source_federation == other.source_federation and self.target_federation == other.target_federation and self.domain == other.domain
 
     @property
     def overall_trust(self) -> float:
@@ -1982,9 +1968,7 @@ class FederationTrustEdge:
         )
 
     @classmethod
-    def from_trust_edge(
-        cls, edge: TrustEdge, inheritance_factor: float = 0.5
-    ) -> FederationTrustEdge:
+    def from_trust_edge(cls, edge: TrustEdge, inheritance_factor: float = 0.5) -> FederationTrustEdge:
         """Create a FederationTrustEdge from a TrustEdge.
 
         Strips the federation: prefix from source/target DIDs.
@@ -2255,8 +2239,7 @@ def _extend_trust_service() -> None:
         fed_edge.updated_at = stored.updated_at
 
         logger.debug(
-            f"Set federation trust: {source_federation} -> {target_federation}, "
-            f"competence={competence}, inheritance={inheritance_factor}"
+            f"Set federation trust: {source_federation} -> {target_federation}, " f"competence={competence}, inheritance={inheritance_factor}"
         )
 
         return fed_edge

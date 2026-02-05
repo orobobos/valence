@@ -26,7 +26,12 @@ import aiohttp
 
 from ..core.config import get_federation_config
 from ..core.db import get_cursor
-from .discovery import get_node_by_id, get_node_trust, mark_node_active, mark_node_unreachable
+from .discovery import (
+    get_node_by_id,
+    get_node_trust,
+    mark_node_active,
+    mark_node_unreachable,
+)
 from .models import (
     SyncState,
     SyncStatus,
@@ -194,11 +199,14 @@ def update_sync_state(
         params.append(node_id)
 
         with get_cursor() as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 UPDATE sync_state
                 SET {', '.join(updates)}
                 WHERE node_id = %s
-            """, params)
+            """,
+                params,
+            )
             return True
 
     except Exception as e:
@@ -230,11 +238,14 @@ def queue_belief_for_sync(
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO sync_outbound_queue (
                     target_node_id, operation, belief_id, priority, status
                 ) VALUES (%s, %s, %s, %s, 'pending')
-            """, (target_node_id, operation, belief_id, priority))
+            """,
+                (target_node_id, operation, belief_id, priority),
+            )
             return True
     except Exception as e:
         logger.warning(f"Error queueing belief for sync: {e}")
@@ -265,12 +276,15 @@ def get_pending_sync_items(
         params.append(limit)
 
         with get_cursor() as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT * FROM sync_outbound_queue
                 WHERE {' AND '.join(conditions)}
                 ORDER BY priority ASC, created_at ASC
                 LIMIT %s
-            """, params)
+            """,
+                params,
+            )
             return cur.fetchall()
     except Exception as e:
         logger.warning(f"Error getting pending sync items: {e}")
@@ -281,11 +295,14 @@ def mark_sync_item_sent(item_id: UUID) -> bool:
     """Mark a sync item as sent."""
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE sync_outbound_queue
                 SET status = 'sent', last_attempt_at = NOW()
                 WHERE id = %s
-            """, (item_id,))
+            """,
+                (item_id,),
+            )
             return True
     except Exception as e:
         logger.warning(f"Error marking sync item sent: {e}")
@@ -296,7 +313,8 @@ def mark_sync_item_failed(item_id: UUID, error: str) -> bool:
     """Mark a sync item as failed."""
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE sync_outbound_queue
                 SET status = CASE
                         WHEN attempts >= max_attempts THEN 'failed'
@@ -307,7 +325,9 @@ def mark_sync_item_failed(item_id: UUID, error: str) -> bool:
                     last_error = %s,
                     scheduled_for = NOW() + INTERVAL '5 minutes' * attempts
                 WHERE id = %s
-            """, (error, item_id))
+            """,
+                (error, item_id),
+            )
             return True
     except Exception as e:
         logger.warning(f"Error marking sync item failed: {e}")
@@ -363,11 +383,13 @@ class SyncManager:
         """Process the outbound sync queue."""
         # Get all active nodes
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT id, did, federation_endpoint
                 FROM federation_nodes
                 WHERE status = 'active'
-            """)
+            """
+            )
             active_nodes = cur.fetchall()
 
         for node_row in active_nodes:
@@ -417,12 +439,15 @@ class SyncManager:
         # Get belief data
         with get_cursor() as cur:
             placeholders = ",".join(["%s"] * len(belief_ids))
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT * FROM beliefs
                 WHERE id IN ({placeholders})
                   AND is_local = TRUE
                   AND visibility IN ('federated', 'public')
-            """, belief_ids)
+            """,
+                belief_ids,
+            )
             belief_rows = cur.fetchall()
 
         if not belief_rows:
@@ -461,8 +486,8 @@ class SyncManager:
                     if response.status == 200:
                         result = await response.json()
                         # Use bucketed counts in logs to prevent traffic analysis (Issue #177)
-                        accepted = result.get('accepted', 0)
-                        rejected = result.get('rejected', 0)
+                        accepted = result.get("accepted", 0)
+                        rejected = result.get("rejected", 0)
                         logger.info(
                             f"Sent ~{_bucket_count(len(beliefs_data))} beliefs to node {node_id}: "
                             f"accepted=~{_bucket_count(accepted)}, rejected=~{_bucket_count(rejected)}"
@@ -569,13 +594,15 @@ class SyncManager:
     async def _sync_with_peers(self):
         """Pull sync updates from active peers."""
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT fn.*, ss.last_received_cursor, ss.last_sync_at
                 FROM federation_nodes fn
                 JOIN sync_state ss ON fn.id = ss.node_id
                 WHERE fn.status = 'active'
                   AND (ss.next_sync_scheduled IS NULL OR ss.next_sync_scheduled <= NOW())
-            """)
+            """
+            )
             nodes = cur.fetchall()
 
         for node_row in nodes:
@@ -637,9 +664,7 @@ class SyncManager:
 
                         if changes:
                             # Process changes
-                            beliefs_received = await self._process_sync_changes(
-                                node_id, trust_level, changes
-                            )
+                            beliefs_received = await self._process_sync_changes(node_id, trust_level, changes)
 
                             update_sync_state(
                                 node_id,
@@ -651,12 +676,15 @@ class SyncManager:
                         # Schedule next sync
                         with get_cursor() as cur:
                             interval = self.settings.federation_sync_interval_seconds
-                            cur.execute("""
+                            cur.execute(
+                                """
                                 UPDATE sync_state
                                 SET last_sync_at = NOW(),
                                     next_sync_scheduled = NOW() + INTERVAL '%s seconds'
                                 WHERE node_id = %s
-                            """, (interval, node_id))
+                            """,
+                                (interval, node_id),
+                            )
 
                         mark_node_active(node_id)
 
@@ -720,9 +748,12 @@ def update_vector_clock(
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT vector_clock FROM sync_state WHERE node_id = %s
-            """, (node_id,))
+            """,
+                (node_id,),
+            )
             row = cur.fetchone()
 
             if row:
@@ -734,11 +765,14 @@ def update_vector_clock(
             clock[peer_did] = max(clock.get(peer_did, 0), sequence)
 
             # Save back
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE sync_state
                 SET vector_clock = %s, modified_at = NOW()
                 WHERE node_id = %s
-            """, (json.dumps(clock), node_id))
+            """,
+                (json.dumps(clock), node_id),
+            )
 
             return clock
 
@@ -835,7 +869,8 @@ def get_sync_status() -> dict[str, Any]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) as total_nodes,
                     COUNT(*) FILTER (WHERE ss.status = 'syncing') as syncing,
@@ -846,7 +881,8 @@ def get_sync_status() -> dict[str, Any]:
                 FROM federation_nodes fn
                 LEFT JOIN sync_state ss ON fn.id = ss.node_id
                 WHERE fn.status = 'active'
-            """)
+            """
+            )
             row = cur.fetchone()
 
             return {

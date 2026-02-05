@@ -46,10 +46,10 @@ class ReviewerConfig:
     l4_reviewers: int = 7  # Communal consensus: 7 reviewers (increased)
 
     # Consensus thresholds (fraction of reviewers that must agree)
-    l1_consensus_threshold: float = 2/3  # ~67%
-    l2_consensus_threshold: float = 2/3  # ~67%
-    l3_consensus_threshold: float = 3/4  # 75% (stricter for high-stakes)
-    l4_consensus_threshold: float = 3/4  # 75%
+    l1_consensus_threshold: float = 2 / 3  # ~67%
+    l2_consensus_threshold: float = 2 / 3  # ~67%
+    l3_consensus_threshold: float = 3 / 4  # 75% (stricter for high-stakes)
+    l4_consensus_threshold: float = 3 / 4  # 75%
 
     # Appeal escalation multipliers
     appeal_reviewer_multiplier: float = 1.5  # 50% more reviewers on appeal
@@ -92,7 +92,7 @@ class ReviewerConfig:
         """Get reviewer count for an appeal round."""
         base_count = self.get_reviewer_count(layer)
         # Each appeal round increases reviewer count
-        multiplier = self.appeal_reviewer_multiplier ** appeal_round
+        multiplier = self.appeal_reviewer_multiplier**appeal_round
         return max(base_count, int(base_count * multiplier))
 
     def to_dict(self) -> dict[str, Any]:
@@ -141,38 +141,42 @@ DEFAULT_REVIEWER_CONFIG = ReviewerConfig()
 
 class ChallengeType(StrEnum):
     """Types of challenges to beliefs."""
-    FACTUAL_ERROR = "factual_error"           # The claim is factually wrong
-    INDEPENDENCE_VIOLATION = "independence"    # Sources aren't independent
-    EVIDENCE_QUALITY = "evidence_quality"      # Evidence is weak/invalid
-    OUTDATED = "outdated"                      # Was true but no longer
-    METHODOLOGY = "methodology"                # Derivation method is flawed
-    SCOPE = "scope"                            # Claim is overgeneralized
+
+    FACTUAL_ERROR = "factual_error"  # The claim is factually wrong
+    INDEPENDENCE_VIOLATION = "independence"  # Sources aren't independent
+    EVIDENCE_QUALITY = "evidence_quality"  # Evidence is weak/invalid
+    OUTDATED = "outdated"  # Was true but no longer
+    METHODOLOGY = "methodology"  # Derivation method is flawed
+    SCOPE = "scope"  # Claim is overgeneralized
 
 
 class ChallengeStatus(StrEnum):
     """Status of a challenge."""
-    OPEN = "open"                    # Awaiting reviewer assignment
-    UNDER_REVIEW = "under_review"    # Reviewers assigned, reviewing
-    UPHELD = "upheld"               # Challenge accepted, belief demoted
-    REJECTED = "rejected"           # Challenge rejected, belief stands
-    WITHDRAWN = "withdrawn"         # Challenger withdrew
-    APPEALED = "appealed"           # Decision appealed, new review
-    EXPIRED = "expired"             # Review deadline passed
+
+    OPEN = "open"  # Awaiting reviewer assignment
+    UNDER_REVIEW = "under_review"  # Reviewers assigned, reviewing
+    UPHELD = "upheld"  # Challenge accepted, belief demoted
+    REJECTED = "rejected"  # Challenge rejected, belief stands
+    WITHDRAWN = "withdrawn"  # Challenger withdrew
+    APPEALED = "appealed"  # Decision appealed, new review
+    EXPIRED = "expired"  # Review deadline passed
 
 
 class ReviewDecision(StrEnum):
     """Individual reviewer's decision."""
-    UPHOLD = "uphold"      # Support the challenge
-    REJECT = "reject"      # Reject the challenge
-    ABSTAIN = "abstain"    # Cannot decide (rare)
+
+    UPHOLD = "uphold"  # Support the challenge
+    REJECT = "reject"  # Reject the challenge
+    ABSTAIN = "abstain"  # Cannot decide (rare)
 
 
 class ReviewerStatus(StrEnum):
     """Status of a reviewer assignment."""
-    ASSIGNED = "assigned"      # Selected, awaiting review
-    COMPLETED = "completed"    # Submitted decision
-    RECUSED = "recused"       # Conflict of interest found
-    EXPIRED = "expired"       # Did not review in time
+
+    ASSIGNED = "assigned"  # Selected, awaiting review
+    COMPLETED = "completed"  # Submitted decision
+    RECUSED = "recused"  # Conflict of interest found
+    EXPIRED = "expired"  # Did not review in time
 
 
 # =============================================================================
@@ -223,9 +227,7 @@ class Challenge:
         """Set review deadline if not set."""
         if self.review_deadline is None:
             config = DEFAULT_REVIEWER_CONFIG
-            self.review_deadline = self.created_at + timedelta(
-                days=config.review_deadline_days
-            )
+            self.review_deadline = self.created_at + timedelta(days=config.review_deadline_days)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -240,10 +242,10 @@ class Challenge:
             "counter_evidence": self.counter_evidence,
             "status": self.status.value,
             "appeal_round": self.appeal_round,
-            "previous_challenge_id": str(self.previous_challenge_id) if self.previous_challenge_id else None,
+            "previous_challenge_id": (str(self.previous_challenge_id) if self.previous_challenge_id else None),
             "resolution": self.resolution.to_dict() if self.resolution else None,
             "created_at": self.created_at.isoformat(),
-            "review_deadline": self.review_deadline.isoformat() if self.review_deadline else None,
+            "review_deadline": (self.review_deadline.isoformat() if self.review_deadline else None),
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
         }
 
@@ -256,7 +258,7 @@ class Challenge:
 
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            target_belief_id=UUID(data["target_belief_id"]) if isinstance(data["target_belief_id"], str) else data["target_belief_id"],
+            target_belief_id=(UUID(data["target_belief_id"]) if isinstance(data["target_belief_id"], str) else data["target_belief_id"]),
             target_layer=data["target_layer"],
             challenger_did=data["challenger_did"],
             challenger_stake=float(data["challenger_stake"]),
@@ -265,11 +267,11 @@ class Challenge:
             counter_evidence=data.get("counter_evidence", []),
             status=ChallengeStatus(data["status"]),
             appeal_round=data.get("appeal_round", 0),
-            previous_challenge_id=UUID(data["previous_challenge_id"]) if data.get("previous_challenge_id") else None,
+            previous_challenge_id=(UUID(data["previous_challenge_id"]) if data.get("previous_challenge_id") else None),
             resolution=resolution,
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"],
-            review_deadline=datetime.fromisoformat(data["review_deadline"]) if data.get("review_deadline") else None,
-            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None,
+            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
+            review_deadline=(datetime.fromisoformat(data["review_deadline"]) if data.get("review_deadline") else None),
+            resolved_at=(datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None),
         )
 
 
@@ -310,9 +312,9 @@ class ChallengeReview:
             "assigned_at": self.assigned_at.isoformat(),
             "decision": self.decision.value if self.decision else None,
             "reasoning": self.reasoning,
-            "confidence": float(self.confidence) if self.confidence is not None else None,
+            "confidence": (float(self.confidence) if self.confidence is not None else None),
             "stake": float(self.stake),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (self.completed_at.isoformat() if self.completed_at else None),
         }
 
     @classmethod
@@ -320,16 +322,16 @@ class ChallengeReview:
         """Create from dictionary."""
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            challenge_id=UUID(data["challenge_id"]) if isinstance(data["challenge_id"], str) else data["challenge_id"],
+            challenge_id=(UUID(data["challenge_id"]) if isinstance(data["challenge_id"], str) else data["challenge_id"]),
             reviewer_did=data["reviewer_did"],
             reviewer_reputation=float(data["reviewer_reputation"]),
             status=ReviewerStatus(data["status"]),
-            assigned_at=datetime.fromisoformat(data["assigned_at"]) if isinstance(data["assigned_at"], str) else data["assigned_at"],
+            assigned_at=(datetime.fromisoformat(data["assigned_at"]) if isinstance(data["assigned_at"], str) else data["assigned_at"]),
             decision=ReviewDecision(data["decision"]) if data.get("decision") else None,
             reasoning=data.get("reasoning"),
-            confidence=float(data["confidence"]) if data.get("confidence") is not None else None,
+            confidence=(float(data["confidence"]) if data.get("confidence") is not None else None),
             stake=float(data.get("stake", 0)),
-            completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+            completed_at=(datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None),
         )
 
 
@@ -412,7 +414,7 @@ class ChallengeResolution:
             reviewer_penalties=reputation.get("reviewer_penalties", {}),
             summary=data.get("summary", ""),
             resolved_by=data.get("resolved_by", []),
-            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else datetime.now(),
+            resolved_at=(datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else datetime.now()),
         )
 
 
@@ -499,10 +501,10 @@ class ReviewerReputation:
             "eligibility": {
                 "is_eligible": self.is_eligible,
                 "ineligible_reason": self.ineligible_reason,
-                "ineligible_until": self.ineligible_until.isoformat() if self.ineligible_until else None,
+                "ineligible_until": (self.ineligible_until.isoformat() if self.ineligible_until else None),
             },
-            "first_review_at": self.first_review_at.isoformat() if self.first_review_at else None,
-            "last_review_at": self.last_review_at.isoformat() if self.last_review_at else None,
+            "first_review_at": (self.first_review_at.isoformat() if self.first_review_at else None),
+            "last_review_at": (self.last_review_at.isoformat() if self.last_review_at else None),
             "updated_at": self.updated_at.isoformat(),
         }
 
@@ -510,6 +512,7 @@ class ReviewerReputation:
 @dataclass
 class EligibleReviewer:
     """A candidate for reviewer selection."""
+
     did: str
     reputation: float
     account_age_days: int
@@ -564,10 +567,7 @@ class ReviewerSelector:
         exclude_dids.append(challenge.challenger_did)
 
         # Determine required reviewer count
-        required_count = self.config.get_appeal_reviewer_count(
-            challenge.target_layer,
-            challenge.appeal_round
-        )
+        required_count = self.config.get_appeal_reviewer_count(challenge.target_layer, challenge.appeal_round)
 
         # Filter for eligibility
         eligible = self._filter_eligible(
@@ -577,9 +577,7 @@ class ReviewerSelector:
         )
 
         if len(eligible) < required_count:
-            raise InsufficientReviewersError(
-                f"Need {required_count} reviewers but only {len(eligible)} eligible"
-            )
+            raise InsufficientReviewersError(f"Need {required_count} reviewers but only {len(eligible)} eligible")
 
         # Select reviewers ensuring pairwise independence
         selected = self._select_independent_reviewers(
@@ -652,9 +650,7 @@ class ReviewerSelector:
             # Check independence with already selected reviewers
             is_independent = True
             for existing in selected:
-                independence = self._calculate_pairwise_independence(
-                    candidate, existing
-                )
+                independence = self._calculate_pairwise_independence(candidate, existing)
                 if independence < self.config.min_independence_score:
                     is_independent = False
                     break
@@ -806,7 +802,10 @@ class AppealHandler:
             return False, "Challenge must be resolved before appeal"
 
         if challenge.appeal_round >= self.config.max_appeal_rounds:
-            return False, f"Maximum appeal rounds ({self.config.max_appeal_rounds}) reached"
+            return (
+                False,
+                f"Maximum appeal rounds ({self.config.max_appeal_rounds}) reached",
+            )
 
         if challenge.resolved_at:
             deadline = challenge.resolved_at + timedelta(days=self.config.appeal_deadline_days)
@@ -850,10 +849,7 @@ class AppealHandler:
         # Update original challenge status
         original_challenge.status = ChallengeStatus.APPEALED
 
-        logger.info(
-            f"Appeal created: {appeal.id} (round {appeal.appeal_round}) "
-            f"for challenge {original_challenge.id}"
-        )
+        logger.info(f"Appeal created: {appeal.id} (round {appeal.appeal_round}) " f"for challenge {original_challenge.id}")
 
         return appeal
 
@@ -865,21 +861,25 @@ class AppealHandler:
 
 class ChallengeError(Exception):
     """Base exception for challenge errors."""
+
     pass
 
 
 class InsufficientReviewersError(ChallengeError):
     """Not enough eligible reviewers available."""
+
     pass
 
 
 class AppealNotAllowedError(ChallengeError):
     """Appeal is not allowed for this challenge."""
+
     pass
 
 
 class InvalidChallengeError(ChallengeError):
     """The challenge is invalid."""
+
     pass
 
 

@@ -10,15 +10,12 @@ These tests verify:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from valence.network.router import Connection, QueuedMessage, RouterNode
-
 
 # =============================================================================
 # Unit Tests - Data Classes
@@ -171,9 +168,7 @@ class TestRouterNodeHandlers:
         assert len(router.connections) == 0
 
         # Should have sent error response
-        ws.send_json.assert_called_with(
-            {"type": "error", "message": "Missing node_id"}
-        )
+        ws.send_json.assert_called_with({"type": "error", "message": "Missing node_id"})
 
     @pytest.mark.asyncio
     async def test_handle_identify_already_connected(self, router):
@@ -193,9 +188,7 @@ class TestRouterNodeHandlers:
 
         assert result is None
         # Should have sent error
-        new_ws.send_json.assert_called_with(
-            {"type": "error", "message": "Node already connected"}
-        )
+        new_ws.send_json.assert_called_with({"type": "error", "message": "Node already connected"})
 
     @pytest.mark.asyncio
     async def test_handle_relay_direct_delivery(self, router):

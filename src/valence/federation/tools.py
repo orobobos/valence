@@ -96,7 +96,13 @@ FEDERATION_TOOLS = [
             "properties": {
                 "status": {
                     "type": "string",
-                    "enum": ["discovered", "connecting", "active", "suspended", "unreachable"],
+                    "enum": [
+                        "discovered",
+                        "connecting",
+                        "active",
+                        "suspended",
+                        "unreachable",
+                    ],
                     "description": "Filter by node status",
                 },
                 "trust_phase": {
@@ -166,7 +172,6 @@ FEDERATION_TOOLS = [
             "required": ["bootstrap_nodes"],
         },
     ),
-
     # -------------------------------------------------------------------------
     # Trust Management
     # -------------------------------------------------------------------------
@@ -264,7 +269,6 @@ FEDERATION_TOOLS = [
             "required": ["node_id"],
         },
     ),
-
     # -------------------------------------------------------------------------
     # Belief Federation
     # -------------------------------------------------------------------------
@@ -348,7 +352,6 @@ FEDERATION_TOOLS = [
             "required": ["query"],
         },
     ),
-
     # -------------------------------------------------------------------------
     # Sync Management
     # -------------------------------------------------------------------------
@@ -395,7 +398,6 @@ FEDERATION_TOOLS = [
             },
         },
     ),
-
     # -------------------------------------------------------------------------
     # Corroboration & Endorsement
     # -------------------------------------------------------------------------
@@ -534,8 +536,7 @@ def federation_node_list(
                     "trust": t.to_dict() if t else None,
                 }
                 for n, t in nodes_with_trust
-                if (node_status is None or n.status == node_status) and
-                   (phase is None or n.trust_phase == phase)
+                if (node_status is None or n.status == node_status) and (phase is None or n.trust_phase == phase)
             ][:limit]
         else:
             node_list = list_nodes(status=node_status, trust_phase=phase, limit=limit)
@@ -768,14 +769,17 @@ def federation_belief_share(
 
         with get_cursor() as cur:
             # Update belief visibility
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE beliefs
                 SET visibility = %s,
                     share_level = %s,
                     modified_at = NOW()
                 WHERE id = %s
                 RETURNING id, content, visibility, share_level
-            """, (vis.value, level.value, uuid))
+            """,
+                (vis.value, level.value, uuid),
+            )
 
             row = cur.fetchone()
             if not row:
@@ -822,7 +826,8 @@ def federation_belief_query(
             # Query federated beliefs with trust weighting
             if include_local:
                 # Include local beliefs
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT b.*, 1.0 as source_trust, NULL as origin_node_id, TRUE as is_local
                     FROM beliefs b
                     WHERE b.is_local = TRUE
@@ -830,21 +835,26 @@ def federation_belief_query(
                     AND b.content ILIKE %s
                     ORDER BY b.modified_at DESC
                     LIMIT %s
-                """, (f"%{query}%", limit // 2))
+                """,
+                    (f"%{query}%", limit // 2),
+                )
                 local_rows = cur.fetchall()
 
                 for row in local_rows:
-                    results.append({
-                        "belief_id": str(row["id"]),
-                        "content": row["content"],
-                        "confidence": row["confidence"],
-                        "domain_path": row.get("domain_path", []),
-                        "source_trust": 1.0,
-                        "is_local": True,
-                    })
+                    results.append(
+                        {
+                            "belief_id": str(row["id"]),
+                            "content": row["content"],
+                            "confidence": row["confidence"],
+                            "domain_path": row.get("domain_path", []),
+                            "source_trust": 1.0,
+                            "is_local": True,
+                        }
+                    )
 
             # Query federated beliefs
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT b.*, bp.origin_node_id, fn.did as origin_did,
                        (nt.trust->>'overall')::numeric as source_trust
                 FROM beliefs b
@@ -857,19 +867,23 @@ def federation_belief_query(
                 AND COALESCE((nt.trust->>'overall')::numeric, 0.1) >= %s
                 ORDER BY COALESCE((nt.trust->>'overall')::numeric, 0.1) DESC, b.modified_at DESC
                 LIMIT %s
-            """, (f"%{query}%", min_trust, limit))
+            """,
+                (f"%{query}%", min_trust, limit),
+            )
             federated_rows = cur.fetchall()
 
             for row in federated_rows:
-                results.append({
-                    "belief_id": str(row["id"]),
-                    "content": row["content"],
-                    "confidence": row["confidence"],
-                    "domain_path": row.get("domain_path", []),
-                    "source_trust": float(row["source_trust"] or 0.1),
-                    "is_local": False,
-                    "origin_did": row["origin_did"],
-                })
+                results.append(
+                    {
+                        "belief_id": str(row["id"]),
+                        "content": row["content"],
+                        "confidence": row["confidence"],
+                        "domain_path": row.get("domain_path", []),
+                        "source_trust": float(row["source_trust"] or 0.1),
+                        "is_local": False,
+                        "origin_did": row["origin_did"],
+                    }
+                )
 
         # Sort by trust-weighted relevance
         results.sort(key=lambda x: x["source_trust"], reverse=True)
@@ -938,12 +952,15 @@ def federation_sync_status(
 
             if include_history:
                 with get_cursor() as cur:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         SELECT * FROM sync_events
                         WHERE node_id = %s
                         ORDER BY occurred_at DESC
                         LIMIT 20
-                    """, (uuid,))
+                    """,
+                        (uuid,),
+                    )
                     events = cur.fetchall()
                     result["recent_events"] = [
                         {
@@ -1015,7 +1032,8 @@ def federation_corroboration_check(
 
         with get_cursor() as cur:
             # Search for similar beliefs from other nodes
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT b.id, b.content, bp.origin_node_id, fn.did as origin_did,
                        (nt.trust->>'overall')::numeric as source_trust
                 FROM beliefs b
@@ -1026,7 +1044,9 @@ def federation_corroboration_check(
                 AND b.status != 'superseded'
                 AND b.content ILIKE %s
                 LIMIT 20
-            """, (f"%{content[:50]}%",))  # Use first 50 chars for matching
+            """,
+                (f"%{content[:50]}%",),
+            )  # Use first 50 chars for matching
 
             similar_beliefs = cur.fetchall()
 
@@ -1123,12 +1143,15 @@ def federation_endorsement_give(
 
         # Record endorsement in database
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE node_trust
                 SET endorsements_received = endorsements_received + 1,
                     last_interaction_at = NOW()
                 WHERE node_id = %s
-            """, (uuid,))
+            """,
+                (uuid,),
+            )
 
         return {
             "success": True,

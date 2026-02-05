@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
 import time
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-
 from valence.server.oauth_models import (
     AuthorizationCode,
     AuthorizationCodeStore,
@@ -30,6 +25,7 @@ from valence.server.oauth_models import (
 def reset_oauth_stores():
     """Reset global OAuth stores between tests."""
     import valence.server.oauth_models as oauth_module
+
     oauth_module._client_store = None
     oauth_module._code_store = None
     oauth_module._refresh_store = None
@@ -43,6 +39,7 @@ def reset_oauth_stores():
 # OAuthClient Tests
 # ============================================================================
 
+
 class TestOAuthClient:
     """Tests for OAuthClient dataclass."""
 
@@ -53,7 +50,7 @@ class TestOAuthClient:
             client_name="Test Client",
             redirect_uris=["http://localhost/callback"],
         )
-        
+
         assert client.client_id == "test-client-id"
         assert client.client_name == "Test Client"
         assert client.redirect_uris == ["http://localhost/callback"]
@@ -69,9 +66,9 @@ class TestOAuthClient:
             redirect_uris=["http://localhost"],
             scope="mcp:tools",
         )
-        
+
         result = client.to_dict()
-        
+
         assert result["client_id"] == "test-id"
         assert result["client_name"] == "Test"
         assert result["redirect_uris"] == ["http://localhost"]
@@ -87,9 +84,9 @@ class TestOAuthClient:
             "response_types": ["code"],
             "scope": "mcp:tools",
         }
-        
+
         client = OAuthClient.from_dict(data)
-        
+
         assert client.client_id == "test-id"
         assert client.client_name == "Test"
         assert client.scope == "mcp:tools"
@@ -101,12 +98,12 @@ class TestOAuthClientStore:
     def test_register_client(self, temp_clients_file):
         """Test registering a new client."""
         store = OAuthClientStore(temp_clients_file)
-        
+
         client = store.register(
             client_name="My App",
             redirect_uris=["http://localhost:3000/callback"],
         )
-        
+
         assert client.client_name == "My App"
         assert len(client.client_id) > 10  # Auto-generated
 
@@ -117,18 +114,18 @@ class TestOAuthClientStore:
             client_name="My App",
             redirect_uris=["http://localhost/callback"],
         )
-        
+
         client = store.get(registered.client_id)
-        
+
         assert client is not None
         assert client.client_name == "My App"
 
     def test_get_nonexistent_client(self, temp_clients_file):
         """Test getting non-existent client."""
         store = OAuthClientStore(temp_clients_file)
-        
+
         client = store.get("nonexistent-id")
-        
+
         assert client is None
 
     def test_validate_redirect_uri_valid(self, temp_clients_file):
@@ -138,7 +135,7 @@ class TestOAuthClientStore:
             client_name="My App",
             redirect_uris=["http://localhost/callback", "http://localhost/alt"],
         )
-        
+
         assert store.validate_redirect_uri(client.client_id, "http://localhost/callback")
         assert store.validate_redirect_uri(client.client_id, "http://localhost/alt")
 
@@ -149,7 +146,7 @@ class TestOAuthClientStore:
             client_name="My App",
             redirect_uris=["http://localhost/callback"],
         )
-        
+
         assert not store.validate_redirect_uri(client.client_id, "http://evil.com/steal")
 
     def test_persistence(self, temp_clients_file):
@@ -159,11 +156,11 @@ class TestOAuthClientStore:
             client_name="Persistent App",
             redirect_uris=["http://localhost/callback"],
         )
-        
+
         # Create new store from same file
         store2 = OAuthClientStore(temp_clients_file)
         retrieved = store2.get(client.client_id)
-        
+
         assert retrieved is not None
         assert retrieved.client_name == "Persistent App"
 
@@ -171,6 +168,7 @@ class TestOAuthClientStore:
 # ============================================================================
 # AuthorizationCode Tests
 # ============================================================================
+
 
 class TestAuthorizationCode:
     """Tests for AuthorizationCode dataclass."""
@@ -186,7 +184,7 @@ class TestAuthorizationCode:
             code_challenge_method="S256",
             user_id="admin",
         )
-        
+
         assert code.code == "test-code-123"
         assert code.client_id == "client-id"
         assert code.user_id == "admin"
@@ -203,7 +201,7 @@ class TestAuthorizationCode:
             user_id="admin",
             expires_at=time.time() + 600,  # 10 minutes from now
         )
-        
+
         assert code.is_expired() is False
 
     def test_is_expired_expired(self):
@@ -218,7 +216,7 @@ class TestAuthorizationCode:
             user_id="admin",
             expires_at=time.time() - 60,  # 1 minute ago
         )
-        
+
         assert code.is_expired() is True
 
 
@@ -228,7 +226,7 @@ class TestAuthorizationCodeStore:
     def test_create_code(self):
         """Test creating an authorization code."""
         store = AuthorizationCodeStore()
-        
+
         code = store.create(
             client_id="client-id",
             redirect_uri="http://localhost/callback",
@@ -237,7 +235,7 @@ class TestAuthorizationCodeStore:
             code_challenge_method="S256",
             user_id="admin",
         )
-        
+
         assert len(code) > 20  # Should be a secure random token
 
     def test_consume_valid_code(self):
@@ -251,9 +249,9 @@ class TestAuthorizationCodeStore:
             code_challenge_method="S256",
             user_id="admin",
         )
-        
+
         auth_code = store.consume(code)
-        
+
         assert auth_code is not None
         assert auth_code.client_id == "client-id"
         assert auth_code.user_id == "admin"
@@ -269,11 +267,11 @@ class TestAuthorizationCodeStore:
             code_challenge_method="S256",
             user_id="admin",
         )
-        
+
         # First consumption succeeds
         auth_code1 = store.consume(code)
         assert auth_code1 is not None
-        
+
         # Second consumption fails
         auth_code2 = store.consume(code)
         assert auth_code2 is None
@@ -281,15 +279,15 @@ class TestAuthorizationCodeStore:
     def test_consume_invalid_code(self):
         """Test consuming invalid code."""
         store = AuthorizationCodeStore()
-        
+
         auth_code = store.consume("nonexistent-code")
-        
+
         assert auth_code is None
 
     def test_cleanup_expired(self):
         """Test cleaning up expired codes."""
         store = AuthorizationCodeStore()
-        
+
         # Create a code that's already expired
         code = store.create(
             client_id="client",
@@ -299,18 +297,19 @@ class TestAuthorizationCodeStore:
             code_challenge_method="S256",
             user_id="admin",
         )
-        
+
         # Manually expire it
         store._codes[code].expires_at = time.time() - 100
-        
+
         store.cleanup_expired()
-        
+
         assert code not in store._codes
 
 
 # ============================================================================
 # RefreshToken Tests
 # ============================================================================
+
 
 class TestRefreshToken:
     """Tests for RefreshToken dataclass."""
@@ -323,7 +322,7 @@ class TestRefreshToken:
             user_id="admin",
             scope="mcp:tools",
         )
-        
+
         assert token.client_id == "client-id"
         assert token.user_id == "admin"
         assert token.scope == "mcp:tools"
@@ -336,7 +335,7 @@ class TestRefreshToken:
             user_id="admin",
             scope="mcp:tools",
         )
-        
+
         assert token.is_expired() is False
 
     def test_is_expired_future(self):
@@ -348,7 +347,7 @@ class TestRefreshToken:
             scope="mcp:tools",
             expires_at=time.time() + 86400,
         )
-        
+
         assert token.is_expired() is False
 
     def test_is_expired_past(self):
@@ -360,7 +359,7 @@ class TestRefreshToken:
             scope="mcp:tools",
             expires_at=time.time() - 100,
         )
-        
+
         assert token.is_expired() is True
 
 
@@ -370,13 +369,13 @@ class TestRefreshTokenStore:
     def test_create_token(self):
         """Test creating a refresh token."""
         store = RefreshTokenStore()
-        
+
         token = store.create(
             client_id="client-id",
             user_id="admin",
             scope="mcp:tools",
         )
-        
+
         assert len(token) > 20
 
     def test_validate_valid_token(self):
@@ -387,9 +386,9 @@ class TestRefreshTokenStore:
             user_id="admin",
             scope="mcp:tools",
         )
-        
+
         token_data = store.validate(token)
-        
+
         assert token_data is not None
         assert token_data.client_id == "client-id"
         assert token_data.user_id == "admin"
@@ -397,9 +396,9 @@ class TestRefreshTokenStore:
     def test_validate_invalid_token(self):
         """Test validating invalid token."""
         store = RefreshTokenStore()
-        
+
         token_data = store.validate("invalid-token")
-        
+
         assert token_data is None
 
     def test_revoke_token(self):
@@ -410,20 +409,21 @@ class TestRefreshTokenStore:
             user_id="admin",
             scope="mcp:tools",
         )
-        
+
         assert store.revoke(token) is True
         assert store.validate(token) is None
 
     def test_revoke_nonexistent(self):
         """Test revoking non-existent token."""
         store = RefreshTokenStore()
-        
+
         assert store.revoke("nonexistent") is False
 
 
 # ============================================================================
 # JWT Access Token Tests
 # ============================================================================
+
 
 class TestAccessToken:
     """Tests for JWT access token functions."""
@@ -432,11 +432,15 @@ class TestAccessToken:
     def setup_jwt_config(self, monkeypatch):
         """Set up JWT configuration for tests."""
         # JWT secret must be at least 32 characters
-        monkeypatch.setenv("VALENCE_OAUTH_JWT_SECRET", "test-secret-for-jwt-testing-must-be-at-least-32-chars")
+        monkeypatch.setenv(
+            "VALENCE_OAUTH_JWT_SECRET",
+            "test-secret-for-jwt-testing-must-be-at-least-32-chars",
+        )
         monkeypatch.setenv("VALENCE_EXTERNAL_URL", "http://localhost:8420")
         monkeypatch.setenv("VALENCE_OAUTH_ACCESS_TOKEN_EXPIRY", "3600")
-        
+
         import valence.server.config as config_module
+
         config_module._settings = None
         yield
         config_module._settings = None
@@ -449,7 +453,7 @@ class TestAccessToken:
             scope="mcp:tools",
             audience="http://localhost:8420/mcp",
         )
-        
+
         assert len(token) > 50  # JWT should be fairly long
         assert token.count(".") == 2  # JWTs have 3 parts
 
@@ -461,9 +465,9 @@ class TestAccessToken:
             scope="mcp:tools",
             audience="http://localhost:8420/mcp",
         )
-        
+
         payload = verify_access_token(token, "http://localhost:8420/mcp")
-        
+
         assert payload is not None
         assert payload["client_id"] == "client-id"
         assert payload["sub"] == "admin"
@@ -472,52 +476,57 @@ class TestAccessToken:
     def test_verify_expired_token(self, monkeypatch):
         """Test verifying an expired token."""
         # Create a token that's already expired
-        monkeypatch.setenv("VALENCE_OAUTH_JWT_SECRET", "test-secret-for-jwt-testing-must-be-at-least-32-chars")
+        monkeypatch.setenv(
+            "VALENCE_OAUTH_JWT_SECRET",
+            "test-secret-for-jwt-testing-must-be-at-least-32-chars",
+        )
         monkeypatch.setenv("VALENCE_EXTERNAL_URL", "http://localhost:8420")
         monkeypatch.setenv("VALENCE_OAUTH_ACCESS_TOKEN_EXPIRY", "-10")
-        
+
         import valence.server.config as config_module
+
         config_module._settings = None
-        
+
         token = create_access_token(
             client_id="client-id",
             user_id="admin",
             scope="mcp:tools",
             audience="http://localhost:8420/mcp",
         )
-        
+
         payload = verify_access_token(token, "http://localhost:8420/mcp")
-        
+
         assert payload is None
 
     def test_verify_expired_token_logs_warning(self, monkeypatch, caplog):
         """Test that expired token verification logs a warning."""
         import logging
-        
+
         # Create a token that's already expired
-        monkeypatch.setenv("VALENCE_OAUTH_JWT_SECRET", "test-secret-for-jwt-testing-must-be-at-least-32-chars")
+        monkeypatch.setenv(
+            "VALENCE_OAUTH_JWT_SECRET",
+            "test-secret-for-jwt-testing-must-be-at-least-32-chars",
+        )
         monkeypatch.setenv("VALENCE_EXTERNAL_URL", "http://localhost:8420")
         monkeypatch.setenv("VALENCE_OAUTH_ACCESS_TOKEN_EXPIRY", "-10")
-        
+
         import valence.server.config as config_module
+
         config_module._settings = None
-        
+
         token = create_access_token(
             client_id="client-id",
             user_id="admin",
             scope="mcp:tools",
             audience="http://localhost:8420/mcp",
         )
-        
+
         with caplog.at_level(logging.WARNING, logger="valence.server.oauth_models"):
             verify_access_token(token, "http://localhost:8420/mcp")
-        
+
         assert "Token expired" in caplog.text
         # Verify it's at WARNING level, not DEBUG
-        assert any(
-            record.levelno == logging.WARNING and "Token expired" in record.message
-            for record in caplog.records
-        )
+        assert any(record.levelno == logging.WARNING and "Token expired" in record.message for record in caplog.records)
 
     def test_verify_wrong_audience(self):
         """Test rejecting token with wrong audience."""
@@ -527,21 +536,22 @@ class TestAccessToken:
             scope="mcp:tools",
             audience="http://localhost:8420/mcp",
         )
-        
+
         payload = verify_access_token(token, "http://wrong-audience.com")
-        
+
         assert payload is None
 
     def test_verify_invalid_token(self):
         """Test rejecting invalid token."""
         payload = verify_access_token("invalid.token.here", "http://localhost:8420/mcp")
-        
+
         assert payload is None
 
 
 # ============================================================================
 # PKCE Tests
 # ============================================================================
+
 
 class TestPKCE:
     """Tests for PKCE verification."""
@@ -550,13 +560,11 @@ class TestPKCE:
         """Test valid PKCE verification."""
         import base64
         import hashlib
-        
+
         # Generate a valid verifier and challenge
         verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-        challenge = base64.urlsafe_b64encode(
-            hashlib.sha256(verifier.encode("ascii")).digest()
-        ).rstrip(b"=").decode("ascii")
-        
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+
         assert verify_pkce(verifier, challenge, "S256") is True
 
     def test_verify_pkce_invalid(self):
@@ -572,31 +580,33 @@ class TestPKCE:
 # Global Store Accessors
 # ============================================================================
 
+
 class TestGlobalStores:
     """Tests for global store accessor functions."""
 
     def test_get_client_store_singleton(self, temp_clients_file, monkeypatch):
         """Test client store singleton."""
         monkeypatch.setenv("VALENCE_OAUTH_CLIENTS_FILE", str(temp_clients_file))
-        
+
         import valence.server.config as config_module
+
         config_module._settings = None
-        
+
         store1 = get_client_store()
         store2 = get_client_store()
-        
+
         assert store1 is store2
 
     def test_get_code_store_singleton(self):
         """Test code store singleton."""
         store1 = get_code_store()
         store2 = get_code_store()
-        
+
         assert store1 is store2
 
     def test_get_refresh_store_singleton(self):
         """Test refresh store singleton."""
         store1 = get_refresh_store()
         store2 = get_refresh_store()
-        
+
         assert store1 is store2

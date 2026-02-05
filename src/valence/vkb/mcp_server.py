@@ -37,6 +37,7 @@ server = Server("valence-vkb")
 # Tool Definitions
 # ============================================================================
 
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools."""
@@ -51,23 +52,23 @@ async def list_tools() -> list[Tool]:
                     "platform": {
                         "type": "string",
                         "enum": ["claude-code", "api", "slack"],
-                        "description": "Platform this session is on"
+                        "description": "Platform this session is on",
                     },
                     "project_context": {
                         "type": "string",
-                        "description": "Project or topic context"
+                        "description": "Project or topic context",
                     },
                     "external_room_id": {
                         "type": "string",
-                        "description": "Room/channel ID for chat platforms"
+                        "description": "Room/channel ID for chat platforms",
                     },
                     "claude_session_id": {
                         "type": "string",
-                        "description": "Claude Code session ID for resume"
+                        "description": "Claude Code session ID for resume",
                     },
                     "metadata": {
                         "type": "object",
-                        "description": "Additional session metadata"
+                        "description": "Additional session metadata",
                     },
                 },
                 "required": ["platform"],
@@ -81,21 +82,18 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "UUID of the session"
+                        "description": "UUID of the session",
                     },
-                    "summary": {
-                        "type": "string",
-                        "description": "Session summary"
-                    },
+                    "summary": {"type": "string", "description": "Session summary"},
                     "themes": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Key themes from session"
+                        "description": "Key themes from session",
                     },
                     "status": {
                         "type": "string",
                         "enum": ["completed", "abandoned"],
-                        "default": "completed"
+                        "default": "completed",
                     },
                 },
                 "required": ["session_id"],
@@ -109,17 +107,14 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "UUID of the session"
+                        "description": "UUID of the session",
                     },
                     "include_exchanges": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include recent exchanges"
+                        "description": "Include recent exchanges",
                     },
-                    "exchange_limit": {
-                        "type": "integer",
-                        "default": 10
-                    },
+                    "exchange_limit": {"type": "integer", "default": 10},
                 },
                 "required": ["session_id"],
             },
@@ -130,23 +125,17 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "platform": {
-                        "type": "string",
-                        "description": "Filter by platform"
-                    },
+                    "platform": {"type": "string", "description": "Filter by platform"},
                     "project_context": {
                         "type": "string",
-                        "description": "Filter by project"
+                        "description": "Filter by project",
                     },
                     "status": {
                         "type": "string",
                         "enum": ["active", "completed", "abandoned"],
-                        "description": "Filter by status"
+                        "description": "Filter by status",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    },
+                    "limit": {"type": "integer", "default": 20},
                 },
             },
         ),
@@ -158,7 +147,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "external_room_id": {
                         "type": "string",
-                        "description": "Room/channel ID"
+                        "description": "Room/channel ID",
                     },
                 },
                 "required": ["external_room_id"],
@@ -173,23 +162,17 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "UUID of the session"
+                        "description": "UUID of the session",
                     },
-                    "role": {
-                        "type": "string",
-                        "enum": ["user", "assistant", "system"]
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Message content"
-                    },
+                    "role": {"type": "string", "enum": ["user", "assistant", "system"]},
+                    "content": {"type": "string", "description": "Message content"},
                     "tokens_approx": {
                         "type": "integer",
-                        "description": "Approximate token count"
+                        "description": "Approximate token count",
                     },
                     "tool_uses": {
                         "type": "array",
-                        "description": "Tools used in this turn"
+                        "description": "Tools used in this turn",
                     },
                 },
                 "required": ["session_id", "role", "content"],
@@ -203,16 +186,13 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "UUID of the session"
+                        "description": "UUID of the session",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max exchanges to return"
+                        "description": "Max exchanges to return",
                     },
-                    "offset": {
-                        "type": "integer",
-                        "default": 0
-                    },
+                    "offset": {"type": "integer", "default": 0},
                 },
                 "required": ["session_id"],
             },
@@ -226,22 +206,22 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "type": {
                         "type": "string",
-                        "description": "Pattern type (topic_recurrence, preference, working_style, etc.)"
+                        "description": "Pattern type (topic_recurrence, preference, working_style, etc.)",
                     },
                     "description": {
                         "type": "string",
-                        "description": "What the pattern is"
+                        "description": "What the pattern is",
                     },
                     "evidence": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Session IDs as evidence"
+                        "description": "Session IDs as evidence",
                     },
                     "confidence": {
                         "type": "number",
                         "minimum": 0,
                         "maximum": 1,
-                        "default": 0.5
+                        "default": 0.5,
                     },
                 },
                 "required": ["type", "description"],
@@ -255,11 +235,11 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "pattern_id": {
                         "type": "string",
-                        "description": "UUID of the pattern"
+                        "description": "UUID of the pattern",
                     },
                     "session_id": {
                         "type": "string",
-                        "description": "Session that supports this pattern"
+                        "description": "Session that supports this pattern",
                     },
                 },
                 "required": ["pattern_id"],
@@ -271,23 +251,14 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "type": {
-                        "type": "string",
-                        "description": "Filter by pattern type"
-                    },
+                    "type": {"type": "string", "description": "Filter by pattern type"},
                     "status": {
                         "type": "string",
                         "enum": ["emerging", "established", "fading", "archived"],
-                        "description": "Filter by status"
+                        "description": "Filter by status",
                     },
-                    "min_confidence": {
-                        "type": "number",
-                        "default": 0
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    },
+                    "min_confidence": {"type": "number", "default": 0},
+                    "limit": {"type": "integer", "default": 20},
                 },
             },
         ),
@@ -297,14 +268,8 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "default": 10
-                    },
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "default": 10},
                 },
                 "required": ["query"],
             },
@@ -316,23 +281,20 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "Source session"
-                    },
+                    "session_id": {"type": "string", "description": "Source session"},
                     "content": {
                         "type": "string",
-                        "description": "The insight/belief content"
+                        "description": "The insight/belief content",
                     },
                     "domain_path": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Domain classification"
+                        "description": "Domain classification",
                     },
                     "confidence": {
                         "type": "object",
                         "description": "Confidence dimensions",
-                        "default": {"overall": 0.8}
+                        "default": {"overall": 0.8},
                     },
                     "entities": {
                         "type": "array",
@@ -341,10 +303,10 @@ async def list_tools() -> list[Tool]:
                             "properties": {
                                 "name": {"type": "string"},
                                 "type": {"type": "string"},
-                                "role": {"type": "string"}
-                            }
+                                "role": {"type": "string"},
+                            },
                         },
-                        "description": "Entities to link"
+                        "description": "Entities to link",
                     },
                 },
                 "required": ["session_id", "content"],
@@ -358,7 +320,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "session_id": {
                         "type": "string",
-                        "description": "Session to get insights from"
+                        "description": "Session to get insights from",
                     },
                 },
                 "required": ["session_id"],
@@ -370,6 +332,7 @@ async def list_tools() -> list[Tool]:
 # ============================================================================
 # Tool Implementations
 # ============================================================================
+
 
 def session_start(
     platform: str,
@@ -386,7 +349,13 @@ def session_start(
             VALUES (%s, %s, %s, %s, %s)
             RETURNING *
             """,
-            (platform, project_context, external_room_id, claude_session_id, json.dumps(metadata or {}))
+            (
+                platform,
+                project_context,
+                external_room_id,
+                claude_session_id,
+                json.dumps(metadata or {}),
+            ),
         )
         row = cur.fetchone()
 
@@ -396,7 +365,7 @@ def session_start(
             INSERT INTO sources (type, session_id, title)
             VALUES ('conversation', %s, %s)
             """,
-            (row["id"], f"Session: {row['id']}")
+            (row["id"], f"Session: {row['id']}"),
         )
 
         session = Session.from_row(dict(row))
@@ -421,7 +390,7 @@ def session_end(
             WHERE id = %s
             RETURNING *
             """,
-            (status, summary, themes, session_id)
+            (status, summary, themes, session_id),
         )
         row = cur.fetchone()
         if not row:
@@ -460,7 +429,7 @@ def session_get(
                 ORDER BY sequence DESC
                 LIMIT %s
                 """,
-                (session_id, exchange_limit)
+                (session_id, exchange_limit),
             )
             exchange_rows = cur.fetchall()
             result["exchanges"] = [
@@ -517,7 +486,7 @@ def session_find_by_room(external_room_id: str) -> dict[str, Any]:
             ORDER BY started_at DESC
             LIMIT 1
             """,
-            (external_room_id,)
+            (external_room_id,),
         )
         row = cur.fetchone()
 
@@ -548,7 +517,7 @@ def exchange_add(
         # Get next sequence number
         cur.execute(
             "SELECT COALESCE(MAX(sequence), 0) + 1 as next_seq FROM vkb_exchanges WHERE session_id = %s",
-            (session_id,)
+            (session_id,),
         )
         sequence = cur.fetchone()["next_seq"]
 
@@ -558,7 +527,14 @@ def exchange_add(
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
-            (session_id, sequence, role, content, tokens_approx, json.dumps(tool_uses or []))
+            (
+                session_id,
+                sequence,
+                role,
+                content,
+                tokens_approx,
+                json.dumps(tool_uses or []),
+            ),
         )
         row = cur.fetchone()
 
@@ -610,7 +586,7 @@ def pattern_record(
             VALUES (%s, %s, %s, %s)
             RETURNING *
             """,
-            (type, description, evidence_uuids, confidence)
+            (type, description, evidence_uuids, confidence),
         )
         row = cur.fetchone()
 
@@ -658,7 +634,7 @@ def pattern_reinforce(
             WHERE id = %s
             RETURNING *
             """,
-            (evidence, new_confidence, new_status, pattern_id)
+            (evidence, new_confidence, new_status, pattern_id),
         )
         row = cur.fetchone()
 
@@ -714,7 +690,7 @@ def pattern_search(
             ORDER BY confidence DESC
             LIMIT %s
             """,
-            (f"%{query}%", limit)
+            (f"%{query}%", limit),
         )
         rows = cur.fetchall()
 
@@ -748,7 +724,12 @@ def insight_extract(
             VALUES (%s, %s, %s, %s, 'conversation_extraction')
             RETURNING *
             """,
-            (content, json.dumps(confidence_obj.to_dict()), domain_path or [], source_id)
+            (
+                content,
+                json.dumps(confidence_obj.to_dict()),
+                domain_path or [],
+                source_id,
+            ),
         )
         belief_row = cur.fetchone()
         belief_id = belief_row["id"]
@@ -764,7 +745,7 @@ def insight_extract(
                     DO UPDATE SET modified_at = NOW()
                     RETURNING id
                     """,
-                    (entity["name"], entity.get("type", "concept"))
+                    (entity["name"], entity.get("type", "concept")),
                 )
                 entity_id = cur.fetchone()["id"]
 
@@ -774,7 +755,7 @@ def insight_extract(
                     VALUES (%s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
-                    (belief_id, entity_id, entity.get("role", "subject"))
+                    (belief_id, entity_id, entity.get("role", "subject")),
                 )
 
         # Link to session
@@ -785,7 +766,7 @@ def insight_extract(
             ON CONFLICT DO NOTHING
             RETURNING id
             """,
-            (session_id, belief_id)
+            (session_id, belief_id),
         )
         insight_row = cur.fetchone()
 
@@ -808,25 +789,27 @@ def insight_list(session_id: str) -> dict[str, Any]:
             WHERE si.session_id = %s
             ORDER BY si.extracted_at
             """,
-            (session_id,)
+            (session_id,),
         )
         rows = cur.fetchall()
 
         insights = []
         for row in rows:
-            insights.append({
-                "id": str(row["id"]),
-                "session_id": str(row["session_id"]),
-                "belief_id": str(row["belief_id"]),
-                "extraction_method": row["extraction_method"],
-                "extracted_at": row["extracted_at"].isoformat(),
-                "belief": {
-                    "content": row["content"],
-                    "confidence": row["confidence"],
-                    "domain_path": row["domain_path"],
-                    "created_at": row["belief_created_at"].isoformat(),
-                },
-            })
+            insights.append(
+                {
+                    "id": str(row["id"]),
+                    "session_id": str(row["session_id"]),
+                    "belief_id": str(row["belief_id"]),
+                    "extraction_method": row["extraction_method"],
+                    "extracted_at": row["extracted_at"].isoformat(),
+                    "belief": {
+                        "content": row["content"],
+                        "confidence": row["confidence"],
+                        "domain_path": row["domain_path"],
+                        "created_at": row["belief_created_at"].isoformat(),
+                    },
+                }
+            )
 
         return {
             "success": True,
@@ -838,6 +821,7 @@ def insight_list(session_id: str) -> dict[str, Any]:
 # ============================================================================
 # Tool Router
 # ============================================================================
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -942,42 +926,56 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
     except ValidationException as e:
         logger.warning(f"Validation error in tool {name}: {e}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Validation error: {e.message}",
-            "details": e.details,
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Validation error: {e.message}",
+                        "details": e.details,
+                    }
+                ),
+            )
+        ]
     except DatabaseException as e:
         logger.error(f"Database error in tool {name}: {e}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Database error: {e.message}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Database error: {e.message}",
+                    }
+                ),
+            )
+        ]
     except Exception as e:
         logger.exception(f"Unexpected error in tool {name}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Internal error: {str(e)}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Internal error: {str(e)}",
+                    }
+                ),
+            )
+        ]
 
 
 # ============================================================================
 # Server Entry Point
 # ============================================================================
 
+
 def run() -> None:
     """Run the MCP server."""
     parser = argparse.ArgumentParser(description="Valence VKB MCP Server")
-    parser.add_argument(
-        "--health-check",
-        action="store_true",
-        help="Run health check and exit"
-    )
-    parser.add_argument(
-        "--skip-health-check",
-        action="store_true",
-        help="Skip startup health checks"
-    )
+    parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
+    parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")
     args = parser.parse_args()
 
     # Health check mode

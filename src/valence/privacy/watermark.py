@@ -29,8 +29,8 @@ class WatermarkTechnique(Enum):
     """Technique for embedding watermarks in content."""
 
     WHITESPACE = "whitespace"  # Space/tab patterns after punctuation
-    HOMOGLYPH = "homoglyph"    # Visually identical unicode characters
-    COMBINED = "combined"      # Use multiple techniques for redundancy
+    HOMOGLYPH = "homoglyph"  # Visually identical unicode characters
+    COMBINED = "combined"  # Use multiple techniques for redundancy
 
 
 # Zero-width characters for invisible encoding (subset of common ones)
@@ -133,10 +133,10 @@ class Watermark:
             recipient_len = struct.unpack(">H", data[12:14])[0]
             if len(data) < 14 + recipient_len + 16:
                 return None
-            recipient_id = data[14:14 + recipient_len].decode("utf-8")
+            recipient_id = data[14 : 14 + recipient_len].decode("utf-8")
 
             # Parse content hash
-            hash_bytes = data[14 + recipient_len:14 + recipient_len + 16]
+            hash_bytes = data[14 + recipient_len : 14 + recipient_len + 16]
             content_hash = hash_bytes.hex() if hash_bytes != b"\x00" * 16 else None
 
             watermark = cls(
@@ -163,11 +163,7 @@ class Watermark:
             Hex-encoded signature
         """
         payload = self.to_bytes()
-        self.signature = hmac.new(
-            secret_key,
-            payload,
-            hashlib.sha256
-        ).hexdigest()
+        self.signature = hmac.new(secret_key, payload, hashlib.sha256).hexdigest()
         return self.signature
 
     def verify(self, secret_key: bytes) -> bool:
@@ -183,11 +179,7 @@ class Watermark:
             return False
 
         payload = self.to_bytes()
-        expected = hmac.new(
-            secret_key,
-            payload,
-            hashlib.sha256
-        ).hexdigest()
+        expected = hmac.new(secret_key, payload, hashlib.sha256).hexdigest()
 
         return hmac.compare_digest(self.signature, expected)
 
@@ -261,7 +253,7 @@ class WatermarkCodec:
             byte = 0
             for bit in range(8):
                 if whitespace[i + bit] == TAB_SPACE:
-                    byte |= (1 << bit)
+                    byte |= 1 << bit
             result.append(byte)
 
         return bytes(result)
@@ -286,7 +278,7 @@ class WatermarkCodec:
         bits_needed = len(data) * 8
         if len(positions) < bits_needed:
             # Not enough carrier capacity - encode what we can
-            data = data[:len(positions) // 8]
+            data = data[: len(positions) // 8]
 
         # Build output with substitutions
         result = list(carrier_text)
@@ -334,7 +326,7 @@ class WatermarkCodec:
             byte = 0
             for bit in range(8):
                 if bits[i + bit]:
-                    byte |= (1 << bit)
+                    byte |= 1 << bit
             result.append(byte)
 
         return bytes(result)
@@ -360,10 +352,7 @@ class WatermarkCodec:
     def decode_zerowidth(text: str) -> bytes:
         """Decode bytes from zero-width characters."""
         # Extract zero-width characters
-        zw_chars = "".join(
-            c for c in text
-            if c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER)
-        )
+        zw_chars = "".join(c for c in text if c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER))
 
         if not zw_chars:
             return b""
@@ -378,7 +367,7 @@ class WatermarkCodec:
             byte = 0
             for bit, char in enumerate(byte_str[:8]):
                 if char == ZERO_WIDTH_NON_JOINER:
-                    byte |= (1 << bit)
+                    byte |= 1 << bit
             result.append(byte)
 
         return bytes(result)
@@ -408,7 +397,7 @@ def embed_watermark(
     else:  # COMBINED
         # Use multiple techniques for redundancy
         result = _embed_zerowidth(content, data)  # Primary: zero-width
-        result = _embed_homoglyph(result, data)   # Secondary: homoglyphs
+        result = _embed_homoglyph(result, data)  # Secondary: homoglyphs
         return result
 
 
@@ -417,7 +406,7 @@ def _embed_whitespace(content: str, data: bytes) -> str:
     encoded = WatermarkCodec.encode_whitespace(data)
 
     # Find sentence boundaries
-    sentences = re.split(r'([.!?])', content)
+    sentences = re.split(r"([.!?])", content)
     if len(sentences) < 3:
         # Not enough sentences - append to end
         return content + encoded
@@ -523,10 +512,7 @@ def strip_watermarks(content: str) -> str:
         Content with watermarks removed
     """
     # Remove zero-width characters
-    result = "".join(
-        c for c in content
-        if c not in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, WORD_JOINER)
-    )
+    result = "".join(c for c in content if c not in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, WORD_JOINER))
 
     # Normalize homoglyphs back to ASCII
     normalized = []
@@ -542,7 +528,7 @@ def strip_watermarks(content: str) -> str:
     result = "".join(normalized)
 
     # Normalize whitespace (collapse multiple spaces/tabs)
-    result = re.sub(r'[ \t]+', ' ', result)
+    result = re.sub(r"[ \t]+", " ", result)
     result = result.replace("\u00a0", " ")  # Non-breaking space
 
     return result
@@ -584,10 +570,7 @@ class WatermarkRegistry:
             ValueError: If secret_key is less than 16 bytes (insecure)
         """
         if len(secret_key) < 16:
-            raise ValueError(
-                "secret_key must be at least 16 bytes for security. "
-                "Use secrets.token_bytes(32) to generate a secure key."
-            )
+            raise ValueError("secret_key must be at least 16 bytes for security. " "Use secrets.token_bytes(32) to generate a secure key.")
         # Store as private attribute but expose via property
         # This makes it slightly harder to accidentally log/serialize
         self._secret_key = secret_key
@@ -607,10 +590,7 @@ class WatermarkRegistry:
 
     def __repr__(self) -> str:
         """Safe repr that doesn't expose the secret key."""
-        return (
-            f"WatermarkRegistry(tokens={len(self._watermarks)}, "
-            f"content_hashes={len(self._content_hashes)})"
-        )
+        return f"WatermarkRegistry(tokens={len(self._watermarks)}, " f"content_hashes={len(self._content_hashes)})"
 
     def create_watermark(
         self,

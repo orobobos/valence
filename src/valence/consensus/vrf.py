@@ -23,6 +23,7 @@ try:
         Ed25519PrivateKey,
         Ed25519PublicKey,
     )
+
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -47,8 +48,8 @@ class VRFProof:
 
     # The Ed25519 signature over the input
     gamma: bytes  # Point on curve (encoded)
-    c: bytes      # Challenge scalar
-    s: bytes      # Response scalar
+    c: bytes  # Challenge scalar
+    s: bytes  # Response scalar
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -84,7 +85,7 @@ class VRFProof:
             gamma=bytes.fromhex(data["gamma"]),
             c=bytes.fromhex(data["c"]),
             s=bytes.fromhex(data["s"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
         )
 
 
@@ -209,9 +210,7 @@ class VRF:
             VRFOutput containing the deterministic ticket and proof
         """
         # Hash input with domain separator
-        input_hash = hashlib.sha512(
-            DOMAIN_SEPARATOR_VRF_PROVE + alpha
-        ).digest()
+        input_hash = hashlib.sha512(DOMAIN_SEPARATOR_VRF_PROVE + alpha).digest()
 
         # Sign the hashed input
         # This serves as our "gamma" - the core VRF computation
@@ -219,9 +218,7 @@ class VRF:
 
         # Derive the VRF output (ticket) from the signature
         # Hash again with different domain separator for output derivation
-        ticket = hashlib.sha512(
-            DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash
-        ).digest()[:VRF_OUTPUT_SIZE]
+        ticket = hashlib.sha512(DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash).digest()[:VRF_OUTPUT_SIZE]
 
         # Create proof (using signature components)
         # In a full ECVRF implementation, gamma/c/s would be curve points/scalars
@@ -262,9 +259,7 @@ class VRF:
             public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
 
             # Reconstruct the input hash
-            input_hash = hashlib.sha512(
-                DOMAIN_SEPARATOR_VRF_PROVE + alpha
-            ).digest()
+            input_hash = hashlib.sha512(DOMAIN_SEPARATOR_VRF_PROVE + alpha).digest()
 
             # Verify input hash matches
             if output.input_hash != input_hash[:32]:
@@ -277,9 +272,7 @@ class VRF:
             public_key.verify(signature, input_hash)
 
             # Verify the ticket derivation
-            expected_ticket = hashlib.sha512(
-                DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash
-            ).digest()[:VRF_OUTPUT_SIZE]
+            expected_ticket = hashlib.sha512(DOMAIN_SEPARATOR_VRF_HASH + signature + input_hash).digest()[:VRF_OUTPUT_SIZE]
 
             if output.ticket != expected_ticket:
                 return False
@@ -310,12 +303,7 @@ class VRF:
         Returns:
             New epoch seed (32 bytes)
         """
-        data = (
-            DOMAIN_SEPARATOR_EPOCH_SEED +
-            previous_seed +
-            block_hash +
-            epoch_number.to_bytes(8, "big")
-        )
+        data = DOMAIN_SEPARATOR_EPOCH_SEED + previous_seed + block_hash + epoch_number.to_bytes(8, "big")
         return hashlib.sha256(data).digest()
 
     @staticmethod
@@ -330,9 +318,7 @@ class VRF:
         """
         # In production, this would come from a distributed ceremony
         # For now, use a deterministic value based on domain separator
-        return hashlib.sha256(
-            DOMAIN_SEPARATOR_EPOCH_SEED + b"genesis"
-        ).digest()
+        return hashlib.sha256(DOMAIN_SEPARATOR_EPOCH_SEED + b"genesis").digest()
 
 
 def compute_selection_ticket(
@@ -351,8 +337,6 @@ def compute_selection_ticket(
         VRF output containing the selection ticket
     """
     # Combine epoch seed with agent fingerprint
-    input_data = hashlib.sha256(
-        epoch_seed + agent_fingerprint
-    ).digest()
+    input_data = hashlib.sha256(epoch_seed + agent_fingerprint).digest()
 
     return vrf.prove(input_data)

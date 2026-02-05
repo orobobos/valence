@@ -34,21 +34,25 @@ DEFAULT_TARGET_LEVEL = ShareLevel.BOUNDED  # Default elevation target
 
 class CorroborationError(Exception):
     """Base exception for corroboration operations."""
+
     pass
 
 
 class BeliefNotFoundError(CorroborationError):
     """Raised when a belief is not found."""
+
     pass
 
 
 class DuplicateSourceError(CorroborationError):
     """Raised when trying to add corroboration from same source twice."""
+
     pass
 
 
 class AutoElevationDisabledError(CorroborationError):
     """Raised when auto-elevation is disabled for a belief/owner."""
+
     pass
 
 
@@ -175,7 +179,7 @@ class CorroborationEvidence:
             "source_count": self.source_count,
             "average_similarity": self.average_similarity,
             "threshold_met": self.threshold_met,
-            "threshold_met_at": self.threshold_met_at.isoformat() if self.threshold_met_at else None,
+            "threshold_met_at": (self.threshold_met_at.isoformat() if self.threshold_met_at else None),
             "auto_elevation_proposed": self.auto_elevation_proposed,
             "proposal_id": self.proposal_id,
             "auto_elevation_enabled": self.auto_elevation_enabled,
@@ -189,7 +193,7 @@ class CorroborationEvidence:
             owner_did=data["owner_did"],
             sources=[CorroboratingSource.from_dict(s) for s in data.get("sources", [])],
             threshold_met=data.get("threshold_met", False),
-            threshold_met_at=datetime.fromisoformat(data["threshold_met_at"]) if data.get("threshold_met_at") else None,
+            threshold_met_at=(datetime.fromisoformat(data["threshold_met_at"]) if data.get("threshold_met_at") else None),
             auto_elevation_proposed=data.get("auto_elevation_proposed", False),
             proposal_id=data.get("proposal_id"),
             auto_elevation_enabled=data.get("auto_elevation_enabled", True),
@@ -354,9 +358,7 @@ class CorroborationDetector:
         """
         # Validate similarity threshold
         if similarity < self.similarity_threshold:
-            raise ValueError(
-                f"Similarity {similarity:.3f} below threshold {self.similarity_threshold}"
-            )
+            raise ValueError(f"Similarity {similarity:.3f} below threshold {self.similarity_threshold}")
 
         # Get or create evidence record
         evidence = self._evidence.get(belief_id)
@@ -369,14 +371,10 @@ class CorroborationDetector:
 
         # Check for duplicate source
         if source_did in evidence.source_dids:
-            raise DuplicateSourceError(
-                f"Source {source_did} already corroborated belief {belief_id}"
-            )
+            raise DuplicateSourceError(f"Source {source_did} already corroborated belief {belief_id}")
 
         # Check opt-out status
-        evidence.auto_elevation_enabled = self._is_auto_elevation_enabled(
-            belief_id, owner_did
-        )
+        evidence.auto_elevation_enabled = self._is_auto_elevation_enabled(belief_id, owner_did)
 
         # Create and add source
         source = CorroboratingSource(
@@ -389,16 +387,10 @@ class CorroborationDetector:
         evidence.add_source(source)
 
         # Check if threshold now met
-        if (
-            not evidence.threshold_met
-            and evidence.source_count >= self.corroboration_threshold
-        ):
+        if not evidence.threshold_met and evidence.source_count >= self.corroboration_threshold:
             evidence.threshold_met = True
             evidence.threshold_met_at = datetime.now(UTC)
-            logger.info(
-                f"Corroboration threshold met for belief {belief_id} "
-                f"({evidence.source_count} sources)"
-            )
+            logger.info(f"Corroboration threshold met for belief {belief_id} " f"({evidence.source_count} sources)")
 
         return evidence
 
@@ -471,13 +463,15 @@ class CorroborationDetector:
                 except ValueError:
                     level = ShareLevel.PRIVATE
 
-                results.append(SimilarBelief(
-                    belief_id=belief["id"],
-                    owner_did=belief.get("owner_did", ""),
-                    content=belief_content[:200],  # Truncate for privacy
-                    similarity=similarity,
-                    current_level=level,
-                ))
+                results.append(
+                    SimilarBelief(
+                        belief_id=belief["id"],
+                        owner_did=belief.get("owner_did", ""),
+                        content=belief_content[:200],  # Truncate for privacy
+                        similarity=similarity,
+                        current_level=level,
+                    )
+                )
 
         # Sort by similarity descending
         results.sort(key=lambda x: x.similarity, reverse=True)
@@ -510,21 +504,14 @@ class CorroborationDetector:
 
         # Check opt-out
         if not evidence.auto_elevation_enabled:
-            raise AutoElevationDisabledError(
-                f"Auto-elevation disabled for belief {belief_id}"
-            )
+            raise AutoElevationDisabledError(f"Auto-elevation disabled for belief {belief_id}")
 
         if not self._is_auto_elevation_enabled(belief_id, evidence.owner_did):
-            raise AutoElevationDisabledError(
-                f"Auto-elevation disabled by owner {evidence.owner_did}"
-            )
+            raise AutoElevationDisabledError(f"Auto-elevation disabled by owner {evidence.owner_did}")
 
         # Check threshold
         if not evidence.threshold_met:
-            raise ValueError(
-                f"Corroboration threshold not met: {evidence.source_count} < "
-                f"{self.corroboration_threshold}"
-            )
+            raise ValueError(f"Corroboration threshold not met: {evidence.source_count} < " f"{self.corroboration_threshold}")
 
         # Already proposed?
         if evidence.auto_elevation_proposed and evidence.proposal_id:
@@ -554,7 +541,7 @@ class CorroborationDetector:
                 "source_count": evidence.source_count,
                 "average_similarity": evidence.average_similarity,
                 "sources": [s.source_did for s in evidence.sources],
-                "threshold_met_at": evidence.threshold_met_at.isoformat() if evidence.threshold_met_at else None,
+                "threshold_met_at": (evidence.threshold_met_at.isoformat() if evidence.threshold_met_at else None),
             },
         )
 
@@ -562,9 +549,7 @@ class CorroborationDetector:
         evidence.auto_elevation_proposed = True
         evidence.proposal_id = proposal.proposal_id
 
-        logger.info(
-            f"Auto-elevation proposed for belief {belief_id}: {proposal.proposal_id}"
-        )
+        logger.info(f"Auto-elevation proposed for belief {belief_id}: {proposal.proposal_id}")
 
         return proposal
 
@@ -585,10 +570,7 @@ class CorroborationDetector:
         Returns:
             List of evidence records awaiting elevation decision
         """
-        return [
-            e for e in self._evidence.values()
-            if e.threshold_met and e.auto_elevation_enabled
-        ]
+        return [e for e in self._evidence.values() if e.threshold_met and e.auto_elevation_enabled]
 
     def get_threshold_met(self) -> list[CorroborationEvidence]:
         """Get all beliefs that have met the corroboration threshold.
@@ -729,20 +711,14 @@ class CorroborationDetector:
                 updated.append(evidence)
 
                 # Auto-propose elevation if threshold just met
-                if (
-                    evidence.threshold_met
-                    and evidence.auto_elevation_enabled
-                    and not evidence.auto_elevation_proposed
-                ):
+                if evidence.threshold_met and evidence.auto_elevation_enabled and not evidence.auto_elevation_proposed:
                     try:
                         self.propose_auto_elevation(match.belief_id)
                     except (AutoElevationDisabledError, ValueError) as e:
                         logger.debug(f"Skipping auto-elevation: {e}")
 
             except DuplicateSourceError:
-                logger.debug(
-                    f"Source {source_did} already corroborated {match.belief_id}"
-                )
+                logger.debug(f"Source {source_did} already corroborated {match.belief_id}")
             except ValueError as e:
                 logger.debug(f"Corroboration rejected: {e}")
 

@@ -11,20 +11,20 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
+from valence.network.connection_manager import (
+    ConnectionManager,
+    ConnectionManagerConfig,
+)
+from valence.network.discovery import RouterInfo
+from valence.network.node import RouterConnection
 from valence.network.router_client import (
     RouterClient,
     RouterClientConfig,
 )
-from valence.network.connection_manager import ConnectionManager, ConnectionManagerConfig
-from valence.network.discovery import RouterInfo
-from valence.network.node import RouterConnection, FailoverState
-
 
 # =============================================================================
 # Fixtures
@@ -185,12 +185,10 @@ class TestRouterSelection:
     def test_select_router_single_connection(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection with single connection."""
         # Add connection to manager
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
-        
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
+
         result = router_client.select_router()
-        
+
         assert result is not None
         assert result.router_id == mock_router_connection.router.router_id
 
@@ -198,12 +196,10 @@ class TestRouterSelection:
         """Test router selection excludes closed connections."""
         # Mark connection as closed
         mock_router_connection.websocket.closed = True
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
-        
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
+
         result = router_client.select_router()
-        
+
         # Should not select closed connection
         assert result is None
 
@@ -212,42 +208,36 @@ class TestRouterSelection:
         # Mark as under back-pressure
         mock_router_connection.back_pressure_active = True
         mock_router_connection.back_pressure_until = time.time() + 100
-        
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
-        
+
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
+
         result = router_client.select_router(exclude_back_pressured=True)
-        
+
         # With only back-pressured connections, should still return something
         # as fallback
         assert result is not None
 
     def test_select_router_uses_health_callback(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection uses health callback."""
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
-        
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
+
         # Set up health callback
         router_client.get_aggregated_health = MagicMock(return_value=0.9)
-        
+
         result = router_client.select_router()
-        
+
         # Health callback should have been called
         router_client.get_aggregated_health.assert_called_with(mock_router_connection.router.router_id)
 
     def test_select_router_penalizes_flagged(self, router_client, mock_connection_manager, mock_router_connection):
         """Test router selection penalizes flagged routers."""
-        mock_connection_manager.connections = {
-            mock_router_connection.router.router_id: mock_router_connection
-        }
-        
+        mock_connection_manager.connections = {mock_router_connection.router.router_id: mock_router_connection}
+
         # Set up flagged router check
         router_client.is_router_flagged = MagicMock(return_value=True)
-        
+
         result = router_client.select_router()
-        
+
         # Flag check should have been called
         router_client.is_router_flagged.assert_called_with(mock_router_connection.router.router_id)
 
@@ -269,7 +259,7 @@ class TestBackPressureHandling:
             retry_after_ms=5000,
             reason="high load",
         )
-        
+
         assert mock_router_connection.back_pressure_active is True
         assert mock_router_connection.back_pressure_retry_ms == 5000
         assert mock_router_connection.back_pressure_until > time.time()
@@ -279,12 +269,12 @@ class TestBackPressureHandling:
         # First activate back-pressure
         mock_router_connection.back_pressure_active = True
         mock_router_connection.back_pressure_until = time.time() + 100
-        
+
         router_client.handle_back_pressure(
             conn=mock_router_connection,
             active=False,
         )
-        
+
         assert mock_router_connection.back_pressure_active is False
         assert mock_router_connection.back_pressure_until == 0.0
 
@@ -300,17 +290,17 @@ class TestDirectMode:
     def test_enable_direct_mode(self, router_client):
         """Test enabling direct mode."""
         assert router_client.direct_mode is False
-        
+
         router_client._enable_direct_mode()
-        
+
         assert router_client.direct_mode is True
 
     def test_disable_direct_mode(self, router_client):
         """Test disabling direct mode."""
         router_client.direct_mode = True
-        
+
         router_client._disable_direct_mode()
-        
+
         assert router_client.direct_mode is False
 
 
@@ -326,41 +316,48 @@ class TestRouterRotation:
     async def test_check_rotation_needed_disabled(self, router_client):
         """Test rotation check when disabled."""
         router_client.config.rotation_enabled = False
-        
+
         result = await router_client.check_rotation_needed()
-        
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_check_rotation_needed_no_connections(self, router_client, mock_connection_manager):
         """Test rotation check with no connections."""
         mock_connection_manager.connections = {}
-        
+
         result = await router_client.check_rotation_needed()
-        
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_check_rotation_needed_old_connection(self, router_client, mock_connection_manager, mock_router_connection):
         """Test rotation check detects old connection."""
         router_id = mock_router_connection.router.router_id
-        
+
         # Set connection timestamp to exceed max age
         old_time = time.time() - 200  # Exceeds rotation_max_age of 120
         mock_router_connection.connected_at = old_time
         mock_connection_manager._connection_timestamps = {router_id: old_time}
         mock_connection_manager.connections = {router_id: mock_router_connection}
-        
+
         result = await router_client.check_rotation_needed()
-        
+
         assert result == router_id
 
     @pytest.mark.asyncio
-    async def test_rotate_router_success(self, router_client, mock_connection_manager, mock_discovery, mock_router_info, mock_router_connection):
+    async def test_rotate_router_success(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_discovery,
+        mock_router_info,
+        mock_router_connection,
+    ):
         """Test successful router rotation."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
-        
+
         # Mock discovery to return new router
         new_router = RouterInfo(
             router_id="new" * 16,
@@ -371,12 +368,12 @@ class TestRouterRotation:
             features=[],
         )
         mock_discovery.discover_routers = AsyncMock(return_value=[new_router])
-        
+
         result = await router_client.rotate_router(router_id, reason="test")
-        
+
         # Should have closed old connection
         mock_connection_manager.close_connection.assert_called()
-        
+
         # Stats should be updated
         assert router_client._stats["routers_rotated"] == 1
 
@@ -384,9 +381,9 @@ class TestRouterRotation:
     async def test_rotate_router_nonexistent(self, router_client, mock_connection_manager):
         """Test rotating non-existent router."""
         mock_connection_manager.connections = {}
-        
+
         result = await router_client.rotate_router("nonexistent")
-        
+
         assert result is False
 
 
@@ -399,50 +396,68 @@ class TestFailoverHandling:
     """Tests for failover handling."""
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_creates_failover_state(self, router_client, mock_connection_manager, mock_router_connection, mock_discovery):
+    async def test_handle_router_failure_creates_failover_state(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_router_connection,
+        mock_discovery,
+    ):
         """Test that router failure creates failover state."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
         mock_discovery.discover_routers = AsyncMock(return_value=[])
-        
+
         await router_client.handle_router_failure(router_id)
-        
+
         # Failover state should be created
         assert router_id in mock_connection_manager.failover_states
         state = mock_connection_manager.failover_states[router_id]
         assert state.fail_count == 1
         assert state.cooldown_until > time.time()
-        
+
         # Stats should be updated
         assert router_client._stats["failovers"] == 1
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_exponential_backoff(self, router_client, mock_connection_manager, mock_router_connection, mock_discovery):
+    async def test_handle_router_failure_exponential_backoff(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_router_connection,
+        mock_discovery,
+    ):
         """Test exponential backoff on repeated failures."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
         mock_discovery.discover_routers = AsyncMock(return_value=[])
-        
+
         # First failure
         await router_client.handle_router_failure(router_id)
         first_cooldown = mock_connection_manager.failover_states[router_id].cooldown_until
-        
+
         # Reset connection for second failure
         mock_connection_manager.connections = {router_id: mock_router_connection}
-        
+
         # Second failure
         await router_client.handle_router_failure(router_id)
         second_cooldown = mock_connection_manager.failover_states[router_id].cooldown_until
-        
+
         # Second cooldown should be longer (exponential backoff)
         assert mock_connection_manager.failover_states[router_id].fail_count == 2
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_connects_to_alternative(self, router_client, mock_connection_manager, mock_router_connection, mock_discovery):
+    async def test_handle_router_failure_connects_to_alternative(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_router_connection,
+        mock_discovery,
+    ):
         """Test that failover connects to alternative router."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
-        
+
         # Mock alternative router
         alternative = RouterInfo(
             router_id="alt" * 16,
@@ -453,25 +468,31 @@ class TestFailoverHandling:
             features=[],
         )
         mock_discovery.discover_routers = AsyncMock(return_value=[alternative])
-        
+
         await router_client.handle_router_failure(router_id)
-        
+
         # Should have tried to connect to alternative
         mock_connection_manager.connect_to_router.assert_called()
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_enables_direct_mode(self, router_client, mock_connection_manager, mock_router_connection, mock_discovery):
+    async def test_handle_router_failure_enables_direct_mode(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_router_connection,
+        mock_discovery,
+    ):
         """Test that direct mode is enabled when no alternatives available."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
         mock_connection_manager.connection_count = 0
-        
+
         # No alternatives available
         mock_discovery.discover_routers = AsyncMock(return_value=[])
         mock_connection_manager.connect_to_router = AsyncMock(side_effect=Exception("Failed"))
-        
+
         await router_client.handle_router_failure(router_id)
-        
+
         # Direct mode should be enabled
         assert router_client.direct_mode is True
 
@@ -479,17 +500,23 @@ class TestFailoverHandling:
     async def test_handle_router_failure_nonexistent(self, router_client, mock_connection_manager):
         """Test handling failure for non-existent router."""
         mock_connection_manager.connections = {}
-        
+
         result = await router_client.handle_router_failure("nonexistent")
-        
+
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_handle_router_failure_retries_messages(self, router_client, mock_connection_manager, mock_router_connection, mock_discovery):
+    async def test_handle_router_failure_retries_messages(
+        self,
+        router_client,
+        mock_connection_manager,
+        mock_router_connection,
+        mock_discovery,
+    ):
         """Test that pending messages are retried on failover."""
         router_id = mock_router_connection.router.router_id
         mock_connection_manager.connections = {router_id: mock_router_connection}
-        
+
         # Mock alternative
         alternative = RouterInfo(
             router_id="alt" * 16,
@@ -501,16 +528,17 @@ class TestFailoverHandling:
         )
         mock_discovery.discover_routers = AsyncMock(return_value=[alternative])
         mock_connection_manager.connect_to_router = AsyncMock()
-        
+
         # Track retry callback
         retry_called = []
+
         async def on_retry():
             retry_called.append(True)
-        
+
         await router_client.handle_router_failure(
             router_id,
             on_retry_messages=on_retry,
         )
-        
+
         # Retry callback should have been called
         assert len(retry_called) == 1

@@ -7,9 +7,6 @@ import logging
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ============================================================================
 # Correlation ID Tests
 # ============================================================================
@@ -483,9 +480,7 @@ class TestConfigureLogging:
         configure_logging(log_file=str(log_file))
 
         root = logging.getLogger()
-        file_handlers = [
-            h for h in root.handlers if isinstance(h, logging.FileHandler)
-        ]
+        file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
         assert len(file_handlers) == 1
 
     def test_file_handler_uses_json(self, tmp_path):
@@ -496,9 +491,7 @@ class TestConfigureLogging:
         configure_logging(log_file=str(log_file), json_format=False)
 
         root = logging.getLogger()
-        file_handlers = [
-            h for h in root.handlers if isinstance(h, logging.FileHandler)
-        ]
+        file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
         assert isinstance(file_handlers[0].formatter, JSONFormatter)
 
     def test_removes_existing_handlers(self):

@@ -9,14 +9,14 @@ Verifies:
 from __future__ import annotations
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from valence.embeddings.service import (
     EmbeddingProvider,
-    get_embedding_provider,
     generate_embedding,
     generate_local_embedding,
+    get_embedding_provider,
 )
 
 
@@ -78,14 +78,14 @@ class TestLocalEmbedding:
         """Mock the local model to avoid loading it in tests."""
         import numpy as np
         from valence.embeddings.providers import local
-        
+
         mock_model = MagicMock()
         # Return normalized 384-dim vector
         normalized_vec = np.random.randn(384).astype(np.float32)
         normalized_vec = normalized_vec / np.linalg.norm(normalized_vec)
         mock_model.encode.return_value = normalized_vec
         mock_model.get_sentence_embedding_dimension.return_value = 384
-        
+
         local._model = mock_model
         yield mock_model
         local.reset_model()
@@ -93,13 +93,13 @@ class TestLocalEmbedding:
     def test_local_embedding_returns_384_dimensions(self, mock_local_model):
         """Local embeddings should return 384 dimensions."""
         result = generate_local_embedding("test text")
-        
+
         assert len(result) == 384
 
     def test_local_embedding_calls_encode(self, mock_local_model):
         """Local embeddings should call model.encode."""
         generate_local_embedding("test text")
-        
+
         mock_local_model.encode.assert_called_once()
 
 
@@ -112,12 +112,12 @@ class TestGenerateEmbedding:
         with patch("valence.embeddings.service.get_openai_client") as mock:
             client = MagicMock()
             mock.return_value = client
-            
+
             # Mock response
             response = MagicMock()
             response.data = [MagicMock(embedding=[0.1] * 1536)]
             client.embeddings.create.return_value = response
-            
+
             yield client
 
     @pytest.fixture
@@ -125,13 +125,13 @@ class TestGenerateEmbedding:
         """Mock local model."""
         import numpy as np
         from valence.embeddings.providers import local
-        
+
         mock_model = MagicMock()
         normalized_vec = np.random.randn(384).astype(np.float32)
         normalized_vec = normalized_vec / np.linalg.norm(normalized_vec)
         mock_model.encode.return_value = normalized_vec
         mock_model.get_sentence_embedding_dimension.return_value = 384
-        
+
         local._model = mock_model
         yield mock_model
         local.reset_model()
@@ -141,24 +141,21 @@ class TestGenerateEmbedding:
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("VALENCE_EMBEDDING_PROVIDER", None)
             result = generate_embedding("test text")
-            
+
             assert len(result) == 384
             mock_local_model.encode.assert_called_once()
 
     def test_explicit_openai_provider(self, mock_openai):
         """Should use OpenAI when explicitly specified."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
-            result = generate_embedding(
-                "test text",
-                provider=EmbeddingProvider.OPENAI
-            )
-            
+            result = generate_embedding("test text", provider=EmbeddingProvider.OPENAI)
+
             assert len(result) == 1536
 
     def test_explicit_local_provider(self, mock_local_model):
         """Should use local when explicitly specified."""
         result = generate_embedding("test", provider=EmbeddingProvider.LOCAL)
-        
+
         assert len(result) == 384
         mock_local_model.encode.assert_called_once()
 
@@ -167,7 +164,7 @@ class TestGenerateEmbedding:
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test"}):
             long_text = "a" * 10000
             generate_embedding(long_text, provider=EmbeddingProvider.OPENAI)
-            
+
             # Check that truncated text was sent
             call_args = mock_openai.embeddings.create.call_args
             sent_text = call_args.kwargs.get("input") or call_args[1].get("input")
@@ -179,24 +176,23 @@ class TestBeliefOptOut:
 
     def test_belief_create_accepts_opt_out(self):
         """belief_create should accept opt_out_federation parameter."""
-        from valence.substrate.tools import belief_create
-        
         # This tests the function signature accepts the parameter
         # Full integration test would require database
         import inspect
+
+        from valence.substrate.tools import belief_create
+
         sig = inspect.signature(belief_create)
         params = list(sig.parameters.keys())
-        
+
         assert "opt_out_federation" in params
 
     def test_belief_create_schema_includes_opt_out(self):
         """Tool schema should include opt_out_federation."""
         from valence.substrate.tools import SUBSTRATE_TOOLS
-        
-        belief_create_tool = next(
-            t for t in SUBSTRATE_TOOLS if t.name == "belief_create"
-        )
-        
+
+        belief_create_tool = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_create")
+
         schema = belief_create_tool.inputSchema
         assert "opt_out_federation" in schema["properties"]
         assert schema["properties"]["opt_out_federation"]["type"] == "boolean"

@@ -12,19 +12,19 @@ from typing import Any
 class ShareLevel(Enum):
     """Graduated levels of belief sharing permissions."""
 
-    PRIVATE = "private"      # Never leaves node
-    DIRECT = "direct"        # Specific recipient, no reshare
-    BOUNDED = "bounded"      # Can reshare within scope
+    PRIVATE = "private"  # Never leaves node
+    DIRECT = "direct"  # Specific recipient, no reshare
+    BOUNDED = "bounded"  # Can reshare within scope
     CASCADING = "cascading"  # Propagates with restrictions
-    PUBLIC = "public"        # Open
+    PUBLIC = "public"  # Open
 
 
 class EnforcementType(Enum):
     """How sharing policies are enforced."""
 
     CRYPTOGRAPHIC = "cryptographic"  # Math enforced (encryption, signatures)
-    POLICY = "policy"                # Protocol enforced (software checks)
-    HONOR = "honor"                  # Trust-based (no technical enforcement)
+    POLICY = "policy"  # Protocol enforced (software checks)
+    HONOR = "honor"  # Trust-based (no technical enforcement)
 
 
 @dataclass
@@ -91,7 +91,7 @@ class SharePolicy:
             level=ShareLevel(data["level"]),
             enforcement=EnforcementType(data.get("enforcement", "policy")),
             recipients=data.get("recipients"),
-            propagation=PropagationRules.from_dict(data["propagation"]) if data.get("propagation") else None,
+            propagation=(PropagationRules.from_dict(data["propagation"]) if data.get("propagation") else None),
         )
 
     @classmethod

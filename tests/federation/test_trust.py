@@ -10,33 +10,30 @@ Tests cover:
 
 from __future__ import annotations
 
-import json
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Generator
 from unittest.mock import MagicMock, patch
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 import pytest
-
-from valence.federation.trust import (
-    TrustManager,
-    TrustSignal,
-    SIGNAL_WEIGHTS,
-    get_trust_manager,
-    get_effective_trust,
-    process_corroboration,
-    process_dispute,
-    assess_and_respond_to_threat,
-)
 from valence.federation.models import (
+    AnnotationType,
     NodeTrust,
+    ThreatLevel,
     TrustPhase,
     TrustPreference,
-    ThreatLevel,
-    AnnotationType,
 )
-
+from valence.federation.trust import (
+    SIGNAL_WEIGHTS,
+    TrustManager,
+    TrustSignal,
+    assess_and_respond_to_threat,
+    get_effective_trust,
+    get_trust_manager,
+    process_corroboration,
+    process_dispute,
+)
 
 # =============================================================================
 # FIXTURES
@@ -55,6 +52,7 @@ def mock_cursor():
 @pytest.fixture
 def mock_get_cursor(mock_cursor):
     """Mock the get_cursor context manager."""
+
     @contextmanager
     def _mock_get_cursor(dict_cursor: bool = True) -> Generator:
         yield mock_cursor
@@ -66,6 +64,7 @@ def mock_get_cursor(mock_cursor):
 @pytest.fixture
 def sample_node_trust():
     """Create a sample NodeTrust mock."""
+
     def _factory(**kwargs):
         trust = MagicMock(spec=NodeTrust)
         trust.id = kwargs.get("id", uuid4())
@@ -83,12 +82,10 @@ def sample_node_trust():
         trust.aggregation_participations = kwargs.get("aggregation_participations", 3)
         trust.endorsements_received = kwargs.get("endorsements_received", 0)
         trust.manual_trust_adjustment = kwargs.get("manual_trust_adjustment", 0.0)
-        trust.relationship_started_at = kwargs.get(
-            "relationship_started_at",
-            datetime.now() - timedelta(days=30)
-        )
+        trust.relationship_started_at = kwargs.get("relationship_started_at", datetime.now() - timedelta(days=30))
         trust.last_interaction_at = kwargs.get("last_interaction_at", datetime.now())
         return trust
+
     return _factory
 
 
@@ -173,7 +170,7 @@ class TestSignalWeights:
             "sync_failure",
             "aggregation_participation",
         ]
-        
+
         for signal in expected_signals:
             assert signal in SIGNAL_WEIGHTS
 
@@ -200,10 +197,11 @@ class TestTrustManagerInit:
 
     def test_trust_manager_init_default(self):
         """Test TrustManager with default parameters."""
-        with patch("valence.federation.trust.TrustRegistry") as MockRegistry, \
-             patch("valence.federation.trust.ThreatDetector") as MockDetector, \
-             patch("valence.federation.trust.TrustPolicy") as MockPolicy:
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry") as MockRegistry,
+            patch("valence.federation.trust.ThreatDetector") as MockDetector,
+            patch("valence.federation.trust.TrustPolicy") as MockPolicy,
+        ):
             manager = TrustManager()
 
             MockRegistry.assert_called_once()
@@ -214,10 +212,11 @@ class TestTrustManagerInit:
 
     def test_trust_manager_init_custom(self):
         """Test TrustManager with custom parameters."""
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager(
                 decay_half_life_days=60,
                 decay_min_threshold=0.05,
@@ -236,10 +235,11 @@ class TestTrustManagerDelegation:
         expected_trust = sample_node_trust(node_id=node_id)
         mock_registry.get_node_trust.return_value = expected_trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.get_node_trust(node_id)
 
@@ -251,10 +251,11 @@ class TestTrustManagerDelegation:
         node_id = uuid4()
         mock_registry.get_user_trust_preference.return_value = None
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.get_user_trust_preference(node_id)
 
@@ -266,10 +267,11 @@ class TestTrustManagerDelegation:
         node_id = uuid4()
         mock_policy.get_effective_trust.return_value = 0.75
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy", return_value=mock_policy):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy", return_value=mock_policy),
+        ):
             manager = TrustManager()
             result = manager.get_effective_trust(node_id, domain="science")
 
@@ -281,13 +283,17 @@ class TestTrustManagerDelegation:
         node_id = uuid4()
         mock_threat_detector.assess_threat_level.return_value = (
             ThreatLevel.LOW,
-            {"threat_score": 0.15, "signals": []}
+            {"threat_score": 0.15, "signals": []},
         )
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector", return_value=mock_threat_detector), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch(
+                "valence.federation.trust.ThreatDetector",
+                return_value=mock_threat_detector,
+            ),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             level, assessment = manager.assess_threat_level(node_id)
 
@@ -299,16 +305,16 @@ class TestTrustManagerDelegation:
         node_id = uuid4()
         mock_threat_detector.apply_threat_response.return_value = True
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector", return_value=mock_threat_detector), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch(
+                "valence.federation.trust.ThreatDetector",
+                return_value=mock_threat_detector,
+            ),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
-            result = manager.apply_threat_response(
-                node_id,
-                ThreatLevel.MEDIUM,
-                {"threat_score": 0.45}
-            )
+            result = manager.apply_threat_response(node_id, ThreatLevel.MEDIUM, {"threat_score": 0.45})
 
             mock_threat_detector.apply_threat_response.assert_called_once()
             assert result is True
@@ -318,10 +324,11 @@ class TestTrustManagerDelegation:
         node_id = uuid4()
         mock_policy.check_phase_transition.return_value = TrustPhase.CONTRIBUTOR
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy", return_value=mock_policy):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy", return_value=mock_policy),
+        ):
             manager = TrustManager()
             result = manager.check_phase_transition(node_id)
 
@@ -344,10 +351,11 @@ class TestProcessSignal:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             signal = TrustSignal(node_id=node_id, signal_type="corroboration")
             result = manager.process_signal(signal)
@@ -363,10 +371,11 @@ class TestProcessSignal:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             signal = TrustSignal(node_id=node_id, signal_type="dispute", value=1.0)
             result = manager.process_signal(signal)
@@ -381,10 +390,11 @@ class TestProcessSignal:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             signal = TrustSignal(node_id=node_id, signal_type="endorsement")
             result = manager.process_signal(signal)
@@ -399,10 +409,11 @@ class TestProcessSignal:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             signal = TrustSignal(node_id=node_id, signal_type="sync_success")
             result = manager.process_signal(signal)
@@ -415,10 +426,11 @@ class TestProcessSignal:
         node_id = uuid4()
         mock_registry.get_node_trust.return_value = None
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             signal = TrustSignal(node_id=node_id, signal_type="corroboration")
             result = manager.process_signal(signal)
@@ -432,16 +444,13 @@ class TestProcessSignal:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
-            signal = TrustSignal(
-                node_id=node_id,
-                signal_type="corroboration",
-                domain="science"
-            )
+            signal = TrustSignal(node_id=node_id, signal_type="corroboration", domain="science")
             result = manager.process_signal(signal)
 
             assert result is not None
@@ -459,10 +468,11 @@ class TestProcessCorroboration:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.process_corroboration(node_id)
 
@@ -476,10 +486,11 @@ class TestProcessCorroboration:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.process_corroboration(node_id, belief_id=belief_id)
 
@@ -496,10 +507,11 @@ class TestProcessDispute:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.process_dispute(node_id)
 
@@ -512,10 +524,11 @@ class TestProcessDispute:
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.process_dispute(node_id, severity=2.0)
 
@@ -534,10 +547,11 @@ class TestProcessEndorsement:
         mock_registry.save_node_trust.return_value = trust
         mock_policy.get_effective_trust.return_value = 0.6
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy", return_value=mock_policy):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy", return_value=mock_policy),
+        ):
             manager = TrustManager()
             result = manager.process_endorsement(subject_id, endorser_id)
 
@@ -558,16 +572,13 @@ class TestUserPreferences:
         mock_pref = MagicMock()
         mock_registry.set_user_preference.return_value = mock_pref
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
-            result = manager.set_user_preference(
-                node_id,
-                TrustPreference.ELEVATED,
-                reason="Trusted source"
-            )
+            result = manager.set_user_preference(node_id, TrustPreference.ELEVATED, reason="Trusted source")
 
             mock_registry.set_user_preference.assert_called_once()
             assert result == mock_pref
@@ -578,10 +589,11 @@ class TestUserPreferences:
         mock_pref = MagicMock()
         mock_registry.set_user_preference.return_value = mock_pref
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.block_node(node_id, reason="Suspicious")
 
@@ -595,10 +607,11 @@ class TestUserPreferences:
         mock_pref = MagicMock()
         mock_registry.set_user_preference.return_value = mock_pref
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.unblock_node(node_id)
 
@@ -620,16 +633,13 @@ class TestBeliefAnnotations:
         mock_annotation = MagicMock()
         mock_registry.annotate_belief.return_value = mock_annotation
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
-            result = manager.annotate_belief(
-                belief_id,
-                AnnotationType.CORROBORATION,
-                confidence_delta=0.05
-            )
+            result = manager.annotate_belief(belief_id, AnnotationType.CORROBORATION, confidence_delta=0.05)
 
             mock_registry.annotate_belief.assert_called_once()
             assert result == mock_annotation
@@ -639,10 +649,11 @@ class TestBeliefAnnotations:
         belief_id = uuid4()
         mock_registry.get_belief_trust_adjustments.return_value = 0.15
 
-        with patch("valence.federation.trust.TrustRegistry", return_value=mock_registry), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry", return_value=mock_registry),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = TrustManager()
             result = manager.get_belief_trust_adjustments(belief_id)
 
@@ -661,29 +672,33 @@ class TestGetTrustManager:
         """Test that get_trust_manager returns a TrustManager."""
         # Reset the global manager
         import valence.federation.trust
+
         valence.federation.trust._default_manager = None
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager = get_trust_manager()
-            
+
             assert manager is not None
             assert isinstance(manager, TrustManager)
 
     def test_get_trust_manager_singleton(self):
         """Test that get_trust_manager returns same instance."""
         import valence.federation.trust
+
         valence.federation.trust._default_manager = None
 
-        with patch("valence.federation.trust.TrustRegistry"), \
-             patch("valence.federation.trust.ThreatDetector"), \
-             patch("valence.federation.trust.TrustPolicy"):
-            
+        with (
+            patch("valence.federation.trust.TrustRegistry"),
+            patch("valence.federation.trust.ThreatDetector"),
+            patch("valence.federation.trust.TrustPolicy"),
+        ):
             manager1 = get_trust_manager()
             manager2 = get_trust_manager()
-            
+
             assert manager1 is manager2
 
 
@@ -693,7 +708,7 @@ class TestModuleLevelFunctions:
     def test_get_effective_trust_function(self):
         """Test module-level get_effective_trust."""
         node_id = uuid4()
-        
+
         with patch("valence.federation.trust.get_trust_manager") as mock_get_mgr:
             mock_mgr = MagicMock()
             mock_mgr.get_effective_trust.return_value = 0.7
@@ -707,7 +722,7 @@ class TestModuleLevelFunctions:
     def test_process_corroboration_function(self):
         """Test module-level process_corroboration."""
         node_id = uuid4()
-        
+
         with patch("valence.federation.trust.get_trust_manager") as mock_get_mgr:
             mock_mgr = MagicMock()
             mock_trust = MagicMock()
@@ -722,7 +737,7 @@ class TestModuleLevelFunctions:
     def test_process_dispute_function(self):
         """Test module-level process_dispute."""
         node_id = uuid4()
-        
+
         with patch("valence.federation.trust.get_trust_manager") as mock_get_mgr:
             mock_mgr = MagicMock()
             mock_trust = MagicMock()
@@ -737,12 +752,12 @@ class TestModuleLevelFunctions:
     def test_assess_and_respond_to_threat_function(self):
         """Test module-level assess_and_respond_to_threat."""
         node_id = uuid4()
-        
+
         with patch("valence.federation.trust.get_trust_manager") as mock_get_mgr:
             mock_mgr = MagicMock()
             mock_mgr.assess_threat_level.return_value = (
                 ThreatLevel.MEDIUM,
-                {"threat_score": 0.45}
+                {"threat_score": 0.45},
             )
             mock_mgr.apply_threat_response.return_value = True
             mock_get_mgr.return_value = mock_mgr

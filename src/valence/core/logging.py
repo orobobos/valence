@@ -178,6 +178,7 @@ def configure_logging(
     """
     # Get settings from config
     from .config import get_config
+
     config = get_config()
 
     level = config.log_level if level == "INFO" else level

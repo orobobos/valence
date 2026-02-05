@@ -118,10 +118,7 @@ class ConnectionManager:
             "active_connections": self.connection_count,
             "connected_subnets": len(self._connected_subnets),
             "connected_asns": len(self._connected_asns),
-            "routers_in_cooldown": sum(
-                1 for state in self.failover_states.values()
-                if state.is_in_cooldown()
-            ),
+            "routers_in_cooldown": sum(1 for state in self.failover_states.values() if state.is_in_cooldown()),
         }
 
     async def ensure_connections(self) -> None:
@@ -139,10 +136,7 @@ class ConnectionManager:
             for router_id, state in self.failover_states.items():
                 if state.is_in_cooldown():
                     excluded_ids.add(router_id)
-                    logger.debug(
-                        f"Excluding router {router_id[:16]}... from discovery "
-                        f"(in cooldown for {state.remaining_cooldown():.1f}s)"
-                    )
+                    logger.debug(f"Excluding router {router_id[:16]}... from discovery " f"(in cooldown for {state.remaining_cooldown():.1f}s)")
 
             # Discover routers
             try:
@@ -166,10 +160,7 @@ class ConnectionManager:
                 # Check IP diversity
                 if self.config.enforce_ip_diversity:
                     if not self.check_ip_diversity(router):
-                        logger.debug(
-                            f"Skipping router {router.router_id[:16]}... "
-                            f"(IP diversity check failed)"
-                        )
+                        logger.debug(f"Skipping router {router.router_id[:16]}... " f"(IP diversity check failed)")
                         continue
 
                 # Check ASN diversity
@@ -179,19 +170,14 @@ class ConnectionManager:
                 try:
                     await self.connect_to_router(router)
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to connect to router {router.router_id[:16]}...: {e}"
-                    )
+                    logger.warning(f"Failed to connect to router {router.router_id[:16]}...: {e}")
                     self._stats["connections_failed"] += 1
                     continue
 
             attempts += 1
 
         if self.connection_count < self.config.min_connections:
-            logger.warning(
-                f"Only {self.connection_count} connections established "
-                f"(minimum: {self.config.min_connections})"
-            )
+            logger.warning(f"Only {self.connection_count} connections established " f"(minimum: {self.config.min_connections})")
 
     def check_ip_diversity(self, router: RouterInfo) -> bool:
         """
@@ -221,9 +207,7 @@ class ConnectionManager:
                 return True  # Hostname, allow it
 
             if ip.version == 4:
-                network = ipaddress.ip_network(
-                    f"{ip}/{self.config.ip_diversity_prefix}", strict=False
-                )
+                network = ipaddress.ip_network(f"{ip}/{self.config.ip_diversity_prefix}", strict=False)
             else:
                 network = ipaddress.ip_network(f"{ip}/48", strict=False)
 
@@ -258,25 +242,18 @@ class ConnectionManager:
         if asn_str in self._connected_asns:
             if len(self._connected_asns) >= self.config.min_diverse_asns:
                 self._stats["diversity_rejections"] += 1
-                logger.debug(
-                    f"Rejecting router {router.router_id[:16]}... - "
-                    f"already connected to ASN {asn_str}"
-                )
+                logger.debug(f"Rejecting router {router.router_id[:16]}... - " f"already connected to ASN {asn_str}")
                 return False
 
         return True
 
     def check_diversity_requirements(self) -> bool:
         """Check if current connections meet diversity requirements."""
-        if len(self._connected_subnets) < min(
-            self.config.min_diverse_subnets, self.connection_count
-        ):
+        if len(self._connected_subnets) < min(self.config.min_diverse_subnets, self.connection_count):
             return False
 
         if self.config.asn_diversity_enabled and self._connected_asns:
-            if len(self._connected_asns) < min(
-                self.config.min_diverse_asns, self.connection_count
-            ):
+            if len(self._connected_asns) < min(self.config.min_diverse_asns, self.connection_count):
                 return False
 
         return True
@@ -303,9 +280,7 @@ class ConnectionManager:
                 return
 
             if ip.version == 4:
-                network = ipaddress.ip_network(
-                    f"{ip}/{self.config.ip_diversity_prefix}", strict=False
-                )
+                network = ipaddress.ip_network(f"{ip}/{self.config.ip_diversity_prefix}", strict=False)
             else:
                 network = ipaddress.ip_network(f"{ip}/48", strict=False)
 
@@ -341,9 +316,7 @@ class ConnectionManager:
                 return
 
             if ip.version == 4:
-                network = ipaddress.ip_network(
-                    f"{ip}/{self.config.ip_diversity_prefix}", strict=False
-                )
+                network = ipaddress.ip_network(f"{ip}/{self.config.ip_diversity_prefix}", strict=False)
             else:
                 network = ipaddress.ip_network(f"{ip}/48", strict=False)
 
@@ -390,21 +363,22 @@ class ConnectionManager:
                     continue
 
                 # Identify ourselves
-                await ws.send_json({
-                    "type": "identify",
-                    "node_id": self.node_id,
-                })
+                await ws.send_json(
+                    {
+                        "type": "identify",
+                        "node_id": self.node_id,
+                    }
+                )
 
                 # Wait for identification response
                 try:
                     msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
                     if msg.type == WSMsgType.TEXT:
                         import json
+
                         response = json.loads(msg.data)
                         if response.get("type") != "identified":
-                            raise ConnectionError(
-                                f"Unexpected response: {response.get('type')}"
-                            )
+                            raise ConnectionError(f"Unexpected response: {response.get('type')}")
                     else:
                         raise ConnectionError(f"Unexpected message type: {msg.type}")
                 except TimeoutError:
@@ -427,10 +401,7 @@ class ConnectionManager:
                 self._connection_timestamps[router.router_id] = now
                 self._stats["connections_established"] += 1
 
-                logger.info(
-                    f"Connected to router {router.router_id[:16]}... "
-                    f"at {endpoint}"
-                )
+                logger.info(f"Connected to router {router.router_id[:16]}... " f"at {endpoint}")
 
                 # Notify callback
                 if self.on_connection_established:
@@ -499,10 +470,7 @@ class ConnectionManager:
 
     def get_healthy_connections(self) -> list[RouterConnection]:
         """Get list of healthy (non-closed) connections."""
-        return [
-            conn for conn in self.connections.values()
-            if not conn.websocket.closed
-        ]
+        return [conn for conn in self.connections.values() if not conn.websocket.closed]
 
     def clear_router_cooldown(self, router_id: str) -> bool:
         """Manually clear cooldown for a router."""

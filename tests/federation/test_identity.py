@@ -15,8 +15,10 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.federation.identity import (
+    CRYPTO_AVAILABLE,
+    # DID
+    DID,
     # Constants
     DID_METHOD,
     DID_PREFIX,
@@ -24,42 +26,38 @@ from valence.federation.identity import (
     MULTICODEC_ED25519_PUB,
     WELL_KNOWN_NODE_METADATA,
     WELL_KNOWN_TRUST_ANCHORS,
-    CRYPTO_AVAILABLE,
+    DIDDocument,
     # Enums
     DIDMethod,
-    # Base58
-    base58_encode,
-    base58_decode,
-    multibase_encode,
-    multibase_decode,
     # Keys
     KeyPair,
-    generate_keypair,
-    public_key_from_multibase,
-    # DID
-    DID,
-    parse_did,
-    create_web_did,
-    create_key_did,
-    create_user_did,
+    ServiceEndpoint,
     # DID Document
     VerificationMethod,
-    ServiceEndpoint,
-    DIDDocument,
+    _resolve_key_did,
+    _resolve_web_did,
+    base58_decode,
+    # Base58
+    base58_encode,
+    canonical_json,
     create_did_document,
+    create_key_did,
+    create_user_did,
+    create_web_did,
+    generate_keypair,
+    multibase_decode,
+    multibase_encode,
+    parse_did,
+    public_key_from_multibase,
     # Resolution
     resolve_did,
     resolve_did_sync,
-    _resolve_key_did,
-    _resolve_web_did,
+    sign_belief_content,
     # Signing
     sign_message,
-    verify_signature,
-    canonical_json,
-    sign_belief_content,
     verify_belief_signature,
+    verify_signature,
 )
-
 
 # =============================================================================
 # TEST CONSTANTS
@@ -83,7 +81,7 @@ class TestConstants:
 
     def test_multicodec_prefix(self):
         """Multicodec prefix should be 0xed01 for Ed25519."""
-        assert MULTICODEC_ED25519_PUB == bytes([0xed, 0x01])
+        assert MULTICODEC_ED25519_PUB == bytes([0xED, 0x01])
 
     def test_well_known_paths(self):
         """Well-known paths should be correct."""
@@ -927,14 +925,10 @@ class TestResolveWebDID:
         """Should fetch from well-known endpoint."""
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"id": "did:vkb:web:example.com"}
-        )
+        mock_response.json = AsyncMock(return_value={"id": "did:vkb:web:example.com"})
 
         mock_session = MagicMock()
-        mock_session.get = MagicMock(
-            return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock())
-        )
+        mock_session.get = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()))
 
         with patch("aiohttp.ClientSession") as mock_client:
             mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -952,9 +946,7 @@ class TestResolveWebDID:
         mock_response.status = 404
 
         mock_session = MagicMock()
-        mock_session.get = MagicMock(
-            return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock())
-        )
+        mock_session.get = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()))
 
         with patch("aiohttp.ClientSession") as mock_client:
             mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)

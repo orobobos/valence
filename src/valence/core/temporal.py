@@ -235,6 +235,7 @@ def calculate_freshness(created_at: datetime, half_life_days: float = 30.0) -> f
 
     # Exponential decay: freshness = 0.5^(age/half_life)
     import math
+
     freshness = math.pow(0.5, age_days / half_life_days)
 
     return max(0.0, min(1.0, freshness))

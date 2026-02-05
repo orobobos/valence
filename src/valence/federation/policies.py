@@ -27,18 +27,20 @@ def _utc_now() -> datetime:
 
 class Operation(StrEnum):
     """Sensitive federation operations requiring admin approval."""
-    ADD_MEMBER = "add_member"           # Add new member to federation
-    REMOVE_MEMBER = "remove_member"     # Remove member from federation
-    UPDATE_POLICY = "update_policy"     # Modify federation policies
-    DISSOLVE = "dissolve"               # Dissolve the federation
+
+    ADD_MEMBER = "add_member"  # Add new member to federation
+    REMOVE_MEMBER = "remove_member"  # Remove member from federation
+    UPDATE_POLICY = "update_policy"  # Modify federation policies
+    DISSOLVE = "dissolve"  # Dissolve the federation
 
 
 class ApprovalStatus(StrEnum):
     """Status of a pending approval request."""
-    PENDING = "pending"       # Awaiting approvals
-    APPROVED = "approved"     # Threshold met, executed
-    REJECTED = "rejected"     # Explicitly rejected
-    EXPIRED = "expired"       # Timed out without meeting threshold
+
+    PENDING = "pending"  # Awaiting approvals
+    APPROVED = "approved"  # Threshold met, executed
+    REJECTED = "rejected"  # Explicitly rejected
+    EXPIRED = "expired"  # Timed out without meeting threshold
 
 
 # =============================================================================
@@ -57,6 +59,7 @@ class ThresholdPolicy:
         timeout: Duration before pending approvals expire
         id: Unique identifier for this policy
     """
+
     operation: Operation
     required_approvals: int
     admin_dids: set[str]
@@ -74,10 +77,7 @@ class ThresholdPolicy:
         if self.required_approvals < 1:
             raise ValueError("required_approvals must be at least 1")
         if self.required_approvals > len(self.admin_dids):
-            raise ValueError(
-                f"required_approvals ({self.required_approvals}) cannot exceed "
-                f"number of admins ({len(self.admin_dids)})"
-            )
+            raise ValueError(f"required_approvals ({self.required_approvals}) cannot exceed " f"number of admins ({len(self.admin_dids)})")
 
     def is_admin(self, did: str) -> bool:
         """Check if a DID is an authorized admin."""
@@ -109,6 +109,7 @@ class PendingApproval:
         executed_at: When the operation was executed (if approved)
         result: Result of execution (if executed)
     """
+
     operation: Operation
     payload: dict[str, Any]
     approved_by: set[str] = field(default_factory=set)
@@ -186,11 +187,7 @@ class PolicyManager:
         """Get the policy for an operation."""
         return self._policies.get(operation)
 
-    def register_handler(
-        self,
-        operation: Operation,
-        handler: Callable[[dict[str, Any]], Any]
-    ) -> None:
+    def register_handler(self, operation: Operation, handler: Callable[[dict[str, Any]], Any]) -> None:
         """Register an execution handler for an operation.
 
         Args:

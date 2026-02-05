@@ -37,7 +37,7 @@ class CorroborationResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "corroborated": self.corroborated,
-            "existing_belief_id": str(self.existing_belief_id) if self.existing_belief_id else None,
+            "existing_belief_id": (str(self.existing_belief_id) if self.existing_belief_id else None),
             "similarity": self.similarity,
             "source_did": self.source_did,
             "is_new_source": self.is_new_source,
@@ -98,6 +98,7 @@ def check_corroboration(
         # Generate embedding if not provided
         if content_embedding is None:
             from ..embeddings.service import generate_embedding, vector_to_pgvector
+
             content_embedding = generate_embedding(content)
         else:
             from ..embeddings.service import vector_to_pgvector
@@ -106,7 +107,8 @@ def check_corroboration(
 
         # Find most similar existing belief
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     id,
                     content,
@@ -119,7 +121,9 @@ def check_corroboration(
                   AND is_local = TRUE
                 ORDER BY embedding <=> %s::vector
                 LIMIT 1
-            """, (query_vector, query_vector))
+            """,
+                (query_vector, query_vector),
+            )
 
             row = cur.fetchone()
 
@@ -133,10 +137,7 @@ def check_corroboration(
 
             # Check if this source already corroborated
             existing_sources = row["corroborating_sources"] or []
-            is_new_source = not any(
-                s.get("source_did") == source_did
-                for s in existing_sources
-            )
+            is_new_source = not any(s.get("source_did") == source_did for s in existing_sources)
 
             return CorroborationResult(
                 corroborated=True,
@@ -173,16 +174,13 @@ def add_corroboration(
             # Use the SQL function for atomic update
             cur.execute(
                 "SELECT add_corroborating_source(%s, %s, %s, %s) as added",
-                (belief_id, source_did, similarity, boost_confidence)
+                (belief_id, source_did, similarity, boost_confidence),
             )
             row = cur.fetchone()
             added = row["added"] if row else False
 
             if added:
-                logger.info(
-                    f"Added corroboration to belief {belief_id} from {source_did} "
-                    f"(similarity={similarity:.3f})"
-                )
+                logger.info(f"Added corroboration to belief {belief_id} from {source_did} " f"(similarity={similarity:.3f})")
 
             return added
 
@@ -202,7 +200,8 @@ def get_corroboration(belief_id: UUID) -> CorroborationInfo | None:
     """
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     id,
                     corroboration_count,
@@ -210,7 +209,9 @@ def get_corroboration(belief_id: UUID) -> CorroborationInfo | None:
                     corroborating_sources
                 FROM beliefs
                 WHERE id = %s
-            """, (belief_id,))
+            """,
+                (belief_id,),
+            )
 
             row = cur.fetchone()
             if not row:
@@ -296,7 +297,8 @@ def get_most_corroborated_beliefs(
         params.append(limit)
 
         with get_cursor() as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT
                     id,
                     content,
@@ -309,19 +311,23 @@ def get_most_corroborated_beliefs(
                 WHERE {' AND '.join(conditions)}
                 ORDER BY corroboration_count DESC, created_at DESC
                 LIMIT %s
-            """, params)
+            """,
+                params,
+            )
 
             results = []
             for row in cur.fetchall():
-                results.append({
-                    "id": str(row["id"]),
-                    "content": row["content"],
-                    "corroboration_count": row["corroboration_count"],
-                    "confidence_corroboration": row["confidence_corroboration"],
-                    "sources": row["corroborating_sources"] or [],
-                    "domain_path": row["domain_path"] or [],
-                    "created_at": row["created_at"].isoformat(),
-                })
+                results.append(
+                    {
+                        "id": str(row["id"]),
+                        "content": row["content"],
+                        "corroboration_count": row["corroboration_count"],
+                        "confidence_corroboration": row["confidence_corroboration"],
+                        "sources": row["corroborating_sources"] or [],
+                        "domain_path": row["domain_path"] or [],
+                        "created_at": row["created_at"].isoformat(),
+                    }
+                )
 
             return results
 

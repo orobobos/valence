@@ -67,50 +67,122 @@ FAILED_QUERY_EPSILON_COST = 0.1  # Small but non-zero cost
 # Sensitive domain categories with their exact matches and normalized forms
 # Using structured classification instead of substring matching for precision
 SENSITIVE_DOMAIN_CATEGORIES: dict[str, frozenset[str]] = {
-    "health": frozenset([
-        "health", "medical", "mental_health", "diagnosis", "treatment",
-        "healthcare", "clinical", "therapy", "counseling", "psychiatric",
-    ]),
-    "finance": frozenset([
-        "finance", "banking", "investments", "salary", "debt",
-        "financial", "credit", "taxes", "income", "wealth",
-    ]),
-    "legal": frozenset([
-        "legal", "law", "criminal", "lawsuit", "arrest",
-        "court", "litigation", "prosecution", "conviction",
-    ]),
-    "political": frozenset([
-        "politics", "political", "voting", "election",
-        "government", "partisan", "campaign", "ballot",
-    ]),
-    "religious": frozenset([
-        "religion", "religious", "faith", "spiritual",
-        "worship", "church", "mosque", "temple", "synagogue",
-    ]),
-    "identity": frozenset([
-        "sexuality", "sexual", "gender", "lgbtq",
-        "orientation", "identity", "transgender", "nonbinary",
-    ]),
-    "employment": frozenset([
-        "employment", "hr", "hiring", "termination",
-        "workplace", "employee", "employer", "human_resources",
-    ]),
-    "substance": frozenset([
-        "addiction", "substance", "abuse",
-        "recovery", "rehab", "dependency", "sobriety",
-    ]),
-    "immigration": frozenset([
-        "immigration", "visa", "asylum",
-        "refugee", "citizenship", "deportation", "naturalization",
-    ]),
+    "health": frozenset(
+        [
+            "health",
+            "medical",
+            "mental_health",
+            "diagnosis",
+            "treatment",
+            "healthcare",
+            "clinical",
+            "therapy",
+            "counseling",
+            "psychiatric",
+        ]
+    ),
+    "finance": frozenset(
+        [
+            "finance",
+            "banking",
+            "investments",
+            "salary",
+            "debt",
+            "financial",
+            "credit",
+            "taxes",
+            "income",
+            "wealth",
+        ]
+    ),
+    "legal": frozenset(
+        [
+            "legal",
+            "law",
+            "criminal",
+            "lawsuit",
+            "arrest",
+            "court",
+            "litigation",
+            "prosecution",
+            "conviction",
+        ]
+    ),
+    "political": frozenset(
+        [
+            "politics",
+            "political",
+            "voting",
+            "election",
+            "government",
+            "partisan",
+            "campaign",
+            "ballot",
+        ]
+    ),
+    "religious": frozenset(
+        [
+            "religion",
+            "religious",
+            "faith",
+            "spiritual",
+            "worship",
+            "church",
+            "mosque",
+            "temple",
+            "synagogue",
+        ]
+    ),
+    "identity": frozenset(
+        [
+            "sexuality",
+            "sexual",
+            "gender",
+            "lgbtq",
+            "orientation",
+            "identity",
+            "transgender",
+            "nonbinary",
+        ]
+    ),
+    "employment": frozenset(
+        [
+            "employment",
+            "hr",
+            "hiring",
+            "termination",
+            "workplace",
+            "employee",
+            "employer",
+            "human_resources",
+        ]
+    ),
+    "substance": frozenset(
+        [
+            "addiction",
+            "substance",
+            "abuse",
+            "recovery",
+            "rehab",
+            "dependency",
+            "sobriety",
+        ]
+    ),
+    "immigration": frozenset(
+        [
+            "immigration",
+            "visa",
+            "asylum",
+            "refugee",
+            "citizenship",
+            "deportation",
+            "naturalization",
+        ]
+    ),
 }
 
 # Flattened set for quick membership testing (exact match only)
-SENSITIVE_DOMAINS: frozenset[str] = frozenset(
-    domain
-    for category_domains in SENSITIVE_DOMAIN_CATEGORIES.values()
-    for domain in category_domains
-)
+SENSITIVE_DOMAINS: frozenset[str] = frozenset(domain for category_domains in SENSITIVE_DOMAIN_CATEGORIES.values() for domain in category_domains)
 
 
 # =============================================================================
@@ -181,9 +253,7 @@ class PrivacyConfig:
     def __post_init__(self) -> None:
         """Validate configuration."""
         if not MIN_EPSILON <= self.epsilon <= MAX_EPSILON:
-            raise ValueError(
-                f"epsilon must be in [{MIN_EPSILON}, {MAX_EPSILON}], got {self.epsilon}"
-            )
+            raise ValueError(f"epsilon must be in [{MIN_EPSILON}, {MAX_EPSILON}], got {self.epsilon}")
         if self.delta >= 1e-4:
             raise ValueError(f"delta must be < 10⁻⁴, got {self.delta}")
         if self.min_contributors < 5:
@@ -262,9 +332,7 @@ class TopicBudget:
             topic_hash=data["topic_hash"],
             query_count=data.get("query_count", 0),
             epsilon_spent=data.get("epsilon_spent", 0.0),
-            last_query=datetime.fromisoformat(data["last_query"])
-            if "last_query" in data
-            else datetime.now(UTC),
+            last_query=(datetime.fromisoformat(data["last_query"]) if "last_query" in data else datetime.now(UTC)),
         )
 
 
@@ -307,9 +375,7 @@ class RequesterBudget:
         return cls(
             requester_id=data["requester_id"],
             queries_this_hour=data.get("queries_this_hour", 0),
-            hour_start=datetime.fromisoformat(data["hour_start"])
-            if "hour_start" in data
-            else datetime.now(UTC),
+            hour_start=(datetime.fromisoformat(data["hour_start"]) if "hour_start" in data else datetime.now(UTC)),
         )
 
 
@@ -559,9 +625,7 @@ class DatabaseBudgetStore:
                 data.get("spent_epsilon", 0.0),
                 data.get("spent_delta", 0.0),
                 data.get("queries_today", 0),
-                datetime.fromisoformat(data["period_start"])
-                if "period_start" in data
-                else datetime.now(UTC),
+                (datetime.fromisoformat(data["period_start"]) if "period_start" in data else datetime.now(UTC)),
                 json.dumps(data.get("topic_budgets", {})),
                 json.dumps(data.get("requester_budgets", {})),
                 data.get("_version", 1),
@@ -606,9 +670,7 @@ class DatabaseBudgetStore:
                     data.get("spent_epsilon", 0.0),
                     data.get("spent_delta", 0.0),
                     data.get("queries_today", 0),
-                    datetime.fromisoformat(data["period_start"])
-                    if "period_start" in data
-                    else datetime.now(UTC),
+                    (datetime.fromisoformat(data["period_start"]) if "period_start" in data else datetime.now(UTC)),
                     json.dumps(data.get("topic_budgets", {})),
                     json.dumps(data.get("requester_budgets", {})),
                     data.get("_version", 1),
@@ -717,6 +779,7 @@ class DatabaseBudgetStore:
         if hasattr(row, "get"):
             get = row.get
         else:
+
             def get(k, d=None):
                 return getattr(row, k, d)
 
@@ -809,18 +872,14 @@ class DatabaseBudgetStore:
     async def list_federations_async(self) -> list[str]:
         """List all federation IDs (async version)."""
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
-            )
+            rows = await conn.fetch("SELECT federation_id FROM privacy_budgets ORDER BY federation_id")
             return [row["federation_id"] for row in rows]
 
     def _list_federations_sync(self) -> list[str]:
         """List all federation IDs synchronously (for psycopg2)."""
         cursor = self._pool.cursor()
         try:
-            cursor.execute(
-                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
-            )
+            cursor.execute("SELECT federation_id FROM privacy_budgets ORDER BY federation_id")
             return [row[0] for row in cursor.fetchall()]
         finally:
             cursor.close()
@@ -1570,9 +1629,7 @@ def compute_private_aggregate(
     # Histogram
     histogram = None
     histogram_suppressed = True
-    if include_histogram and should_include_histogram(
-        true_count, config.histogram_suppression_threshold
-    ):
+    if include_histogram and should_include_histogram(true_count, config.histogram_suppression_threshold):
         histogram = build_noisy_histogram(confidences, config.epsilon / 5)
         histogram_suppressed = False
 
@@ -1634,9 +1691,7 @@ def execute_private_query(
         QueryResult with success status and optional aggregate result
     """
     # Check budget first
-    can_query, check_result = budget.check_budget(
-        config.epsilon, config.delta, topic_hash, requester_id
-    )
+    can_query, check_result = budget.check_budget(config.epsilon, config.delta, topic_hash, requester_id)
 
     if not can_query:
         return QueryResult(

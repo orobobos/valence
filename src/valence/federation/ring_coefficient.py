@@ -37,19 +37,19 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Ring coefficient parameters
-DEFAULT_RING_DAMPENING = 0.3       # Base dampening when ring detected
-RING_SIZE_PENALTY = 0.1            # Additional penalty per ring member
-MIN_RING_COEFFICIENT = 0.05        # Minimum coefficient (never fully zero)
-MAX_RING_SIZE_PENALTY = 0.8        # Cap on ring size penalty
+DEFAULT_RING_DAMPENING = 0.3  # Base dampening when ring detected
+RING_SIZE_PENALTY = 0.1  # Additional penalty per ring member
+MIN_RING_COEFFICIENT = 0.05  # Minimum coefficient (never fully zero)
+MAX_RING_SIZE_PENALTY = 0.8  # Cap on ring size penalty
 
 # Trust velocity parameters
-VELOCITY_WINDOW_DAYS = 7           # Window for velocity calculation
-VELOCITY_ANOMALY_THRESHOLD = 3.0   # Std deviations above mean
-MAX_NORMAL_VELOCITY = 0.1          # Max trust gain per day considered normal
+VELOCITY_WINDOW_DAYS = 7  # Window for velocity calculation
+VELOCITY_ANOMALY_THRESHOLD = 3.0  # Std deviations above mean
+MAX_NORMAL_VELOCITY = 0.1  # Max trust gain per day considered normal
 
 # Sybil cluster detection parameters
-MIN_CLUSTER_SIZE = 3               # Minimum nodes for a cluster
-CLUSTER_DENSITY_THRESHOLD = 0.6    # Edge density threshold
+MIN_CLUSTER_SIZE = 3  # Minimum nodes for a cluster
+CLUSTER_DENSITY_THRESHOLD = 0.6  # Edge density threshold
 TEMPORAL_CORRELATION_THRESHOLD = 0.7  # Timing correlation threshold
 
 
@@ -83,11 +83,11 @@ class TrustVelocityResult:
     """Result of trust velocity analysis."""
 
     node_id: UUID
-    current_velocity: float           # Trust change per day
+    current_velocity: float  # Trust change per day
     historical_mean: float
     historical_std: float
     is_anomalous: bool
-    anomaly_score: float              # How many std deviations above mean
+    anomaly_score: float  # How many std deviations above mean
     trust_changes: list[tuple[datetime, float]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,9 +107,9 @@ class SybilCluster:
 
     cluster_id: str
     node_ids: list[UUID]
-    density: float                    # Edge density within cluster
-    temporal_correlation: float       # How synchronized their activity is
-    confidence: float                 # Confidence this is a Sybil cluster
+    density: float  # Edge density within cluster
+    temporal_correlation: float  # How synchronized their activity is
+    confidence: float  # Confidence this is a Sybil cluster
     detection_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -257,13 +257,15 @@ class RingDetector:
                     ring_set = frozenset(ring_nodes[:-1])  # Exclude duplicate of start
                     if not any(frozenset(r.ring_nodes[:-1]) == ring_set for r in rings):
                         coefficient = self._calculate_coefficient(len(ring_nodes) - 1)
-                        rings.append(RingDetectionResult(
-                            has_ring=True,
-                            ring_nodes=ring_nodes,
-                            ring_coefficient=coefficient,
-                            ring_size=len(ring_nodes) - 1,
-                            detection_path=path + [node],
-                        ))
+                        rings.append(
+                            RingDetectionResult(
+                                has_ring=True,
+                                ring_nodes=ring_nodes,
+                                ring_coefficient=coefficient,
+                                ring_size=len(ring_nodes) - 1,
+                                detection_path=path + [node],
+                            )
+                        )
 
             rec_stack.remove(node)
 
@@ -396,10 +398,7 @@ class TrustVelocityAnalyzer:
 
         # Prune old entries
         cutoff = datetime.now() - timedelta(days=self.window_days * 2)
-        self._trust_history[node_id] = [
-            (ts, delta) for ts, delta in self._trust_history[node_id]
-            if ts > cutoff
-        ]
+        self._trust_history[node_id] = [(ts, delta) for ts, delta in self._trust_history[node_id] if ts > cutoff]
 
     def analyze_velocity(
         self,
@@ -430,10 +429,7 @@ class TrustVelocityAnalyzer:
 
         # Calculate current velocity (last window_days)
         cutoff = datetime.now() - timedelta(days=self.window_days)
-        recent_changes = [
-            (ts, delta) for ts, delta in trust_changes
-            if ts > cutoff
-        ]
+        recent_changes = [(ts, delta) for ts, delta in trust_changes if ts > cutoff]
 
         if recent_changes:
             total_change = sum(delta for _, delta in recent_changes)
@@ -457,13 +453,10 @@ class TrustVelocityAnalyzer:
         if historical_std > 0:
             anomaly_score = abs(current_velocity - historical_mean) / historical_std
         else:
-            anomaly_score = 0.0 if current_velocity <= self.max_normal_velocity else float('inf')
+            anomaly_score = 0.0 if current_velocity <= self.max_normal_velocity else float("inf")
 
         # Determine if anomalous
-        is_anomalous = (
-            anomaly_score > self.anomaly_threshold or
-            current_velocity > self.max_normal_velocity
-        )
+        is_anomalous = anomaly_score > self.anomaly_threshold or current_velocity > self.max_normal_velocity
 
         return TrustVelocityResult(
             node_id=node_id,
@@ -591,14 +584,16 @@ class SybilClusterDetector:
                 confidence += 0.2
 
             if reasons:
-                clusters.append(SybilCluster(
-                    cluster_id=f"cluster_{i}",
-                    node_ids=list(scc),
-                    density=density,
-                    temporal_correlation=temporal_corr,
-                    confidence=min(1.0, confidence),
-                    detection_reasons=reasons,
-                ))
+                clusters.append(
+                    SybilCluster(
+                        cluster_id=f"cluster_{i}",
+                        node_ids=list(scc),
+                        density=density,
+                        temporal_correlation=temporal_corr,
+                        confidence=min(1.0, confidence),
+                        detection_reasons=reasons,
+                    )
+                )
 
         return clusters
 
@@ -687,7 +682,7 @@ class SybilClusterDetector:
         total_comparisons = 0
 
         for i, times_i in enumerate(node_times):
-            for times_j in node_times[i+1:]:
+            for times_j in node_times[i + 1 :]:
                 for t_i in times_i:
                     for t_j in times_j:
                         total_comparisons += 1
@@ -703,10 +698,7 @@ class SybilClusterDetector:
     ) -> int:
         """Count rings within a subgraph."""
         # Build subgraph
-        subgraph = {
-            n: {m: t for m, t in graph.get(n, {}).items() if m in nodes}
-            for n in nodes
-        }
+        subgraph = {n: {m: t for m, t in graph.get(n, {}).items() if m in nodes} for n in nodes}
 
         detector = RingDetector()
         rings = detector.detect_all_rings(subgraph)
@@ -796,9 +788,7 @@ class RingCoefficientCalculator:
             for i, node in enumerate(path):
                 if node in visited:
                     # Ring detected
-                    result = self.ring_detector.detect_ring_in_path(
-                        path[:i], node
-                    )
+                    result = self.ring_detector.detect_ring_in_path(path[:i], node)
                     coefficient *= result.ring_coefficient
                 visited.add(node)
 
@@ -838,7 +828,7 @@ class RingCoefficientCalculator:
         if velocity_result.is_anomalous:
             # Reduce coefficient based on anomaly severity
             anomaly_penalty = min(0.5, velocity_result.anomaly_score * 0.1)
-            coefficient *= (1.0 - anomaly_penalty)
+            coefficient *= 1.0 - anomaly_penalty
             self._suspicious_nodes.add(node_id)
 
         # Check rings involving this node (if graph provided)
@@ -868,6 +858,7 @@ class RingCoefficientCalculator:
             GraphAnalysisResult with all findings
         """
         import time
+
         start = time.time()
 
         # Count nodes and edges
@@ -965,9 +956,7 @@ def record_trust_change(
     timestamp: datetime | None = None,
 ) -> None:
     """Record a trust change for velocity tracking (convenience function)."""
-    get_ring_coefficient_calculator().record_trust_change(
-        node_id, trust_delta, timestamp
-    )
+    get_ring_coefficient_calculator().record_trust_change(node_id, trust_delta, timestamp)
 
 
 def analyze_trust_graph(

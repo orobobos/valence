@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingProvider(StrEnum):
     """Available embedding providers."""
+
     OPENAI = "openai"
     LOCAL = "local"
 
@@ -86,6 +87,7 @@ def generate_local_embedding(text: str) -> list[float]:
         384-dimensional embedding vector (L2 normalized)
     """
     from .providers.local import generate_embedding as local_embed
+
     return local_embed(text)
 
 
@@ -153,17 +155,17 @@ def embed_content(
         if content_type == "belief":
             cur.execute(
                 "UPDATE beliefs SET embedding = %s, modified_at = NOW() WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
         elif content_type == "exchange":
             cur.execute(
                 "UPDATE exchanges SET embedding = %s WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
         elif content_type == "pattern":
             cur.execute(
                 "UPDATE patterns SET embedding = %s WHERE id = %s",
-                (vector_str, content_id)
+                (vector_str, content_id),
             )
 
         # Track coverage
@@ -174,7 +176,7 @@ def embed_content(
             ON CONFLICT (content_type, content_id, embedding_type_id)
             DO UPDATE SET embedded_at = NOW()
             """,
-            (content_type, content_id, emb_type.id)
+            (content_type, content_id, emb_type.id),
         )
 
     logger.info(f"Embedded {content_type}:{content_id} with {emb_type.id}")
@@ -234,15 +236,17 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "belief",
-                    "content_id": str(row["id"]),
-                    "content": row["content"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "belief",
+                        "content_id": str(row["id"]),
+                        "content": row["content"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
         if content_type is None or content_type == "exchange":
             cur.execute(
@@ -254,16 +258,18 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "exchange",
-                    "content_id": str(row["id"]),
-                    "session_id": str(row["session_id"]),
-                    "content": row["content"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "exchange",
+                        "content_id": str(row["id"]),
+                        "session_id": str(row["session_id"]),
+                        "content": row["content"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
         if content_type is None or content_type == "pattern":
             cur.execute(
@@ -275,16 +281,18 @@ def search_similar(
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
-                (query_str, query_str, min_similarity, query_str, limit)
+                (query_str, query_str, min_similarity, query_str, limit),
             )
             for row in cur.fetchall():
-                results.append({
-                    "content_type": "pattern",
-                    "content_id": str(row["id"]),
-                    "pattern_type": row["type"],
-                    "description": row["description"],
-                    "similarity": float(row["similarity"]),
-                })
+                results.append(
+                    {
+                        "content_type": "pattern",
+                        "content_id": str(row["id"]),
+                        "pattern_type": row["type"],
+                        "description": row["description"],
+                        "similarity": float(row["similarity"]),
+                    }
+                )
 
     # Sort by similarity and limit
     results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -329,7 +337,7 @@ def backfill_embeddings(
                 AND status = 'active'
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         elif content_type == "exchange":
             cur.execute(
@@ -338,7 +346,7 @@ def backfill_embeddings(
                 WHERE embedding IS NULL
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         elif content_type == "pattern":
             cur.execute(
@@ -347,7 +355,7 @@ def backfill_embeddings(
                 WHERE embedding IS NULL
                 LIMIT %s
                 """,
-                (batch_size,)
+                (batch_size,),
             )
         else:
             return 0

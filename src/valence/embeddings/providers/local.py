@@ -78,12 +78,10 @@ def get_model() -> SentenceTransformer:
                 try:
                     from sentence_transformers import SentenceTransformer
                 except ImportError as e:
-                    raise ModelLoadError(
-                        "sentence-transformers not installed. "
-                        "Install with: pip install sentence-transformers"
-                    ) from e
+                    raise ModelLoadError("sentence-transformers not installed. " "Install with: pip install sentence-transformers") from e
 
                 from ...core.config import get_config
+
                 config = get_config()
                 model_path = config.embedding_model_path
                 device = config.embedding_device

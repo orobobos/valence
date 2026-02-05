@@ -132,11 +132,13 @@ class FederationNode:
 
     async def _info(self, request: Request) -> JSONResponse:
         """Node info endpoint."""
-        return JSONResponse({
-            "node": self.identity.to_dict(),
-            "beliefs_count": len(self.beliefs),
-            "peers_count": len(self.peer_store.list_peers()),
-        })
+        return JSONResponse(
+            {
+                "node": self.identity.to_dict(),
+                "beliefs_count": len(self.beliefs),
+                "peers_count": len(self.peer_store.list_peers()),
+            }
+        )
 
     async def _introduce(self, request: Request) -> JSONResponse:
         """Handle peer introduction.
@@ -174,11 +176,13 @@ class FederationNode:
             logger.info(f"[{self.name}] Received introduction from: {body.get('name', body['did'])}")
 
             # Return our identity
-            return JSONResponse({
-                "success": True,
-                "message": f"Welcome to {self.name}!",
-                "node": self.identity.to_dict(),
-            })
+            return JSONResponse(
+                {
+                    "success": True,
+                    "message": f"Welcome to {self.name}!",
+                    "node": self.identity.to_dict(),
+                }
+            )
 
         except json.JSONDecodeError:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
@@ -271,11 +275,13 @@ class FederationNode:
 
             logger.info(f"[{self.name}] Received belief from {peer.name or sender_did}: {belief.content[:50]}...")
 
-            return JSONResponse({
-                "success": True,
-                "belief_id": belief.id,
-                "message": "Belief accepted",
-            })
+            return JSONResponse(
+                {
+                    "success": True,
+                    "belief_id": belief.id,
+                    "message": "Belief accepted",
+                }
+            )
 
         except json.JSONDecodeError:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
@@ -336,12 +342,14 @@ class FederationNode:
 
             logger.info(f"[{self.name}] Query '{query_text}' returned {len(results)} results")
 
-            return JSONResponse({
-                "success": True,
-                "query": query_text,
-                "results": results[:20],  # Limit to 20
-                "total": len(results),
-            })
+            return JSONResponse(
+                {
+                    "success": True,
+                    "query": query_text,
+                    "results": results[:20],  # Limit to 20
+                    "total": len(results),
+                }
+            )
 
         except json.JSONDecodeError:
             return JSONResponse({"error": "Invalid JSON"}, status_code=400)
@@ -355,10 +363,12 @@ class FederationNode:
         GET /federation/peers
         """
         peers = [p.to_dict() for p in self.peer_store.list_peers()]
-        return JSONResponse({
-            "peers": peers,
-            "count": len(peers),
-        })
+        return JSONResponse(
+            {
+                "peers": peers,
+                "count": len(peers),
+            }
+        )
 
     # ==========================================================================
     # Client methods (for calling other nodes)

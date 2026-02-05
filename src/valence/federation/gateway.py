@@ -115,6 +115,7 @@ class ValidationResult(StrEnum):
 
 class GatewayException(ValenceException):
     """Base exception for gateway-related errors."""
+
     pass
 
 
@@ -284,9 +285,9 @@ class AuditEntry:
             "id": str(self.id),
             "timestamp": self.timestamp.isoformat(),
             "event_type": self.event_type.value,
-            "source_federation_id": str(self.source_federation_id) if self.source_federation_id else None,
+            "source_federation_id": (str(self.source_federation_id) if self.source_federation_id else None),
             "source_gateway_endpoint": self.source_gateway_endpoint,
-            "target_federation_id": str(self.target_federation_id) if self.target_federation_id else None,
+            "target_federation_id": (str(self.target_federation_id) if self.target_federation_id else None),
             "target_gateway_endpoint": self.target_gateway_endpoint,
             "direction": self.direction.value if self.direction else None,
             "belief_ids": [str(b) for b in self.belief_ids],
@@ -409,10 +410,13 @@ class GatewayNode:
         self.id = uuid4()
         self.federation_id = federation_id
         self.endpoint = endpoint
-        self.capabilities = set(capabilities or [
-            GatewayCapability.INBOUND_SHARE,
-            GatewayCapability.OUTBOUND_SHARE,
-        ])
+        self.capabilities = set(
+            capabilities
+            or [
+                GatewayCapability.INBOUND_SHARE,
+                GatewayCapability.OUTBOUND_SHARE,
+            ]
+        )
         self.config = config or GatewayConfig()
         self.status = GatewayStatus.INITIALIZING
 
@@ -427,8 +431,8 @@ class GatewayNode:
         self._trust_cache_ttl = timedelta(minutes=5)
 
         # Callbacks for routing
-        self._inbound_handler: Callable[[InboundShare], Awaitable[ShareResult]] | None = None
-        self._outbound_handler: Callable[[OutboundShare], Awaitable[ShareResult]] | None = None
+        self._inbound_handler: (Callable[[InboundShare], Awaitable[ShareResult]] | None) = None
+        self._outbound_handler: (Callable[[OutboundShare], Awaitable[ShareResult]] | None) = None
 
         # Known external gateways
         self._external_gateways: dict[UUID, str] = {}  # federation_id -> endpoint
@@ -436,8 +440,7 @@ class GatewayNode:
         self.created_at = datetime.now(UTC)
 
         logger.info(
-            f"Gateway node initialized for federation {federation_id} "
-            f"at {endpoint} with capabilities: {[c.value for c in self.capabilities]}"
+            f"Gateway node initialized for federation {federation_id} " f"at {endpoint} with capabilities: {[c.value for c in self.capabilities]}"
         )
 
     # =========================================================================
@@ -451,10 +454,7 @@ class GatewayNode:
 
     def has_capability(self, capability: GatewayCapability) -> bool:
         """Check if gateway has a capability."""
-        return (
-            capability in self.capabilities and
-            capability in self.config.enabled_capabilities
-        )
+        return capability in self.capabilities and capability in self.config.enabled_capabilities
 
     # =========================================================================
     # LIFECYCLE
@@ -682,9 +682,9 @@ class GatewayNode:
         entry = AuditEntry(
             event_type=event_type,
             source_federation_id=source_federation_id,
-            source_gateway_endpoint=self._external_gateways.get(source_federation_id) if source_federation_id else None,
+            source_gateway_endpoint=(self._external_gateways.get(source_federation_id) if source_federation_id else None),
             target_federation_id=target_federation_id,
-            target_gateway_endpoint=self._external_gateways.get(target_federation_id) if target_federation_id else None,
+            target_gateway_endpoint=(self._external_gateways.get(target_federation_id) if target_federation_id else None),
             direction=direction,
             belief_ids=belief_ids or [],
             belief_count=len(belief_ids) if belief_ids else 0,
@@ -1055,10 +1055,7 @@ class GatewayNode:
                 },
                 "last_day": {
                     "total_events": len(daily_entries),
-                    "success_rate": (
-                        len([e for e in daily_entries if e.success]) / len(daily_entries)
-                        if daily_entries else 1.0
-                    ),
+                    "success_rate": (len([e for e in daily_entries if e.success]) / len(daily_entries) if daily_entries else 1.0),
                 },
             },
             "rate_limits": {
@@ -1080,9 +1077,7 @@ class GatewayNode:
             "status": self.status.value,
             "config": self.config.to_dict(),
             "created_at": self.created_at.isoformat(),
-            "external_gateways": {
-                str(k): v for k, v in self._external_gateways.items()
-            },
+            "external_gateways": {str(k): v for k, v in self._external_gateways.items()},
         }
 
 

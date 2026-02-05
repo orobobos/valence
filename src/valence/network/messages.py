@@ -36,15 +36,15 @@ _secure_random = secrets.SystemRandom()
 # Fixed message size buckets for traffic analysis resistance
 # Messages are padded to the next bucket size to hide actual content length
 MESSAGE_SIZE_BUCKETS = [
-    1024,       # 1 KB - small messages (typical chat)
-    4096,       # 4 KB - medium messages
-    16384,      # 16 KB - larger messages
-    65536,      # 64 KB - max standard message
+    1024,  # 1 KB - small messages (typical chat)
+    4096,  # 4 KB - medium messages
+    16384,  # 16 KB - larger messages
+    65536,  # 64 KB - max standard message
 ]
 
 # Padding byte used for PKCS7-style padding
-PADDING_MAGIC = b'\x80'  # Start of padding marker
-PADDING_FILL = b'\x00'   # Fill byte
+PADDING_MAGIC = b"\x80"  # Start of padding marker
+PADDING_FILL = b"\x00"  # Fill byte
 
 
 def get_padded_size(content_length: int) -> int:
@@ -130,14 +130,14 @@ def unpad_message(padded: bytes) -> bytes:
         return padded
 
     # Verify everything after marker is padding fill
-    padding_section = padded[marker_pos + 1:]
+    padding_section = padded[marker_pos + 1 :]
     if padding_section and not all(b == 0 for b in padding_section):
         # Invalid padding - marker wasn't actually padding
         # This could happen if content contains 0x80 naturally
         # Search for the last valid marker
         for i in range(len(padded) - 1, -1, -1):
-            if padded[i:i+1] == PADDING_MAGIC:
-                if all(b == 0 for b in padded[i+1:]):
+            if padded[i : i + 1] == PADDING_MAGIC:
+                if all(b == 0 for b in padded[i + 1 :]):
                     return padded[:i]
         # No valid padding found, return as-is
         return padded
@@ -182,6 +182,7 @@ class BackPressureMessage:
         retry_after_ms: Suggested delay before retrying (milliseconds)
         reason: Human-readable reason for back-pressure
     """
+
     type: str = field(default="back_pressure", init=False)
     active: bool = True
     load_pct: float = 0.0
@@ -222,6 +223,7 @@ class AckRequest:
     Attached to outgoing messages to specify whether ACK is required
     and timeout settings.
     """
+
     message_id: str
     require_ack: bool = True
     ack_timeout_ms: int = 30000  # 30 seconds default
@@ -236,6 +238,7 @@ class AckMessage:
     The signature proves the recipient actually received and processed
     the message (not just that it was relayed).
     """
+
     type: str = field(default="ack", init=False)
     original_message_id: str = ""
     received_at: float = 0.0
@@ -271,9 +274,10 @@ class RelayMessage:
     The payload is an encrypted blob that routers cannot decrypt.
     Routers only need next_hop to forward the message.
     """
+
     message_id: str
     next_hop: str  # Recipient node ID or "local"
-    payload: str   # Encrypted blob (hex), router cannot decrypt
+    payload: str  # Encrypted blob (hex), router cannot decrypt
     ttl: int
     timestamp: float
 
@@ -284,7 +288,7 @@ class RelayMessage:
         payload: str,
         ttl: int = 10,
         message_id: str | None = None,
-        timestamp: float | None = None
+        timestamp: float | None = None,
     ) -> "RelayMessage":
         """Create a new relay message with auto-generated ID and timestamp."""
         return cls(
@@ -292,7 +296,7 @@ class RelayMessage:
             next_hop=next_hop,
             payload=payload,
             ttl=ttl,
-            timestamp=timestamp or time.time()
+            timestamp=timestamp or time.time(),
         )
 
     def to_dict(self) -> dict:
@@ -303,7 +307,7 @@ class RelayMessage:
             "next_hop": self.next_hop,
             "payload": self.payload,
             "ttl": self.ttl,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
 
     @classmethod
@@ -314,7 +318,7 @@ class RelayMessage:
             next_hop=data["next_hop"],
             payload=data["payload"],
             ttl=data["ttl"],
-            timestamp=data["timestamp"]
+            timestamp=data["timestamp"],
         )
 
     def to_json(self) -> str:
@@ -340,6 +344,7 @@ class RouterHealthObservation:
     Nodes track health metrics for routers they connect to and share
     these observations with peers via gossip.
     """
+
     router_id: str
     latency_ms: float = 0.0
     success_rate: float = 1.0  # 0.0 to 1.0
@@ -390,6 +395,7 @@ class HealthGossip:
         observations: List of router health observations (sampled)
         ttl: Hop limit for gossip propagation (default 2)
     """
+
     type: str = field(default="health_gossip", init=False)
     source_node_id: str = ""
     timestamp: float = 0.0
@@ -402,20 +408,14 @@ class HealthGossip:
             "type": self.type,
             "source_node_id": self.source_node_id,
             "timestamp": self.timestamp,
-            "observations": [
-                obs.to_dict() if hasattr(obs, 'to_dict') else obs
-                for obs in self.observations
-            ],
+            "observations": [obs.to_dict() if hasattr(obs, "to_dict") else obs for obs in self.observations],
             "ttl": self.ttl,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "HealthGossip":
         """Deserialize from dict."""
-        observations = [
-            RouterHealthObservation.from_dict(obs) if isinstance(obs, dict) else obs
-            for obs in data.get("observations", [])
-        ]
+        observations = [RouterHealthObservation.from_dict(obs) if isinstance(obs, dict) else obs for obs in data.get("observations", [])]
         return cls(
             source_node_id=data.get("source_node_id", ""),
             timestamp=data.get("timestamp", 0.0),
@@ -432,6 +432,7 @@ class DeliverPayload:
     Contains the actual message content, sender identity,
     and optional reply path for responses.
     """
+
     sender_id: str
     message_type: str  # "belief", "query", "response", "ack"
     content: dict
@@ -502,6 +503,7 @@ class CoverMessage:
         timestamp: When the cover message was generated
         nonce: Random bytes to ensure uniqueness and proper padding
     """
+
     type: str = field(default="cover", init=False)
     message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: float = field(default_factory=time.time)
@@ -583,6 +585,7 @@ class CircuitHop:
     Each hop contains the router ID and the shared key established
     during circuit creation (via Diffie-Hellman key exchange).
     """
+
     router_id: str
     shared_key: bytes = field(default=b"", repr=False)  # 32-byte AES key
 
@@ -617,6 +620,7 @@ class Circuit:
         message_count: Number of messages sent through this circuit
         max_messages: Maximum messages before rotation (default 100)
     """
+
     circuit_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     hops: list[CircuitHop] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
@@ -684,6 +688,7 @@ class CircuitCreateMessage:
         next_hop: Router ID of the next hop (None for exit node)
         extend_payload: Encrypted payload for next hop (onion layer)
     """
+
     type: str = field(default="circuit_create", init=False)
     circuit_id: str = ""
     ephemeral_public: str = ""  # Hex-encoded X25519 public key
@@ -726,6 +731,7 @@ class CircuitCreatedMessage:
         ephemeral_public: Router's ephemeral X25519 public key (hex)
         extend_response: Encrypted response from next hop (if extended)
     """
+
     type: str = field(default="circuit_created", init=False)
     circuit_id: str = ""
     ephemeral_public: str = ""  # Hex-encoded X25519 public key
@@ -765,6 +771,7 @@ class CircuitRelayMessage:
         payload: Onion-encrypted payload (hex)
         direction: "forward" (toward recipient) or "backward" (toward sender)
     """
+
     type: str = field(default="circuit_relay", init=False)
     circuit_id: str = ""
     payload: str = ""  # Hex-encoded onion payload
@@ -803,6 +810,7 @@ class CircuitDestroyMessage:
         circuit_id: The circuit to destroy
         reason: Optional reason for teardown
     """
+
     type: str = field(default="circuit_destroy", init=False)
     circuit_id: str = ""
     reason: str = ""
@@ -837,6 +845,7 @@ class CircuitExtendMessage:
         ephemeral_public: Client's ephemeral key for next hop
         next_extend_payload: Encrypted payload for hop after next (if any)
     """
+
     next_router_id: str = ""
     ephemeral_public: str = ""
     next_extend_payload: str | None = None
@@ -875,6 +884,7 @@ class CircuitExtendMessage:
 
 class MisbehaviorType:
     """Types of router misbehavior that can be reported."""
+
     MESSAGE_DROP = "message_drop"  # Router drops messages
     MESSAGE_DELAY = "message_delay"  # Router delays messages excessively
     MESSAGE_MODIFY = "message_modify"  # Router modifies message content
@@ -907,6 +917,7 @@ class RouterBehaviorMetrics:
         flagged: Whether this router has been flagged for misbehavior
         flag_reason: Reason for flagging (if flagged)
     """
+
     router_id: str
     messages_sent: int = 0
     messages_delivered: int = 0
@@ -1012,6 +1023,7 @@ class MisbehaviorEvidence:
 
     Collected when a misbehavior is detected to support the report.
     """
+
     timestamp: float = field(default_factory=time.time)
     misbehavior_type: str = ""  # One of MisbehaviorType values
     message_id: str | None = None  # Related message ID if applicable
@@ -1071,6 +1083,7 @@ class MisbehaviorReport:
         timestamp: When the report was generated
         signature: Reporter's signature (hex) for verification
     """
+
     type: str = field(default="misbehavior_report", init=False)
     report_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     reporter_id: str = ""
@@ -1100,10 +1113,7 @@ class MisbehaviorReport:
     @classmethod
     def from_dict(cls, data: dict) -> "MisbehaviorReport":
         """Deserialize from dict."""
-        evidence = [
-            MisbehaviorEvidence.from_dict(e)
-            for e in data.get("evidence", [])
-        ]
+        evidence = [MisbehaviorEvidence.from_dict(e) for e in data.get("evidence", [])]
         metrics_data = data.get("metrics")
         metrics = RouterBehaviorMetrics.from_dict(metrics_data) if metrics_data else None
 
@@ -1147,6 +1157,7 @@ class NetworkBaseline:
         delivery_rate_stddev: Standard deviation of delivery rates
         latency_stddev_ms: Standard deviation of latencies
     """
+
     avg_delivery_rate: float = 0.95
     avg_latency_ms: float = 100.0
     avg_ack_success_rate: float = 0.95
@@ -1198,6 +1209,7 @@ class NetworkBaseline:
 
 class RevocationReason:
     """Standard reasons for seed revocation."""
+
     KEY_COMPROMISE = "key_compromise"  # Private key was compromised
     MALICIOUS_BEHAVIOR = "malicious_behavior"  # Seed exhibited malicious behavior
     RETIRED = "retired"  # Seed is being retired from service
@@ -1231,6 +1243,7 @@ class SeedRevocation:
         issuer_id: ID of who issued the revocation (seed itself or authority)
         signature: Ed25519 signature proving authorization (hex-encoded)
     """
+
     type: str = field(default="seed_revocation", init=False)
     revocation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     seed_id: str = ""  # The seed being revoked
@@ -1270,7 +1283,7 @@ class SeedRevocation:
 
     def get_signable_bytes(self) -> bytes:
         """Get canonical bytes for signing."""
-        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(',', ':')).encode()
+        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(",", ":")).encode()
 
     def to_dict(self) -> dict:
         """Serialize to dict for transmission."""
@@ -1328,6 +1341,7 @@ class SeedRevocationList:
         authority_id: ID of the signing authority
         signature: Ed25519 signature of the list (hex)
     """
+
     version: int = 1
     generated_at: float = field(default_factory=time.time)
     revocations: list[SeedRevocation] = field(default_factory=list)
@@ -1345,7 +1359,7 @@ class SeedRevocationList:
 
     def get_signable_bytes(self) -> bytes:
         """Get canonical bytes for signing."""
-        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(',', ':')).encode()
+        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(",", ":")).encode()
 
     def to_dict(self) -> dict:
         """Serialize to dict."""
@@ -1360,9 +1374,7 @@ class SeedRevocationList:
     @classmethod
     def from_dict(cls, data: dict) -> "SeedRevocationList":
         """Deserialize from dict."""
-        revocations = [
-            SeedRevocation.from_dict(r) for r in data.get("revocations", [])
-        ]
+        revocations = [SeedRevocation.from_dict(r) for r in data.get("revocations", [])]
         return cls(
             version=data.get("version", 1),
             generated_at=data.get("generated_at", time.time()),
@@ -1388,10 +1400,7 @@ class SeedRevocationList:
             Set of seed IDs that are revoked
         """
         now = time.time()
-        return {
-            r.seed_id for r in self.revocations
-            if r.effective_at <= now
-        }
+        return {r.seed_id for r in self.revocations if r.effective_at <= now}
 
     def is_seed_revoked(self, seed_id: str) -> bool:
         """

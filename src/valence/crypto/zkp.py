@@ -46,31 +46,37 @@ from typing import Any
 
 class ZKPError(Exception):
     """Base exception for ZKP operations."""
+
     pass
 
 
 class ZKPInvalidProofError(ZKPError):
     """Raised when a proof fails verification."""
+
     pass
 
 
 class ZKPCircuitNotFoundError(ZKPError):
     """Raised when a circuit for a proof type is not found."""
+
     pass
 
 
 class ZKPProvingError(ZKPError):
     """Raised when proof generation fails."""
+
     pass
 
 
 class ZKPVerificationError(ZKPError):
     """Raised when proof verification encounters an error."""
+
     pass
 
 
 class ZKPInputError(ZKPError):
     """Raised when inputs are malformed or missing."""
+
     pass
 
 
@@ -161,7 +167,7 @@ class PublicParameters:
             circuit_hash=bytes.fromhex(data["circuit_hash"]),
             verification_key=bytes.fromhex(data["verification_key"]),
             proving_key_hash=bytes.fromhex(data["proving_key_hash"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             version=data.get("version", "1.0.0"),
         )
 
@@ -214,8 +220,8 @@ class ComplianceProof:
             proof_type=ComplianceProofType[data["proof_type"]],
             proof_data=bytes.fromhex(data["proof_data"]),
             public_inputs_hash=bytes.fromhex(data["public_inputs_hash"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             metadata=data.get("metadata", {}),
         )
 
@@ -498,7 +504,10 @@ class MockZKPProver(ZKPProver):
         # Define required inputs for each proof type
         self._required_private: dict[ComplianceProofType, set[str]] = {
             ComplianceProofType.HAS_CONSENT: {"consent_record"},
-            ComplianceProofType.WITHIN_POLICY: {"operation_details", "policy_evaluation"},
+            ComplianceProofType.WITHIN_POLICY: {
+                "operation_details",
+                "policy_evaluation",
+            },
             ComplianceProofType.NOT_REVOKED: {"credential", "revocation_proof"},
             ComplianceProofType.MEMBER_OF_DOMAIN: {"member_credential", "merkle_proof"},
         }
@@ -506,7 +515,10 @@ class MockZKPProver(ZKPProver):
         self._required_public: dict[ComplianceProofType, set[str]] = {
             ComplianceProofType.HAS_CONSENT: {"user_id", "action"},
             ComplianceProofType.WITHIN_POLICY: {"policy_hash", "operation_type"},
-            ComplianceProofType.NOT_REVOKED: {"credential_commitment", "revocation_accumulator"},
+            ComplianceProofType.NOT_REVOKED: {
+                "credential_commitment",
+                "revocation_accumulator",
+            },
             ComplianceProofType.MEMBER_OF_DOMAIN: {"domain_id", "membership_root"},
         }
 
@@ -718,9 +730,7 @@ class MockZKPBackend(ZKPBackend):
         """Create a mock prover."""
         params = self._parameters.get(proof_type)
         if params is None:
-            raise ZKPCircuitNotFoundError(
-                f"No setup found for {proof_type.name}. Call setup() first."
-            )
+            raise ZKPCircuitNotFoundError(f"No setup found for {proof_type.name}. Call setup() first.")
 
         return MockZKPProver(proof_type, params)
 
@@ -728,9 +738,7 @@ class MockZKPBackend(ZKPBackend):
         """Create a mock verifier."""
         params = self._parameters.get(proof_type)
         if params is None:
-            raise ZKPCircuitNotFoundError(
-                f"No setup found for {proof_type.name}. Call setup() first."
-            )
+            raise ZKPCircuitNotFoundError(f"No setup found for {proof_type.name}. Call setup() first.")
 
         return MockZKPVerifier(proof_type, params)
 

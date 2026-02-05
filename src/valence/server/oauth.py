@@ -101,9 +101,7 @@ async def register_client(request: Request) -> JSONResponse:
         rpm_limit=settings.rate_limit_rpm,
     )
     if not rate_limit_result.allowed:
-        logger.warning(
-            f"OAuth register endpoint rate limited: key={rate_limit_result.key}"
-        )
+        logger.warning(f"OAuth register endpoint rate limited: key={rate_limit_result.key}")
         return rate_limit_response()
 
     try:
@@ -127,7 +125,10 @@ async def register_client(request: Request) -> JSONResponse:
         parsed = urllib.parse.urlparse(uri)
         if not parsed.scheme or not parsed.netloc:
             return JSONResponse(
-                {"error": "invalid_redirect_uri", "error_description": f"Invalid URI: {uri}"},
+                {
+                    "error": "invalid_redirect_uri",
+                    "error_description": f"Invalid URI: {uri}",
+                },
                 status_code=400,
             )
 
@@ -196,9 +197,7 @@ async def authorize(request: Request) -> Response:
 
     # Validate required parameters
     if response_type != "code":
-        return _auth_error_response(
-            redirect_uri, state, "unsupported_response_type", "Only 'code' is supported"
-        )
+        return _auth_error_response(redirect_uri, state, "unsupported_response_type", "Only 'code' is supported")
 
     if not client_id:
         return HTMLResponse(_error_page("Missing client_id"), status_code=400)
@@ -207,13 +206,14 @@ async def authorize(request: Request) -> Response:
         return HTMLResponse(_error_page("Missing redirect_uri"), status_code=400)
 
     if not code_challenge:
-        return _auth_error_response(
-            redirect_uri, state, "invalid_request", "PKCE code_challenge required"
-        )
+        return _auth_error_response(redirect_uri, state, "invalid_request", "PKCE code_challenge required")
 
     if code_challenge_method != "S256":
         return _auth_error_response(
-            redirect_uri, state, "invalid_request", "Only S256 code_challenge_method supported"
+            redirect_uri,
+            state,
+            "invalid_request",
+            "Only S256 code_challenge_method supported",
         )
 
     # Validate client
@@ -228,7 +228,13 @@ async def authorize(request: Request) -> Response:
     # Check if this is a POST (form submission) or GET (show login)
     if request.method == "POST":
         return await _handle_authorize_post(
-            request, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method
+            request,
+            client_id,
+            redirect_uri,
+            scope,
+            state,
+            code_challenge,
+            code_challenge_method,
         )
 
     # Show login form
@@ -257,8 +263,7 @@ async def _handle_authorize_post(
     password = str(password_raw) if password_raw else ""
 
     # Validate credentials using constant-time comparison to prevent timing attacks
-    if not (secrets.compare_digest(username, settings.oauth_username or "") and
-            secrets.compare_digest(password, settings.oauth_password or "")):
+    if not (secrets.compare_digest(username, settings.oauth_username or "") and secrets.compare_digest(password, settings.oauth_password or "")):
         # Re-show login with error
         params = dict(request.query_params)
         return HTMLResponse(_login_page(params, "Valence", error="Invalid username or password"))
@@ -341,9 +346,7 @@ async def token(request: Request) -> JSONResponse:
         rpm_limit=settings.rate_limit_rpm,
     )
     if not rate_limit_result.allowed:
-        logger.warning(
-            f"OAuth token endpoint rate limited: key={rate_limit_result.key}"
-        )
+        logger.warning(f"OAuth token endpoint rate limited: key={rate_limit_result.key}")
         return rate_limit_response()
 
     if grant_type == "authorization_code":
@@ -352,7 +355,10 @@ async def token(request: Request) -> JSONResponse:
         return await _handle_refresh_token_grant(form)
     else:
         return JSONResponse(
-            {"error": "unsupported_grant_type", "error_description": f"Unknown grant_type: {grant_type}"},
+            {
+                "error": "unsupported_grant_type",
+                "error_description": f"Unknown grant_type: {grant_type}",
+            },
             status_code=400,
         )
 
@@ -368,7 +374,10 @@ async def _handle_authorization_code_grant(form: Any) -> JSONResponse:
 
     if not all([code, redirect_uri, client_id, code_verifier]):
         return JSONResponse(
-            {"error": "invalid_request", "error_description": "Missing required parameters"},
+            {
+                "error": "invalid_request",
+                "error_description": "Missing required parameters",
+            },
             status_code=400,
         )
 
@@ -378,7 +387,10 @@ async def _handle_authorization_code_grant(form: Any) -> JSONResponse:
 
     if not auth_code:
         return JSONResponse(
-            {"error": "invalid_grant", "error_description": "Invalid or expired authorization code"},
+            {
+                "error": "invalid_grant",
+                "error_description": "Invalid or expired authorization code",
+            },
             status_code=400,
         )
 
@@ -417,13 +429,15 @@ async def _handle_authorization_code_grant(form: Any) -> JSONResponse:
         scope=auth_code.scope,
     )
 
-    return JSONResponse({
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": settings.oauth_access_token_expiry,
-        "refresh_token": refresh_token,
-        "scope": auth_code.scope,
-    })
+    return JSONResponse(
+        {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": settings.oauth_access_token_expiry,
+            "refresh_token": refresh_token,
+            "scope": auth_code.scope,
+        }
+    )
 
 
 async def _handle_refresh_token_grant(form: Any) -> JSONResponse:
@@ -445,7 +459,10 @@ async def _handle_refresh_token_grant(form: Any) -> JSONResponse:
 
     if not token_data:
         return JSONResponse(
-            {"error": "invalid_grant", "error_description": "Invalid or expired refresh token"},
+            {
+                "error": "invalid_grant",
+                "error_description": "Invalid or expired refresh token",
+            },
             status_code=400,
         )
 
@@ -464,12 +481,14 @@ async def _handle_refresh_token_grant(form: Any) -> JSONResponse:
         audience=settings.mcp_resource_url,
     )
 
-    return JSONResponse({
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": settings.oauth_access_token_expiry,
-        "scope": token_data.scope,
-    })
+    return JSONResponse(
+        {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": settings.oauth_access_token_expiry,
+            "scope": token_data.scope,
+        }
+    )
 
 
 # ============================================================================

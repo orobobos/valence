@@ -49,7 +49,7 @@ class TrustedPeer:
             "name": self.name,
             "notes": self.notes,
             "added_at": self.added_at.isoformat(),
-            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
+            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
             "beliefs_received": self.beliefs_received,
             "beliefs_sent": self.beliefs_sent,
         }
@@ -62,8 +62,8 @@ class TrustedPeer:
             trust_level=data["trust_level"],
             name=data.get("name"),
             notes=data.get("notes"),
-            added_at=datetime.fromisoformat(data["added_at"]) if "added_at" in data else datetime.now(),
-            last_sync_at=datetime.fromisoformat(data["last_sync_at"]) if data.get("last_sync_at") else None,
+            added_at=(datetime.fromisoformat(data["added_at"]) if "added_at" in data else datetime.now()),
+            last_sync_at=(datetime.fromisoformat(data["last_sync_at"]) if data.get("last_sync_at") else None),
             beliefs_received=data.get("beliefs_received", 0),
             beliefs_sent=data.get("beliefs_sent", 0),
         )
@@ -88,6 +88,7 @@ class TrustRegistry:
             self._path = Path(path)
         else:
             from ..core.config import get_config
+
             config = get_config()
             self._path = Path(config.trust_registry_path) if config.trust_registry_path else self.DEFAULT_PATH
 
@@ -118,11 +119,15 @@ class TrustRegistry:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._path, "w") as f:
-                json.dump({
-                    "local_did": self._local_did,
-                    "peers": [p.to_dict() for p in self._peers.values()],
-                    "updated_at": datetime.now().isoformat(),
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "local_did": self._local_did,
+                        "peers": [p.to_dict() for p in self._peers.values()],
+                        "updated_at": datetime.now().isoformat(),
+                    },
+                    f,
+                    indent=2,
+                )
         except Exception as e:
             logger.warning(f"Failed to save trust registry: {e}")
 
@@ -403,7 +408,7 @@ def export_beliefs(
             content_hash = row.get("content_hash") or hashlib.sha256(content.encode()).hexdigest()[:16]
 
             # Track domain stats
-            for domain in (row["domain_path"] or []):
+            for domain in row["domain_path"] or []:
                 domain_counts[domain] = domain_counts.get(domain, 0) + 1
 
             # Parse confidence
@@ -411,18 +416,20 @@ def export_beliefs(
             if isinstance(conf, str):
                 conf = json.loads(conf)
 
-            beliefs.append(ExportedBelief(
-                federation_id=str(row["id"]),
-                content=content,
-                confidence=conf,
-                domain_path=row["domain_path"] or [],
-                origin_did=local_did,
-                created_at=row["created_at"].isoformat(),
-                content_hash=content_hash,
-                valid_from=row["valid_from"].isoformat() if row.get("valid_from") else None,
-                valid_until=row["valid_until"].isoformat() if row.get("valid_until") else None,
-                source_type=row.get("extraction_method"),
-            ))
+            beliefs.append(
+                ExportedBelief(
+                    federation_id=str(row["id"]),
+                    content=content,
+                    confidence=conf,
+                    domain_path=row["domain_path"] or [],
+                    origin_did=local_did,
+                    created_at=row["created_at"].isoformat(),
+                    content_hash=content_hash,
+                    valid_from=(row["valid_from"].isoformat() if row.get("valid_from") else None),
+                    valid_until=(row["valid_until"].isoformat() if row.get("valid_until") else None),
+                    source_type=row.get("extraction_method"),
+                )
+            )
 
     # Update registry with export count
     if recipient_did:
@@ -506,7 +513,7 @@ def import_beliefs(
                 # Check for duplicate by federation_id
                 cur.execute(
                     "SELECT id FROM beliefs WHERE federation_id = %s OR content_hash = %s",
-                    (belief.federation_id, belief.content_hash)
+                    (belief.federation_id, belief.content_hash),
                 )
                 if cur.fetchone():
                     skipped_dup += 1
@@ -525,7 +532,8 @@ def import_beliefs(
                     weighted_conf = {"overall": 0.7 * trust_level}
 
                 # Insert belief
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO beliefs (
                         content, confidence, domain_path,
                         valid_from, valid_until,
@@ -540,18 +548,20 @@ def import_beliefs(
                         %s, %s
                     )
                     RETURNING id
-                """, (
-                    belief.content,
-                    json.dumps(weighted_conf),
-                    belief.domain_path,
-                    datetime.fromisoformat(belief.valid_from) if belief.valid_from else None,
-                    datetime.fromisoformat(belief.valid_until) if belief.valid_until else None,
-                    belief.federation_id,
-                    belief.content_hash,
-                    belief.source_type or 'peer_import',
-                    from_did,
-                    trust_level,
-                ))
+                """,
+                    (
+                        belief.content,
+                        json.dumps(weighted_conf),
+                        belief.domain_path,
+                        (datetime.fromisoformat(belief.valid_from) if belief.valid_from else None),
+                        (datetime.fromisoformat(belief.valid_until) if belief.valid_until else None),
+                        belief.federation_id,
+                        belief.content_hash,
+                        belief.source_type or "peer_import",
+                        from_did,
+                        trust_level,
+                    ),
+                )
 
                 imported += 1
 
@@ -628,12 +638,10 @@ def query_federated(
         from openai import OpenAI
 
         from ..core.config import get_config
+
         config = get_config()
         client = OpenAI(api_key=config.openai_api_key)
-        response = client.embeddings.create(
-            model='text-embedding-3-small',
-            input=query_text
-        )
+        response = client.embeddings.create(model="text-embedding-3-small", input=query_text)
         embedding = response.data[0].embedding
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
     except Exception as e:
@@ -662,7 +670,8 @@ def query_federated(
         if embedding_str:
             # Semantic search
             params.extend([embedding_str, embedding_str, limit])
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT
                     id, content, confidence, domain_path,
                     created_at, is_local,
@@ -673,11 +682,14 @@ def query_federated(
                   AND {' AND '.join(conditions)}
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
-            """, params)
+            """,
+                params,
+            )
         else:
             # Fallback to text search
             params.extend([query_text, query_text, query_text, limit])
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT
                     id, content, confidence, domain_path,
                     created_at, is_local,
@@ -688,7 +700,9 @@ def query_federated(
                   AND {' AND '.join(conditions)}
                 ORDER BY ts_rank(content_tsv, websearch_to_tsquery('english', %s)) DESC
                 LIMIT %s
-            """, params)
+            """,
+                params,
+            )
 
         rows = cur.fetchall()
 
@@ -709,18 +723,20 @@ def query_federated(
             # For local beliefs, it's just the confidence
             effective = overall if is_local else overall
 
-            results.append(FederatedQueryResult(
-                id=str(row["id"]),
-                content=row["content"],
-                confidence=conf,
-                domain_path=row["domain_path"] or [],
-                similarity=similarity,
-                created_at=row["created_at"].isoformat(),
-                is_local=is_local,
-                origin_did=row.get("origin_node_did"),
-                origin_trust=origin_trust,
-                effective_confidence=effective,
-            ))
+            results.append(
+                FederatedQueryResult(
+                    id=str(row["id"]),
+                    content=row["content"],
+                    confidence=conf,
+                    domain_path=row["domain_path"] or [],
+                    similarity=similarity,
+                    created_at=row["created_at"].isoformat(),
+                    is_local=is_local,
+                    origin_did=row.get("origin_node_did"),
+                    origin_trust=origin_trust,
+                    effective_confidence=effective,
+                )
+            )
 
     # Sort by effective confidence * similarity
     results.sort(key=lambda r: r.effective_confidence * r.similarity, reverse=True)

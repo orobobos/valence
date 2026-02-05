@@ -65,9 +65,7 @@ class MetricsCollector:
         # Active connections gauge
         self._active_connections: int = 0
 
-    def record_request(
-        self, method: str, path: str, status_code: int, duration_seconds: float
-    ) -> None:
+    def record_request(self, method: str, path: str, status_code: int, duration_seconds: float) -> None:
         """Record a completed request.
 
         Args:

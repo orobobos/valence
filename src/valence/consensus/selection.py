@@ -32,7 +32,7 @@ from .vrf import VRF, VRFOutput
 # =============================================================================
 
 # Validator set sizing
-MIN_VALIDATORS = 31   # 3f+1 where f=10
+MIN_VALIDATORS = 31  # 3f+1 where f=10
 MAX_VALIDATORS = 100
 
 # Epoch duration
@@ -295,18 +295,12 @@ def _force_new_validators(
 ) -> list[tuple[ValidatorCandidate, VRFOutput]]:
     """Force-fill with new validators to meet minimum requirement."""
     # Find returning validators in selected (sorted by weight, lowest first)
-    returning = [
-        (c, v) for c, v in selected
-        if c.agent_id in previous_validators
-    ]
+    returning = [(c, v) for c, v in selected if c.agent_id in previous_validators]
     returning.sort(key=lambda x: x[0].selection_weight)
 
     # Find new candidates not yet selected
     selected_ids = {c.agent_id for c, _ in selected}
-    new_candidates = [
-        (c, v) for c, v in all_candidates
-        if c.agent_id not in selected_ids and c.agent_id not in previous_validators
-    ]
+    new_candidates = [(c, v) for c, v in all_candidates if c.agent_id not in selected_ids and c.agent_id not in previous_validators]
 
     # Replace lowest-weight returning with new candidates
     result = list(selected)

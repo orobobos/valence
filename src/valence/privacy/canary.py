@@ -68,11 +68,7 @@ class CanaryToken:
         token_id = f"canary_{uuid.uuid4().hex[:16]}_{secrets.token_hex(8)}"
 
         # Create HMAC signature
-        signature = hmac.new(
-            secret_key,
-            token_id.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(secret_key, token_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
         # Hash content if provided
         content_hash = None
@@ -96,11 +92,7 @@ class CanaryToken:
         Returns:
             True if signature is valid, False otherwise
         """
-        expected_signature = hmac.new(
-            secret_key,
-            self.token_id.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        expected_signature = hmac.new(secret_key, self.token_id.encode("utf-8"), hashlib.sha256).hexdigest()
         return hmac.compare_digest(self.signature, expected_signature)
 
     def to_marker(self) -> str:
@@ -126,11 +118,7 @@ class CanaryToken:
             token_id, sig_prefix = parts
 
             # Regenerate full signature
-            full_signature = hmac.new(
-                secret_key,
-                token_id.encode("utf-8"),
-                hashlib.sha256
-            ).hexdigest()
+            full_signature = hmac.new(secret_key, token_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
             # Verify prefix matches
             if not full_signature.startswith(sig_prefix):
@@ -236,7 +224,7 @@ def embed_canary(
             words = content.split(" ")
             if len(words) >= 4:
                 # Insert marker chunks between words
-                marker_parts = [invisible_marker[i:i+20] for i in range(0, len(invisible_marker), 20)]
+                marker_parts = [invisible_marker[i : i + 20] for i in range(0, len(invisible_marker), 20)]
                 step = max(1, len(words) // (len(marker_parts) + 1))
                 for i, part in enumerate(marker_parts):
                     insert_pos = min((i + 1) * step, len(words) - 1)
@@ -277,10 +265,12 @@ def detect_canaries(content: str, secret_key: bytes | None = None) -> list[Canar
                     detected.append(token)
                     seen_token_ids.add(token_id)
             else:
-                detected.append(CanaryToken(
-                    token_id=token_id,
-                    signature=parts[1],
-                ))
+                detected.append(
+                    CanaryToken(
+                        token_id=token_id,
+                        signature=parts[1],
+                    )
+                )
                 seen_token_ids.add(token_id)
 
     # Pattern 2: Visible markers [CANARY:token_id:signature] (not in HTML comments)
@@ -298,10 +288,12 @@ def detect_canaries(content: str, secret_key: bytes | None = None) -> list[Canar
                     detected.append(token)
                     seen_token_ids.add(token_id)
             else:
-                detected.append(CanaryToken(
-                    token_id=token_id,
-                    signature=parts[1],
-                ))
+                detected.append(
+                    CanaryToken(
+                        token_id=token_id,
+                        signature=parts[1],
+                    )
+                )
                 seen_token_ids.add(token_id)
 
     # Pattern 3: Invisible zero-width markers
@@ -319,10 +311,12 @@ def detect_canaries(content: str, secret_key: bytes | None = None) -> list[Canar
             else:
                 parts = marker.split(":")
                 if len(parts) == 2:
-                    detected.append(CanaryToken(
-                        token_id=parts[0],
-                        signature=parts[1],
-                    ))
+                    detected.append(
+                        CanaryToken(
+                            token_id=parts[0],
+                            signature=parts[1],
+                        )
+                    )
 
     return detected
 

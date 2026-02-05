@@ -101,9 +101,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(f"  cat {token_file}")
     print()
     print("To use with Claude Code:")
-    print(
-        f'  claude mcp add --transport http valence https://your-domain/mcp --header "Authorization: Bearer $(cat {token_file})"'
-    )
+    print(f'  claude mcp add --transport http valence https://your-domain/mcp --header "Authorization: Bearer $(cat {token_file})"')
     print()
     print("IMPORTANT: Delete the token file after copying to a secure location.")
     print()

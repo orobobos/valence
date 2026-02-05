@@ -97,9 +97,10 @@ def check_rate_limit_multi(keys: list[str], rpm_limit: int, window_seconds: int 
 @dataclass
 class RateLimitResult:
     """Result of a rate limit check."""
+
     allowed: bool
     key: str | None = None  # Which key triggered the limit
-    retry_after: int = 60   # Seconds until the window resets
+    retry_after: int = 60  # Seconds until the window resets
 
 
 def check_oauth_rate_limit(

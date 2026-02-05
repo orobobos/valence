@@ -27,16 +27,19 @@ from .models import (
 
 class ErasureCodingError(Exception):
     """Base exception for erasure coding errors."""
+
     pass
 
 
 class InsufficientShardsError(ErasureCodingError):
     """Raised when there aren't enough shards to recover data."""
+
     pass
 
 
 class CorruptedDataError(ErasureCodingError):
     """Raised when recovered data doesn't match expected checksum."""
+
     pass
 
 
@@ -70,7 +73,7 @@ def _init_galois_tables() -> None:
             _GF_LOG[x] = i
             x <<= 1
             if x & 0x100:
-                x ^= 0x11d  # Primitive polynomial
+                x ^= 0x11D  # Primitive polynomial
 
         # Extend exp table for easier multiplication
         for i in range(255, 512):
@@ -208,10 +211,7 @@ class ErasureCodec:
         padded_data = data + bytes(padded_len - data_len)
 
         # Split into data shards
-        data_chunks = [
-            padded_data[i * shard_size:(i + 1) * shard_size]
-            for i in range(self.data_shards)
-        ]
+        data_chunks = [padded_data[i * shard_size : (i + 1) * shard_size] for i in range(self.data_shards)]
 
         # Create all shards (data + parity)
         shards: list[StorageShard | None] = []
@@ -223,10 +223,7 @@ class ErasureCodec:
                 is_parity = False
             else:
                 # Parity shard - matrix multiplication
-                shard_data = self._compute_parity_shard(
-                    data_chunks,
-                    shard_idx - self.data_shards
-                )
+                shard_data = self._compute_parity_shard(data_chunks, shard_idx - self.data_shards)
                 is_parity = True
 
             # Create metadata
@@ -255,11 +252,7 @@ class ErasureCodec:
 
         return shard_set
 
-    def _compute_parity_shard(
-        self,
-        data_chunks: list[bytes],
-        parity_idx: int
-    ) -> bytes:
+    def _compute_parity_shard(self, data_chunks: list[bytes], parity_idx: int) -> bytes:
         """Compute a single parity shard.
 
         Args:
@@ -319,7 +312,7 @@ class ErasureCodec:
             )
 
         # Use first k valid shards
-        shards_to_use = valid_shards[:self.data_shards]
+        shards_to_use = valid_shards[: self.data_shards]
         [s.index for s in shards_to_use]
 
         # Check if we have all data shards (fast path)
@@ -330,7 +323,7 @@ class ErasureCodec:
             # All data shards present - just concatenate
             sorted_shards = sorted(
                 [s for s in shards_to_use if s.index < self.data_shards],
-                key=lambda s: s.index
+                key=lambda s: s.index,
             )
             recovered = b"".join(s.data for s in sorted_shards)
         else:
@@ -338,7 +331,7 @@ class ErasureCodec:
             recovered = self._recover_with_matrix_inversion(shards_to_use)
 
         # Trim to original size
-        recovered = recovered[:shard_set.original_size]
+        recovered = recovered[: shard_set.original_size]
 
         # Verify checksum
         actual_checksum = hashlib.sha256(recovered).hexdigest()
@@ -362,10 +355,7 @@ class ErasureCodec:
             recovery_time_ms=elapsed_ms,
         )
 
-    def _recover_with_matrix_inversion(
-        self,
-        shards: list[StorageShard]
-    ) -> bytes:
+    def _recover_with_matrix_inversion(self, shards: list[StorageShard]) -> bytes:
         """Recover data using matrix inversion when data shards are missing.
 
         Uses Gauss-Jordan elimination to invert the submatrix corresponding
@@ -402,7 +392,10 @@ class ErasureCodec:
 
             # Swap rows if needed (same operation on both matrices)
             if pivot_row != col:
-                submatrix[col], submatrix[pivot_row] = submatrix[pivot_row], submatrix[col]
+                submatrix[col], submatrix[pivot_row] = (
+                    submatrix[pivot_row],
+                    submatrix[col],
+                )
                 inverse[col], inverse[pivot_row] = inverse[pivot_row], inverse[col]
 
             # Scale pivot row to make pivot element = 1
@@ -467,9 +460,7 @@ class ErasureCodec:
         # First, recover the original data
         result = self.decode(shard_set)
         if not result.success or result.data is None:
-            raise InsufficientShardsError(
-                result.error_message or "Cannot repair: insufficient valid shards"
-            )
+            raise InsufficientShardsError(result.error_message or "Cannot repair: insufficient valid shards")
 
         # Re-encode to get complete shard set
         new_set = self.encode(result.data, str(shard_set.belief_id) if shard_set.belief_id else None)

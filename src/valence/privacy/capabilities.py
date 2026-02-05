@@ -26,11 +26,14 @@ from typing import Any, ParamSpec, TypeVar
 
 import jwt
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 # Type variables for decorator
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -71,38 +74,46 @@ class CapabilityAction(StrEnum):
 # ERRORS
 # =============================================================================
 
+
 class CapabilityError(Exception):
     """Base error for capability operations."""
+
     pass
 
 
 class CapabilityExpiredError(CapabilityError):
     """Capability has expired."""
+
     pass
 
 
 class CapabilityInvalidSignatureError(CapabilityError):
     """Capability signature is invalid."""
+
     pass
 
 
 class CapabilityRevokedError(CapabilityError):
     """Capability has been revoked."""
+
     pass
 
 
 class CapabilityNotFoundError(CapabilityError):
     """Capability not found in store."""
+
     pass
 
 
 class CapabilityTTLExceededError(CapabilityError):
     """Requested TTL exceeds maximum allowed."""
+
     pass
 
 
 class CapabilityInsufficientPermissionError(CapabilityError):
     """Issuer lacks permission to grant this capability."""
+
     pass
 
 
@@ -121,6 +132,7 @@ CapabilityInvalidError = CapabilityInvalidSignatureError
 # =============================================================================
 # CAPABILITY MODEL
 # =============================================================================
+
 
 @dataclass
 class Capability:
@@ -406,6 +418,7 @@ class Capability:
 # CAPABILITY VALIDATION
 # =============================================================================
 
+
 @dataclass
 class ValidationResult:
     """Result of capability validation with detailed error information.
@@ -507,17 +520,11 @@ def validate_capability(
 
     # Check resource match
     if capability.resource != resource:
-        errors.append(
-            f"Resource mismatch: capability grants access to '{capability.resource}', "
-            f"but '{resource}' was requested"
-        )
+        errors.append(f"Resource mismatch: capability grants access to '{capability.resource}', " f"but '{resource}' was requested")
 
     # Check action permission
     if not capability.has_action(action):
-        errors.append(
-            f"Action not permitted: capability grants {capability.actions}, "
-            f"but '{action}' was requested"
-        )
+        errors.append(f"Action not permitted: capability grants {capability.actions}, " f"but '{action}' was requested")
 
     return ValidationResult(
         is_valid=len(errors) == 0,
@@ -585,6 +592,7 @@ async def validate_capability_async(
 # CAPABILITY DECORATOR
 # =============================================================================
 
+
 def requires_capability(
     resource: str | Callable[..., str],
     action: str,
@@ -635,6 +643,7 @@ def requires_capability(
         CapabilityValidationError: If validation fails and raise_on_invalid=True
         ValueError: If capability_param not found in function arguments
     """
+
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         import asyncio
 
@@ -762,6 +771,7 @@ def _resolve_resource(
 # =============================================================================
 # CAPABILITY STORE (Abstract Interface)
 # =============================================================================
+
 
 class CapabilityStore:
     """Abstract interface for capability persistence.
@@ -965,6 +975,7 @@ async def null_key_resolver(did: str) -> Ed25519PublicKey | None:
 # CAPABILITY SERVICE
 # =============================================================================
 
+
 class CapabilityService:
     """Service for issuing and verifying capabilities.
 
@@ -1034,17 +1045,13 @@ class CapabilityService:
 
         # Enforce maximum TTL
         if effective_ttl > self.max_ttl_seconds:
-            raise CapabilityTTLExceededError(
-                f"Requested TTL ({effective_ttl}s) exceeds maximum ({self.max_ttl_seconds}s)"
-            )
+            raise CapabilityTTLExceededError(f"Requested TTL ({effective_ttl}s) exceeds maximum ({self.max_ttl_seconds}s)")
 
         # If delegating from parent, validate delegation rights
         parent_id = None
         if parent_capability:
             if not parent_capability.has_action(CapabilityAction.DELEGATE.value):
-                raise CapabilityInsufficientPermissionError(
-                    "Parent capability does not grant delegation rights"
-                )
+                raise CapabilityInsufficientPermissionError("Parent capability does not grant delegation rights")
 
             if parent_capability.is_expired:
                 raise CapabilityExpiredError("Parent capability has expired")
@@ -1060,9 +1067,7 @@ class CapabilityService:
                 requested_actions = set(actions)
                 if not requested_actions.issubset(parent_actions):
                     extra = requested_actions - parent_actions
-                    raise CapabilityInsufficientPermissionError(
-                        f"Cannot delegate actions not in parent: {extra}"
-                    )
+                    raise CapabilityInsufficientPermissionError(f"Cannot delegate actions not in parent: {extra}")
 
             # Delegated capability TTL cannot exceed parent's remaining TTL
             parent_ttl = parent_capability.ttl_seconds
@@ -1095,9 +1100,7 @@ class CapabilityService:
         await self.store.save(capability)
 
         logger.info(
-            f"Issued capability {capability.id}: "
-            f"{issuer_did} -> {holder_did} for {resource} "
-            f"(actions={actions}, ttl={effective_ttl}s)"
+            f"Issued capability {capability.id}: " f"{issuer_did} -> {holder_did} for {resource} " f"(actions={actions}, ttl={effective_ttl}s)"
         )
 
         return capability
@@ -1136,9 +1139,7 @@ class CapabilityService:
         if issuer_public_key is None:
             issuer_public_key = await self.key_resolver(capability.issuer_did)
             if issuer_public_key is None:
-                raise CapabilityInvalidSignatureError(
-                    f"Cannot resolve public key for {capability.issuer_did}"
-                )
+                raise CapabilityInvalidSignatureError(f"Cannot resolve public key for {capability.issuer_did}")
 
         # Verify signature
         if not capability.signature:
@@ -1149,9 +1150,7 @@ class CapabilityService:
             signature = bytes.fromhex(capability.signature)
             issuer_public_key.verify(signature, payload)
         except InvalidSignature:
-            raise CapabilityInvalidSignatureError(
-                f"Invalid signature on capability {capability.id}"
-            )
+            raise CapabilityInvalidSignatureError(f"Invalid signature on capability {capability.id}")
 
         return True
 
@@ -1469,6 +1468,7 @@ def set_capability_service(service: CapabilityService) -> None:
 # =============================================================================
 # CONVENIENCE FUNCTIONS
 # =============================================================================
+
 
 async def issue_capability(
     issuer_did: str,

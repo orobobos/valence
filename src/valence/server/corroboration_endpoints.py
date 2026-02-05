@@ -78,14 +78,16 @@ async def belief_corroboration_endpoint(request: Request) -> JSONResponse:
         else:
             label = "highly corroborated"
 
-        return JSONResponse({
-            "success": True,
-            "belief_id": str(corroboration.belief_id),
-            "corroboration_count": corroboration.corroboration_count,
-            "confidence_corroboration": corroboration.confidence_corroboration,
-            "corroborating_sources": corroboration.sources,
-            "confidence_label": label,
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "belief_id": str(corroboration.belief_id),
+                "corroboration_count": corroboration.corroboration_count,
+                "confidence_corroboration": corroboration.confidence_corroboration,
+                "corroborating_sources": corroboration.sources,
+                "confidence_label": label,
+            }
+        )
 
     except Exception:
         logger.exception(f"Error getting corroboration for {belief_id_str}")
@@ -132,11 +134,13 @@ async def most_corroborated_beliefs_endpoint(request: Request) -> JSONResponse:
             domain_filter=domain_filter,
         )
 
-        return JSONResponse({
-            "success": True,
-            "beliefs": beliefs,
-            "total_count": len(beliefs),
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "beliefs": beliefs,
+                "total_count": len(beliefs),
+            }
+        )
 
     except Exception:
         logger.exception("Error getting most corroborated beliefs")

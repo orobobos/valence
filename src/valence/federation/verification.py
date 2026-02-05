@@ -75,20 +75,20 @@ DID_RESOLUTION_TIMEOUT = 15
 class VerificationMethod(StrEnum):
     """Method used to verify a domain claim."""
 
-    DNS_TXT = "dns_txt"           # DNS TXT record verification
+    DNS_TXT = "dns_txt"  # DNS TXT record verification
     DID_DOCUMENT = "did_document"  # DID document service endpoint verification
-    BOTH = "both"                  # Both methods verified
-    NONE = "none"                  # No verification performed
+    BOTH = "both"  # Both methods verified
+    NONE = "none"  # No verification performed
 
 
 class VerificationStatus(StrEnum):
     """Status of a domain verification."""
 
-    VERIFIED = "verified"      # Domain claim is verified
-    FAILED = "failed"          # Verification failed
-    PENDING = "pending"        # Verification in progress
-    ERROR = "error"            # Error during verification
-    EXPIRED = "expired"        # Cached verification expired
+    VERIFIED = "verified"  # Domain claim is verified
+    FAILED = "failed"  # Verification failed
+    PENDING = "pending"  # Verification in progress
+    ERROR = "error"  # Error during verification
+    EXPIRED = "expired"  # Cached verification expired
 
 
 # =============================================================================
@@ -100,10 +100,10 @@ class VerificationStatus(StrEnum):
 class VerificationResult:
     """Result of a domain verification attempt."""
 
-    local_federation: str        # DID of the verifying federation
-    remote_federation: str       # DID of the federation making the claim
-    domain: str                  # Domain being claimed
-    verified: bool               # Whether the claim is verified
+    local_federation: str  # DID of the verifying federation
+    remote_federation: str  # DID of the federation making the claim
+    domain: str  # Domain being claimed
+    verified: bool  # Whether the claim is verified
     status: VerificationStatus
     method: VerificationMethod
 
@@ -576,8 +576,9 @@ async def verify_cross_federation_domain(
         dns_task = verify_dns_txt_record(domain, remote_fed)
         did_task = verify_did_document_claim(remote_fed, domain)
 
-        (dns_verified, dns_txt, dns_error), (did_verified, did_endpoint, did_error) = \
-            await asyncio.gather(dns_task, did_task, return_exceptions=False)
+        (dns_verified, dns_txt, dns_error), (did_verified, did_endpoint, did_error) = await asyncio.gather(
+            dns_task, did_task, return_exceptions=False
+        )
 
         result.dns_verified = dns_verified
         result.dns_txt_record = dns_txt
@@ -659,12 +660,16 @@ def verify_cross_federation_domain_sync(
 ) -> VerificationResult:
     """Synchronous version of verify_cross_federation_domain."""
     try:
-        return asyncio.run(verify_cross_federation_domain(
-            local_fed, remote_fed, domain_claim,
-            require_dns=require_dns,
-            require_did=require_did,
-            use_cache=use_cache,
-        ))
+        return asyncio.run(
+            verify_cross_federation_domain(
+                local_fed,
+                remote_fed,
+                domain_claim,
+                require_dns=require_dns,
+                require_did=require_did,
+                use_cache=use_cache,
+            )
+        )
     except Exception as e:
         return VerificationResult(
             local_federation=local_fed,
@@ -697,10 +702,7 @@ async def verify_multiple_domains(
     Returns:
         List of VerificationResults in the same order as claims
     """
-    tasks = [
-        verify_cross_federation_domain(local_fed, remote_fed, domain, use_cache=use_cache)
-        for remote_fed, domain in claims
-    ]
+    tasks = [verify_cross_federation_domain(local_fed, remote_fed, domain, use_cache=use_cache) for remote_fed, domain in claims]
 
     return await asyncio.gather(*tasks)
 

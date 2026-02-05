@@ -18,10 +18,10 @@ class ProvenanceTier(Enum):
     is exposed to different audiences.
     """
 
-    FULL = "full"          # Complete chain with identities
-    PARTIAL = "partial"    # Chain structure, no identities
+    FULL = "full"  # Complete chain with identities
+    PARTIAL = "partial"  # Chain structure, no identities
     ANONYMOUS = "anonymous"  # "verified by N sources" summary
-    NONE = "none"          # No provenance information
+    NONE = "none"  # No provenance information
 
 
 @dataclass
@@ -66,7 +66,7 @@ class ProvenanceChain:
             "origin_node": self.origin_node,
             "origin_timestamp": self.origin_timestamp,
             "hops": self.hops,
-            "origin_signature": self.origin_signature.hex() if self.origin_signature else None,
+            "origin_signature": (self.origin_signature.hex() if self.origin_signature else None),
             "chain_signatures": [s.hex() for s in self.chain_signatures],
             "signature_verified": self.signature_verified,
             "federation_path": self.federation_path,
@@ -296,7 +296,7 @@ def filter_provenance(
     # FULL tier - everything
     # Sanitize hops to remove any accidentally included sensitive data
     sanitized_hops = []
-    for hop in (pchain.hops or []):
+    for hop in pchain.hops or []:
         if isinstance(hop, dict):
             sanitized_hops.append(hop.copy())
         else:
@@ -342,18 +342,15 @@ def get_tier_for_audience(
         "owner": ProvenanceTier.FULL,
         "admin": ProvenanceTier.FULL,
         "self": ProvenanceTier.FULL,
-
         # Partial access (trusted but not owner)
         "trusted": ProvenanceTier.PARTIAL,
         "collaborator": ProvenanceTier.PARTIAL,
         "federation": ProvenanceTier.PARTIAL,
         "node": ProvenanceTier.PARTIAL,
-
         # Anonymous (public-ish)
         "public": ProvenanceTier.ANONYMOUS,
         "reader": ProvenanceTier.ANONYMOUS,
         "viewer": ProvenanceTier.ANONYMOUS,
-
         # No provenance
         "anonymous": ProvenanceTier.NONE,
         "minimal": ProvenanceTier.NONE,

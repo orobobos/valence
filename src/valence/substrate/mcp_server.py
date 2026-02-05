@@ -50,6 +50,7 @@ server = Server("valence-substrate")
 # Tool Definitions
 # ============================================================================
 
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools."""
@@ -63,26 +64,26 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Natural language search query"
+                        "description": "Natural language search query",
                     },
                     "domain_filter": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Filter by domain path (e.g., ['tech', 'architecture'])"
+                        "description": "Filter by domain path (e.g., ['tech', 'architecture'])",
                     },
                     "entity_id": {
                         "type": "string",
-                        "description": "Filter by related entity UUID"
+                        "description": "Filter by related entity UUID",
                     },
                     "include_superseded": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include superseded beliefs"
+                        "description": "Include superseded beliefs",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 20,
-                        "description": "Maximum results"
+                        "description": "Maximum results",
                     },
                 },
                 "required": ["query"],
@@ -96,26 +97,26 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Natural language query to find semantically similar beliefs"
+                        "description": "Natural language query to find semantically similar beliefs",
                     },
                     "min_similarity": {
                         "type": "number",
                         "default": 0.5,
-                        "description": "Minimum similarity threshold (0-1)"
+                        "description": "Minimum similarity threshold (0-1)",
                     },
                     "min_confidence": {
                         "type": "number",
-                        "description": "Filter by minimum overall confidence"
+                        "description": "Filter by minimum overall confidence",
                     },
                     "domain_filter": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Filter by domain path"
+                        "description": "Filter by domain path",
                     },
                     "limit": {
                         "type": "integer",
                         "default": 10,
-                        "description": "Maximum results"
+                        "description": "Maximum results",
                     },
                 },
                 "required": ["query"],
@@ -127,28 +128,31 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "The belief content"
-                    },
+                    "content": {"type": "string", "description": "The belief content"},
                     "confidence": {
                         "type": "object",
                         "description": "Confidence dimensions (or single 'overall' value)",
-                        "default": {"overall": 0.7}
+                        "default": {"overall": 0.7},
                     },
                     "domain_path": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Domain classification"
+                        "description": "Domain classification",
                     },
                     "source_type": {
                         "type": "string",
-                        "enum": ["document", "conversation", "inference", "observation", "user_input"],
-                        "description": "Type of source"
+                        "enum": [
+                            "document",
+                            "conversation",
+                            "inference",
+                            "observation",
+                            "user_input",
+                        ],
+                        "description": "Type of source",
                     },
                     "source_ref": {
                         "type": "string",
-                        "description": "Reference to source (URL, session_id, etc.)"
+                        "description": "Reference to source (URL, session_id, etc.)",
                     },
                     "entities": {
                         "type": "array",
@@ -157,11 +161,14 @@ async def list_tools() -> list[Tool]:
                             "properties": {
                                 "name": {"type": "string"},
                                 "type": {"type": "string"},
-                                "role": {"type": "string", "enum": ["subject", "object", "context"]}
+                                "role": {
+                                    "type": "string",
+                                    "enum": ["subject", "object", "context"],
+                                },
                             },
-                            "required": ["name"]
+                            "required": ["name"],
                         },
-                        "description": "Entities to link (will be created if not exist)"
+                        "description": "Entities to link (will be created if not exist)",
                     },
                 },
                 "required": ["content"],
@@ -175,19 +182,19 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "old_belief_id": {
                         "type": "string",
-                        "description": "UUID of belief to supersede"
+                        "description": "UUID of belief to supersede",
                     },
                     "new_content": {
                         "type": "string",
-                        "description": "Updated belief content"
+                        "description": "Updated belief content",
                     },
                     "reason": {
                         "type": "string",
-                        "description": "Why this belief is being superseded"
+                        "description": "Why this belief is being superseded",
                     },
                     "confidence": {
                         "type": "object",
-                        "description": "Confidence for new belief"
+                        "description": "Confidence for new belief",
                     },
                 },
                 "required": ["old_belief_id", "new_content", "reason"],
@@ -201,17 +208,17 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "belief_id": {
                         "type": "string",
-                        "description": "UUID of the belief"
+                        "description": "UUID of the belief",
                     },
                     "include_history": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include supersession chain"
+                        "description": "Include supersession chain",
                     },
                     "include_tensions": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include related tensions"
+                        "description": "Include related tensions",
                     },
                 },
                 "required": ["belief_id"],
@@ -226,17 +233,17 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_id": {
                         "type": "string",
-                        "description": "UUID of the entity"
+                        "description": "UUID of the entity",
                     },
                     "include_beliefs": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include related beliefs"
+                        "description": "Include related beliefs",
                     },
                     "belief_limit": {
                         "type": "integer",
                         "default": 10,
-                        "description": "Max beliefs to include"
+                        "description": "Max beliefs to include",
                     },
                 },
                 "required": ["entity_id"],
@@ -250,17 +257,22 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query (matches name and aliases)"
+                        "description": "Search query (matches name and aliases)",
                     },
                     "type": {
                         "type": "string",
-                        "enum": ["person", "organization", "tool", "concept", "project", "location", "service"],
-                        "description": "Filter by entity type"
+                        "enum": [
+                            "person",
+                            "organization",
+                            "tool",
+                            "concept",
+                            "project",
+                            "location",
+                            "service",
+                        ],
+                        "description": "Filter by entity type",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    },
+                    "limit": {"type": "integer", "default": 20},
                 },
                 "required": ["query"],
             },
@@ -275,21 +287,18 @@ async def list_tools() -> list[Tool]:
                     "status": {
                         "type": "string",
                         "enum": ["detected", "investigating", "resolved", "accepted"],
-                        "description": "Filter by status"
+                        "description": "Filter by status",
                     },
                     "severity": {
                         "type": "string",
                         "enum": ["low", "medium", "high", "critical"],
-                        "description": "Minimum severity"
+                        "description": "Minimum severity",
                     },
                     "entity_id": {
                         "type": "string",
-                        "description": "Tensions involving this entity"
+                        "description": "Tensions involving this entity",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "default": 20
-                    },
+                    "limit": {"type": "integer", "default": 20},
                 },
             },
         ),
@@ -301,16 +310,21 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "tension_id": {
                         "type": "string",
-                        "description": "UUID of the tension"
+                        "description": "UUID of the tension",
                     },
                     "resolution": {
                         "type": "string",
-                        "description": "How the tension was resolved"
+                        "description": "How the tension was resolved",
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["supersede_a", "supersede_b", "keep_both", "archive_both"],
-                        "description": "What to do with the beliefs"
+                        "enum": [
+                            "supersede_a",
+                            "supersede_b",
+                            "keep_both",
+                            "archive_both",
+                        ],
+                        "description": "What to do with the beliefs",
                     },
                 },
                 "required": ["tension_id", "resolution", "action"],
@@ -325,26 +339,23 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "topic": {
                         "type": "string",
-                        "description": "Topic or domain to check trust for"
+                        "description": "Topic or domain to check trust for",
                     },
                     "entity_name": {
                         "type": "string",
-                        "description": "Specific entity to check trust for"
+                        "description": "Specific entity to check trust for",
                     },
                     "include_federated": {
                         "type": "boolean",
                         "default": True,
-                        "description": "Include federated node trust"
+                        "description": "Include federated node trust",
                     },
                     "min_trust": {
                         "type": "number",
                         "default": 0.3,
-                        "description": "Minimum trust threshold"
+                        "description": "Minimum trust threshold",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "default": 10
-                    },
+                    "limit": {"type": "integer", "default": 10},
                 },
                 "required": ["topic"],
             },
@@ -358,7 +369,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "belief_id": {
                         "type": "string",
-                        "description": "UUID of the belief to explain"
+                        "description": "UUID of the belief to explain",
                     },
                 },
                 "required": ["belief_id"],
@@ -370,6 +381,7 @@ async def list_tools() -> list[Tool]:
 # ============================================================================
 # Resource Definitions
 # ============================================================================
+
 
 @server.list_resources()
 async def list_resources() -> list[Resource]:
@@ -408,11 +420,13 @@ async def read_resource(uri: str) -> list[TextResourceContents]:
     else:
         data = {"error": f"Unknown resource: {uri}"}
 
-    return [TextResourceContents(
-        uri=AnyUrl(uri),
-        mimeType="application/json",
-        text=json.dumps(data, indent=2, default=str),
-    )]
+    return [
+        TextResourceContents(
+            uri=AnyUrl(uri),
+            mimeType="application/json",
+            text=json.dumps(data, indent=2, default=str),
+        )
+    ]
 
 
 def get_recent_beliefs(limit: int = 20) -> dict[str, Any]:
@@ -429,7 +443,7 @@ def get_recent_beliefs(limit: int = 20) -> dict[str, Any]:
             ORDER BY b.modified_at DESC
             LIMIT %s
             """,
-            (limit,)
+            (limit,),
         )
         rows = cur.fetchall()
 
@@ -472,13 +486,15 @@ def get_trust_graph() -> dict[str, Any]:
             """
         )
         for row in cur.fetchall():
-            result["entities"].append({
-                "id": str(row["id"]),
-                "name": row["name"],
-                "type": row["type"],
-                "belief_count": row["belief_count"],
-                "avg_confidence": float(row["avg_confidence"]) if row["avg_confidence"] else None,
-            })
+            result["entities"].append(
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "type": row["type"],
+                    "belief_count": row["belief_count"],
+                    "avg_confidence": (float(row["avg_confidence"]) if row["avg_confidence"] else None),
+                }
+            )
 
         # Get federation nodes with trust scores
         try:
@@ -574,6 +590,7 @@ def get_stats() -> dict[str, Any]:
 # ============================================================================
 # Tool Implementations
 # ============================================================================
+
 
 def belief_query(
     query: str,
@@ -706,7 +723,7 @@ def belief_create(
         if source_type:
             cur.execute(
                 "INSERT INTO sources (type, url) VALUES (%s, %s) RETURNING id",
-                (source_type, source_ref)
+                (source_type, source_ref),
             )
             source_id = cur.fetchone()["id"]
 
@@ -717,7 +734,12 @@ def belief_create(
             VALUES (%s, %s, %s, %s)
             RETURNING *
             """,
-            (content, json.dumps(confidence_obj.to_dict()), domain_path or [], source_id)
+            (
+                content,
+                json.dumps(confidence_obj.to_dict()),
+                domain_path or [],
+                source_id,
+            ),
         )
         belief_row = cur.fetchone()
         belief_id = belief_row["id"]
@@ -734,7 +756,7 @@ def belief_create(
                     DO UPDATE SET modified_at = NOW()
                     RETURNING id
                     """,
-                    (entity["name"], entity.get("type", "concept"))
+                    (entity["name"], entity.get("type", "concept")),
                 )
                 entity_id = cur.fetchone()["id"]
 
@@ -745,7 +767,7 @@ def belief_create(
                     VALUES (%s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
-                    (belief_id, entity_id, entity.get("role", "subject"))
+                    (belief_id, entity_id, entity.get("role", "subject")),
                 )
 
         belief = Belief.from_row(dict(belief_row))
@@ -772,9 +794,7 @@ def belief_supersede(
         old_belief = Belief.from_row(dict(old_row))
 
         # Determine new confidence
-        new_confidence = DimensionalConfidence.from_dict(
-            confidence or old_belief.confidence.to_dict()
-        )
+        new_confidence = DimensionalConfidence.from_dict(confidence or old_belief.confidence.to_dict())
 
         # Create new belief
         cur.execute(
@@ -790,7 +810,7 @@ def belief_supersede(
                 str(old_belief.source_id) if old_belief.source_id else None,
                 f"supersession: {reason}",
                 old_belief_id,
-            )
+            ),
         )
         new_row = cur.fetchone()
         new_belief_id = new_row["id"]
@@ -802,7 +822,7 @@ def belief_supersede(
             SET status = 'superseded', superseded_by_id = %s, valid_until = NOW(), modified_at = NOW()
             WHERE id = %s
             """,
-            (new_belief_id, old_belief_id)
+            (new_belief_id, old_belief_id),
         )
 
         # Copy entity links
@@ -811,7 +831,7 @@ def belief_supersede(
             INSERT INTO belief_entities (belief_id, entity_id, role)
             SELECT %s, entity_id, role FROM belief_entities WHERE belief_id = %s
             """,
-            (new_belief_id, old_belief_id)
+            (new_belief_id, old_belief_id),
         )
 
         new_belief = Belief.from_row(dict(new_row))
@@ -857,13 +877,10 @@ def belief_get(
             JOIN belief_entities be ON e.id = be.entity_id
             WHERE be.belief_id = %s
             """,
-            (belief_id,)
+            (belief_id,),
         )
         entity_rows = cur.fetchall()
-        belief_dict["entities"] = [
-            {"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]}
-            for r in entity_rows
-        ]
+        belief_dict["entities"] = [{"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]} for r in entity_rows]
 
         # Load history if requested
         if include_history:
@@ -874,15 +891,17 @@ def belief_get(
             while current_id:
                 cur.execute(
                     "SELECT id, supersedes_id, created_at, extraction_method FROM beliefs WHERE id = %s",
-                    (current_id,)
+                    (current_id,),
                 )
                 hist_row = cur.fetchone()
                 if hist_row:
-                    history.append({
-                        "id": str(hist_row["id"]),
-                        "created_at": hist_row["created_at"].isoformat(),
-                        "reason": hist_row.get("extraction_method"),
-                    })
+                    history.append(
+                        {
+                            "id": str(hist_row["id"]),
+                            "created_at": hist_row["created_at"].isoformat(),
+                            "reason": hist_row.get("extraction_method"),
+                        }
+                    )
                     current_id = str(hist_row["supersedes_id"]) if hist_row["supersedes_id"] else None
                 else:
                     break
@@ -897,13 +916,10 @@ def belief_get(
                 WHERE (belief_a_id = %s OR belief_b_id = %s)
                 AND status != 'resolved'
                 """,
-                (belief_id, belief_id)
+                (belief_id, belief_id),
             )
             tension_rows = cur.fetchall()
-            result["tensions"] = [
-                Tension.from_row(dict(r)).to_dict()
-                for r in tension_rows
-            ]
+            result["tensions"] = [Tension.from_row(dict(r)).to_dict() for r in tension_rows]
 
         return result
 
@@ -938,13 +954,10 @@ def entity_get(
                 ORDER BY b.created_at DESC
                 LIMIT %s
                 """,
-                (entity_id, belief_limit)
+                (entity_id, belief_limit),
             )
             belief_rows = cur.fetchall()
-            result["beliefs"] = [
-                {**Belief.from_row(dict(r)).to_dict(), "role": r["role"]}
-                for r in belief_rows
-            ]
+            result["beliefs"] = [{**Belief.from_row(dict(r)).to_dict(), "role": r["role"]} for r in belief_rows]
 
         return result
 
@@ -1022,7 +1035,10 @@ def tension_list(
             tension_dict = tension.to_dict()
 
             # Load belief content for context
-            cur.execute("SELECT id, content FROM beliefs WHERE id IN (%s, %s)", (row["belief_a_id"], row["belief_b_id"]))
+            cur.execute(
+                "SELECT id, content FROM beliefs WHERE id IN (%s, %s)",
+                (row["belief_a_id"], row["belief_b_id"]),
+            )
             belief_rows = cur.fetchall()
             belief_map = {str(r["id"]): r["content"] for r in belief_rows}
             tension_dict["belief_a_content"] = belief_map.get(str(row["belief_a_id"]))
@@ -1069,7 +1085,7 @@ def tension_resolve(
         elif action == "archive_both":
             cur.execute(
                 "UPDATE beliefs SET status = 'archived', modified_at = NOW() WHERE id IN (%s, %s)",
-                (belief_a_id, belief_b_id)
+                (belief_a_id, belief_b_id),
             )
 
         # Mark tension as resolved
@@ -1079,7 +1095,11 @@ def tension_resolve(
             SET status = %s, resolution = %s, resolved_at = NOW()
             WHERE id = %s
             """,
-            ("resolved" if action != "keep_both" else "accepted", resolution, tension_id)
+            (
+                "resolved" if action != "keep_both" else "accepted",
+                resolution,
+                tension_id,
+            ),
         )
 
         return {
@@ -1137,15 +1157,17 @@ def trust_check(
 
         cur.execute(entity_sql, params)
         for row in cur.fetchall():
-            result["trusted_entities"].append({
-                "id": str(row["id"]),
-                "name": row["name"],
-                "type": row["type"],
-                "belief_count": row["belief_count"],
-                "avg_confidence": float(row["avg_confidence"]) if row["avg_confidence"] else None,
-                "max_confidence": float(row["max_confidence"]) if row["max_confidence"] else None,
-                "trust_reason": f"Has {row['belief_count']} beliefs about {topic} with avg confidence {float(row['avg_confidence']):.2f}",
-            })
+            result["trusted_entities"].append(
+                {
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "type": row["type"],
+                    "belief_count": row["belief_count"],
+                    "avg_confidence": (float(row["avg_confidence"]) if row["avg_confidence"] else None),
+                    "max_confidence": (float(row["max_confidence"]) if row["max_confidence"] else None),
+                    "trust_reason": f"Has {row['belief_count']} beliefs about {topic} with avg confidence {float(row['avg_confidence']):.2f}",
+                }
+            )
 
         # Check federated node trust if enabled
         if include_federated:
@@ -1161,19 +1183,21 @@ def trust_check(
                     ORDER BY (nt.trust->>'overall')::numeric DESC
                     LIMIT %s
                     """,
-                    (min_trust, limit)
+                    (min_trust, limit),
                 )
                 for row in cur.fetchall():
                     trust_score = row["trust"].get("overall", 0) if row["trust"] else 0
-                    result["trusted_nodes"].append({
-                        "id": str(row["id"]),
-                        "name": row["name"],
-                        "instance_url": row["instance_url"],
-                        "trust_score": trust_score,
-                        "beliefs_corroborated": row["beliefs_corroborated"],
-                        "beliefs_disputed": row["beliefs_disputed"],
-                        "trust_reason": f"Corroborated {row['beliefs_corroborated']} beliefs, disputed {row['beliefs_disputed']}",
-                    })
+                    result["trusted_nodes"].append(
+                        {
+                            "id": str(row["id"]),
+                            "name": row["name"],
+                            "instance_url": row["instance_url"],
+                            "trust_score": trust_score,
+                            "beliefs_corroborated": row["beliefs_corroborated"],
+                            "beliefs_disputed": row["beliefs_disputed"],
+                            "trust_reason": f"Corroborated {row['beliefs_corroborated']} beliefs, disputed {row['beliefs_disputed']}",
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"Federation tables may not exist: {e}")
 
@@ -1197,7 +1221,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
         explanation: dict[str, Any] = {
             "success": True,
             "belief_id": belief_id,
-            "content_preview": belief.content[:100] + "..." if len(belief.content) > 100 else belief.content,
+            "content_preview": (belief.content[:100] + "..." if len(belief.content) > 100 else belief.content),
             "overall_confidence": conf.overall,
             "overall_label": confidence_label(conf.overall),
             "dimensions": dimensions_dict,
@@ -1256,7 +1280,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
                 AND (expires_at IS NULL OR expires_at > NOW())
                 ORDER BY created_at DESC
                 """,
-                (belief_id,)
+                (belief_id,),
             )
             annotations = cur.fetchall()
             if annotations:
@@ -1277,6 +1301,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
 # ============================================================================
 # Tool Router
 # ============================================================================
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -1366,42 +1391,56 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
     except ValidationException as e:
         logger.warning(f"Validation error in tool {name}: {e}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Validation error: {e.message}",
-            "details": e.details,
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Validation error: {e.message}",
+                        "details": e.details,
+                    }
+                ),
+            )
+        ]
     except DatabaseException as e:
         logger.error(f"Database error in tool {name}: {e}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Database error: {e.message}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Database error: {e.message}",
+                    }
+                ),
+            )
+        ]
     except Exception as e:
         logger.exception(f"Unexpected error in tool {name}")
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Internal error: {str(e)}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Internal error: {str(e)}",
+                    }
+                ),
+            )
+        ]
 
 
 # ============================================================================
 # Server Entry Point
 # ============================================================================
 
+
 def run() -> None:
     """Run the MCP server."""
     parser = argparse.ArgumentParser(description="Valence Substrate MCP Server")
-    parser.add_argument(
-        "--health-check",
-        action="store_true",
-        help="Run health check and exit"
-    )
-    parser.add_argument(
-        "--skip-health-check",
-        action="store_true",
-        help="Skip startup health checks"
-    )
+    parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
+    parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")
     args = parser.parse_args()
 
     # Health check mode

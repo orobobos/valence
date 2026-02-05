@@ -44,7 +44,10 @@ from typing import Any
 import aiohttp
 from aiohttp import WSMsgType
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
 
 from .config import (
     PrivacyLevel,
@@ -127,11 +130,13 @@ class ConnectionState:
 
 class StateConflictError(Exception):
     """Raised when there's a conflict between saved and current state."""
+
     pass
 
 
 class StaleStateError(Exception):
     """Raised when saved state is too old to be useful."""
+
     pass
 
 
@@ -158,7 +163,7 @@ class PendingAck:
         return {
             "message_id": self.message_id,
             "recipient_id": self.recipient_id,
-            "content": self.content.hex() if isinstance(self.content, bytes) else self.content,
+            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
             "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
             "sent_at": self.sent_at,
             "router_id": self.router_id,
@@ -196,16 +201,19 @@ class PendingAck:
 
 class NodeError(Exception):
     """Base exception for node errors."""
+
     pass
 
 
 class ConnectionError(NodeError):
     """Raised when connection to router fails."""
+
     pass
 
 
 class NoRoutersAvailableError(NodeError):
     """Raised when no routers are available."""
+
     pass
 
 
@@ -271,7 +279,7 @@ class PendingMessage:
         return {
             "message_id": self.message_id,
             "recipient_id": self.recipient_id,
-            "content": self.content.hex() if isinstance(self.content, bytes) else self.content,
+            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
             "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
             "queued_at": self.queued_at,
             "retries": self.retries,
@@ -325,10 +333,7 @@ class FailoverState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FailoverState:
-        queued = [
-            PendingMessage.from_dict(msg_data)
-            for msg_data in data.get("queued_messages", [])
-        ]
+        queued = [PendingMessage.from_dict(msg_data) for msg_data in data.get("queued_messages", [])]
         return cls(
             router_id=data["router_id"],
             failed_at=data["failed_at"],
@@ -353,7 +358,7 @@ class CoverTrafficConfig:
 
     def get_next_interval(self) -> float:
         if not self.enabled:
-            return float('inf')
+            return float("inf")
 
         base_interval = 60.0 / self.rate_per_minute if self.rate_per_minute > 0 else 60.0
 
@@ -467,9 +472,7 @@ class NodeClient:
     cover_traffic: CoverTrafficConfig = field(default_factory=CoverTrafficConfig)
 
     # Traffic analysis mitigation (Issue #120)
-    traffic_analysis_mitigation: TrafficAnalysisMitigationConfig = field(
-        default_factory=TrafficAnalysisMitigationConfig
-    )
+    traffic_analysis_mitigation: TrafficAnalysisMitigationConfig = field(default_factory=TrafficAnalysisMitigationConfig)
 
     # Callbacks
     on_message: Callable[[str, bytes], None | Awaitable[None]] | None = None
@@ -528,35 +531,37 @@ class NodeClient:
     _health_monitor: HealthMonitor | None = field(default=None, repr=False)
 
     # Statistics
-    _stats: dict[str, int] = field(default_factory=lambda: {
-        "messages_sent": 0,
-        "messages_received": 0,
-        "messages_queued": 0,
-        "messages_dropped": 0,
-        "messages_deduplicated": 0,
-        "connections_established": 0,
-        "connections_failed": 0,
-        "failovers": 0,
-        "ack_successes": 0,
-        "ack_failures": 0,
-        "acks_sent": 0,
-        "gossip_sent": 0,
-        "gossip_received": 0,
-        "cover_messages_sent": 0,
-        "cover_messages_received": 0,
-        "bytes_padded": 0,
-        "routers_rotated": 0,
-        "diversity_rejections": 0,
-        "anomalies_detected": 0,
-        "oob_verifications": 0,
-        "oob_verification_failures": 0,
-        "batched_messages": 0,
-        "batch_flushes": 0,
-        "jitter_delays_applied": 0,
-        "total_jitter_ms": 0,
-        "constant_rate_padding_sent": 0,
-        "messages_with_jitter": 0,
-    })
+    _stats: dict[str, int] = field(
+        default_factory=lambda: {
+            "messages_sent": 0,
+            "messages_received": 0,
+            "messages_queued": 0,
+            "messages_dropped": 0,
+            "messages_deduplicated": 0,
+            "connections_established": 0,
+            "connections_failed": 0,
+            "failovers": 0,
+            "ack_successes": 0,
+            "ack_failures": 0,
+            "acks_sent": 0,
+            "gossip_sent": 0,
+            "gossip_received": 0,
+            "cover_messages_sent": 0,
+            "cover_messages_received": 0,
+            "bytes_padded": 0,
+            "routers_rotated": 0,
+            "diversity_rejections": 0,
+            "anomalies_detected": 0,
+            "oob_verifications": 0,
+            "oob_verification_failures": 0,
+            "batched_messages": 0,
+            "batch_flushes": 0,
+            "jitter_delays_applied": 0,
+            "total_jitter_ms": 0,
+            "constant_rate_padding_sent": 0,
+            "messages_with_jitter": 0,
+        }
+    )
 
     def __post_init__(self):
         """Initialize component managers after dataclass initialization."""
@@ -693,9 +698,7 @@ class NodeClient:
         self._stats["connections_established"] += 1
 
         # Start receive loop
-        self._tasks.append(
-            asyncio.create_task(self._receive_loop(router_id))
-        )
+        self._tasks.append(asyncio.create_task(self._receive_loop(router_id)))
 
         # Disable direct mode if enabled
         if self._router_client and self._router_client.direct_mode:
@@ -728,10 +731,7 @@ class NodeClient:
             try:
                 recovered = await self._recover_state()
                 if recovered:
-                    logger.info(
-                        f"Recovered state: {len(self.pending_acks)} pending ACKs, "
-                        f"{len(self.message_queue)} queued messages"
-                    )
+                    logger.info(f"Recovered state: {len(self.pending_acks)} pending ACKs, " f"{len(self.message_queue)} queued messages")
             except (StaleStateError, StateConflictError) as e:
                 logger.warning(f"State recovery skipped: {e}")
             except Exception as e:
@@ -847,7 +847,7 @@ class NodeClient:
             "queued_messages": len(self.message_queue),
             "pending_acks": len(self.pending_acks),
             "seen_messages_cached": len(self.seen_messages),
-            "direct_mode": self._router_client.direct_mode if self._router_client else False,
+            "direct_mode": (self._router_client.direct_mode if self._router_client else False),
         }
 
     def get_connections(self) -> list[dict[str, Any]]:
@@ -855,7 +855,7 @@ class NodeClient:
         return [
             {
                 "router_id": router_id[:16] + "...",
-                "endpoint": conn.router.endpoints[0] if conn.router.endpoints else "unknown",
+                "endpoint": (conn.router.endpoints[0] if conn.router.endpoints else "unknown"),
                 "connected_at": conn.connected_at,
                 "last_seen": conn.last_seen,
                 "health_score": round(conn.health_score, 3),
@@ -906,17 +906,19 @@ class NodeClient:
         encrypted = encrypt_message(
             json.dumps(payload_with_ack).encode(),
             recipient_public_key,
-            self.private_key
+            self.private_key,
         )
 
         # Send via router
-        await conn.websocket.send_json({
-            "type": "relay",
-            "message_id": message_id,
-            "next_hop": recipient_id,
-            "payload": encrypted,
-            "ttl": 10,
-        })
+        await conn.websocket.send_json(
+            {
+                "type": "relay",
+                "message_id": message_id,
+                "next_hop": recipient_id,
+                "payload": encrypted,
+                "ttl": 10,
+            }
+        )
 
         conn.messages_sent += 1
         conn.ack_pending += 1
@@ -994,7 +996,10 @@ class NodeClient:
             if not sender_public_hex:
                 return
 
-            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+
             sender_public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(sender_public_hex))
 
             plaintext = decrypt_message(payload, self.encryption_private_key, sender_public)
@@ -1090,10 +1095,7 @@ class NodeClient:
         self.health_monitor.record_failure_event(router_id, "connection")
 
         async def retry_messages():
-            pending_for_router = [
-                pending for msg_id, pending in self.pending_acks.items()
-                if pending.router_id == router_id
-            ]
+            pending_for_router = [pending for msg_id, pending in self.pending_acks.items() if pending.router_id == router_id]
             for pending in pending_for_router:
                 try:
                     await self.message_handler._retry_message(
@@ -1344,11 +1346,8 @@ class NodeClient:
             sequence_number=self._state_sequence,
             pending_acks=[ack.to_dict() for ack in self.pending_acks.values()],
             message_queue=[msg.to_dict() for msg in self.message_queue],
-            seen_messages=list(self.seen_messages)[-self.max_seen_messages:],
-            failover_states={
-                router_id: state.to_dict()
-                for router_id, state in self.failover_states.items()
-            },
+            seen_messages=list(self.seen_messages)[-self.max_seen_messages :],
+            failover_states={router_id: state.to_dict() for router_id, state in self.failover_states.items()},
             stats=dict(self._stats),
         )
 
@@ -1362,7 +1361,7 @@ class NodeClient:
         state_json = state.to_json()
 
         state_path = Path(state_file)
-        temp_path = state_path.with_suffix('.tmp')
+        temp_path = state_path.with_suffix(".tmp")
 
         try:
             state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1558,10 +1557,7 @@ class NodeClient:
             "constant_rate": {
                 "enabled": tam.constant_rate.enabled,
             },
-            "stats": {
-                k: v for k, v in self._stats.items()
-                if k.startswith(("batched", "batch_", "jitter", "constant_rate"))
-            },
+            "stats": {k: v for k, v in self._stats.items() if k.startswith(("batched", "batch_", "jitter", "constant_rate"))},
         }
 
 

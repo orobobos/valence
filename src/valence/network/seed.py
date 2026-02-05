@@ -57,6 +57,7 @@ logger = logging.getLogger(__name__)
 
 class HealthStatus(Enum):
     """Health status for monitored routers."""
+
     HEALTHY = "healthy"
     WARNING = "warning"
     DEGRADED = "degraded"
@@ -67,6 +68,7 @@ class HealthStatus(Enum):
 @dataclass
 class HealthState:
     """Health state for a monitored router."""
+
     status: HealthStatus
     missed_heartbeats: int
     last_heartbeat: float
@@ -154,15 +156,11 @@ class HealthMonitor:
                     state.status = self._compute_status(missed)
 
                     if state.status != old_status:
-                        logger.info(
-                            f"Router {router_id[:20]}... health: "
-                            f"{old_status.value} → {state.status.value} "
-                            f"(missed={missed})"
-                        )
+                        logger.info(f"Router {router_id[:20]}... health: " f"{old_status.value} → {state.status.value} " f"(missed={missed})")
 
                     # Notify Sybil resistance of missed heartbeats (Issue #117)
                     new_misses = missed - old_missed
-                    if new_misses > 0 and hasattr(self.seed, '_sybil_resistance') and self.seed._sybil_resistance:
+                    if new_misses > 0 and hasattr(self.seed, "_sybil_resistance") and self.seed._sybil_resistance:
                         for _ in range(new_misses):
                             self.seed.sybil_resistance.on_missed_heartbeat(router_id)
 
@@ -174,7 +172,7 @@ class HealthMonitor:
                 self.seed.router_registry.pop(router_id, None)
                 self.health_states.pop(router_id, None)
                 # Notify Sybil resistance of router removal (Issue #117)
-                if hasattr(self.seed, '_sybil_resistance') and self.seed._sybil_resistance:
+                if hasattr(self.seed, "_sybil_resistance") and self.seed._sybil_resistance:
                     self.seed.sybil_resistance.on_router_removed(router_id)
                 logger.info(f"Removed router {router_id[:20]}... due to missed heartbeats")
 
@@ -254,19 +252,13 @@ class HealthMonitor:
                         if latency_ms > self.high_latency_threshold_ms:
                             if "high_latency" not in state.warnings:
                                 state.warnings.append("high_latency")
-                                logger.debug(
-                                    f"Router {router.router_id[:20]}... "
-                                    f"high latency: {latency_ms:.1f}ms"
-                                )
+                                logger.debug(f"Router {router.router_id[:20]}... " f"high latency: {latency_ms:.1f}ms")
                         else:
                             # Remove high_latency warning if latency is now OK
                             if "high_latency" in state.warnings:
                                 state.warnings.remove("high_latency")
 
-                    logger.debug(
-                        f"Probe successful: {router.router_id[:20]}... "
-                        f"latency={latency_ms:.1f}ms"
-                    )
+                    logger.debug(f"Probe successful: {router.router_id[:20]}... " f"latency={latency_ms:.1f}ms")
 
         except TimeoutError:
             if router.router_id in self.health_states:
@@ -324,16 +316,10 @@ class HealthMonitor:
             # If router was DEGRADED or UNHEALTHY and is now HEALTHY
             if old_status in (HealthStatus.DEGRADED, HealthStatus.UNHEALTHY):
                 state.recovery_time = now
-                logger.info(
-                    f"Router {router_id[:20]}... recovered: "
-                    f"{old_status.value} → healthy (recovery ramp started)"
-                )
+                logger.info(f"Router {router_id[:20]}... recovered: " f"{old_status.value} → healthy (recovery ramp started)")
             elif old_status == HealthStatus.WARNING:
                 # Minor recovery, no ramp needed
-                logger.info(
-                    f"Router {router_id[:20]}... recovered: "
-                    f"{old_status.value} → healthy"
-                )
+                logger.info(f"Router {router_id[:20]}... recovered: " f"{old_status.value} → healthy")
 
             # Clear recovery time if router has been healthy long enough
             # (handled by _get_recovery_factor checking elapsed time)
@@ -375,6 +361,7 @@ class HealthMonitor:
 @dataclass
 class RegistrationEvent:
     """Record of a registration attempt for rate limiting."""
+
     router_id: str
     source_ip: str
     subnet: str  # /24 subnet
@@ -390,6 +377,7 @@ class ReputationRecord:
     New routers start with a low trust score that increases over time
     with consistent good behavior (heartbeats, uptime).
     """
+
     router_id: str
     score: float  # 0.0 to 1.0
     registered_at: float
@@ -439,9 +427,7 @@ class RateLimiter:
     def _cleanup_old_events(self, now: float) -> None:
         """Remove events outside the rate limit window."""
         cutoff = now - self.config.rate_limit_window_seconds
-        self._registration_events = [
-            e for e in self._registration_events if e.timestamp > cutoff
-        ]
+        self._registration_events = [e for e in self._registration_events if e.timestamp > cutoff]
 
     def check_rate_limit(self, source_ip: str) -> tuple[bool, str | None]:
         """
@@ -469,12 +455,18 @@ class RateLimiter:
         # Count recent registrations from this IP
         ip_count = sum(1 for e in self._registration_events if e.source_ip == source_ip)
         if ip_count >= self.config.rate_limit_max_per_ip:
-            return False, f"ip_limit_exceeded:max={self.config.rate_limit_max_per_ip}/hour"
+            return (
+                False,
+                f"ip_limit_exceeded:max={self.config.rate_limit_max_per_ip}/hour",
+            )
 
         # Count recent registrations from this subnet
         subnet_count = sum(1 for e in self._registration_events if e.subnet == subnet)
         if subnet_count >= self.config.rate_limit_max_per_subnet:
-            return False, f"subnet_limit_exceeded:max={self.config.rate_limit_max_per_subnet}/hour"
+            return (
+                False,
+                f"subnet_limit_exceeded:max={self.config.rate_limit_max_per_subnet}/hour",
+            )
 
         return True, None
 
@@ -483,13 +475,15 @@ class RateLimiter:
         now = time.time()
         subnet = self._get_subnet(source_ip)
 
-        self._registration_events.append(RegistrationEvent(
-            router_id=router_id,
-            source_ip=source_ip,
-            subnet=subnet,
-            timestamp=now,
-            success=success,
-        ))
+        self._registration_events.append(
+            RegistrationEvent(
+                router_id=router_id,
+                source_ip=source_ip,
+                subnet=subnet,
+                timestamp=now,
+                success=success,
+            )
+        )
 
         if success:
             self._last_registration_by_ip[source_ip] = now
@@ -544,10 +538,7 @@ class ReputationManager:
             flags=[],
         )
         self._reputation[router_id] = record
-        logger.debug(
-            f"New router reputation: {router_id[:20]}... "
-            f"initial_score={record.score}"
-        )
+        logger.debug(f"New router reputation: {router_id[:20]}... " f"initial_score={record.score}")
         return record
 
     def get_reputation(self, router_id: str) -> ReputationRecord | None:
@@ -571,13 +562,16 @@ class ReputationManager:
         # Boost score for successful heartbeat
         record.score = min(
             self.config.reputation_max_score,
-            record.score + self.config.reputation_boost_per_heartbeat
+            record.score + self.config.reputation_boost_per_heartbeat,
         )
 
         # Apply time-based trust increase (decay toward full trust)
         hours_since_registration = (now - record.registered_at) / 3600
         if hours_since_registration > 0:
-            time_factor = min(1.0, hours_since_registration / self.config.reputation_decay_period_hours)
+            time_factor = min(
+                1.0,
+                hours_since_registration / self.config.reputation_decay_period_hours,
+            )
             # Blend toward max score based on time
             target_score = self.config.reputation_max_score
             record.score = record.score + (target_score - record.score) * time_factor * 0.01
@@ -591,15 +585,9 @@ class ReputationManager:
             return None
 
         record.missed_heartbeats += 1
-        record.score = max(
-            0.0,
-            record.score - self.config.reputation_penalty_missed_heartbeat
-        )
+        record.score = max(0.0, record.score - self.config.reputation_penalty_missed_heartbeat)
 
-        logger.debug(
-            f"Missed heartbeat: {router_id[:20]}... "
-            f"score={record.score:.3f}, missed={record.missed_heartbeats}"
-        )
+        logger.debug(f"Missed heartbeat: {router_id[:20]}... " f"score={record.score:.3f}, missed={record.missed_heartbeats}")
         return record
 
     def apply_penalty(self, router_id: str, penalty: float, reason: str) -> ReputationRecord | None:
@@ -612,10 +600,7 @@ class ReputationManager:
         if reason not in record.flags:
             record.flags.append(reason)
 
-        logger.warning(
-            f"Reputation penalty: {router_id[:20]}... "
-            f"penalty={penalty}, reason={reason}, new_score={record.score:.3f}"
-        )
+        logger.warning(f"Reputation penalty: {router_id[:20]}... " f"penalty={penalty}, reason={reason}, new_score={record.score:.3f}")
         return record
 
     def is_trusted_for_discovery(self, router_id: str) -> bool:
@@ -664,10 +649,7 @@ class ReputationManager:
             "avg_score": round(sum(scores) / len(scores), 3),
             "min_score": round(min(scores), 3),
             "max_score": round(max(scores), 3),
-            "below_threshold": sum(
-                1 for r in self._reputation.values()
-                if r.score < self.config.reputation_min_score_for_discovery
-            ),
+            "below_threshold": sum(1 for r in self._reputation.values() if r.score < self.config.reputation_min_score_for_discovery),
             "flagged": sum(1 for r in self._reputation.values() if r.flags),
         }
 
@@ -709,7 +691,7 @@ class CorrelationDetector:
 
         # Keep only recent heartbeats
         if len(times) > self._max_heartbeat_history:
-            self._heartbeat_times[router_id] = times[-self._max_heartbeat_history:]
+            self._heartbeat_times[router_id] = times[-self._max_heartbeat_history :]
 
     def record_endpoint(self, router_id: str, endpoints: list[str]) -> None:
         """Record router endpoints for pattern analysis."""
@@ -828,29 +810,23 @@ class CorrelationDetector:
             self.reputation.apply_penalty(
                 router_id,
                 self.config.correlation_penalty_score,
-                "correlated_heartbeats"
+                "correlated_heartbeats",
             )
-            logger.warning(
-                f"Correlated heartbeats detected: {router_id[:20]}... "
-                f"correlates with {len(correlated_heartbeats)} other routers"
-            )
+            logger.warning(f"Correlated heartbeats detected: {router_id[:20]}... " f"correlates with {len(correlated_heartbeats)} other routers")
 
         # Check endpoint similarity
         similar_endpoints = self.check_endpoint_similarity(router_id, endpoints)
         if similar_endpoints:
             flags.append("similar_endpoints")
             for other_id, similarity in similar_endpoints:
-                logger.warning(
-                    f"Similar endpoints detected: {router_id[:20]}... and "
-                    f"{other_id[:20]}... (similarity={similarity:.2f})"
-                )
+                logger.warning(f"Similar endpoints detected: {router_id[:20]}... and " f"{other_id[:20]}... (similarity={similarity:.2f})")
 
             # Apply penalty if highly suspicious
             if any(s >= 0.9 for _, s in similar_endpoints):
                 self.reputation.apply_penalty(
                     router_id,
                     self.config.correlation_penalty_score,
-                    "highly_similar_endpoints"
+                    "highly_similar_endpoints",
                 )
 
         # Record for future analysis
@@ -960,14 +936,11 @@ class SybilResistance:
             additional_bits = int(excess_factor * self.config.adaptive_pow_difficulty_step)
             adjusted = min(
                 base_difficulty + additional_bits,
-                self.config.adaptive_pow_max_difficulty
+                self.config.adaptive_pow_max_difficulty,
             )
 
             if adjusted > base_difficulty:
-                logger.info(
-                    f"Adaptive PoW: difficulty increased {base_difficulty} → {adjusted} "
-                    f"(rate={rate}/hour)"
-                )
+                logger.info(f"Adaptive PoW: difficulty increased {base_difficulty} → {adjusted} " f"(rate={rate}/hour)")
 
             return adjusted
 
@@ -1137,47 +1110,173 @@ class SeedConfig:
 #             NA (North America), OC (Oceania), SA (South America)
 COUNTRY_TO_CONTINENT: dict[str, str] = {
     # North America
-    "US": "NA", "CA": "NA", "MX": "NA", "GT": "NA", "BZ": "NA", "HN": "NA",
-    "SV": "NA", "NI": "NA", "CR": "NA", "PA": "NA", "CU": "NA", "JM": "NA",
-    "HT": "NA", "DO": "NA", "PR": "NA", "BS": "NA", "BB": "NA", "TT": "NA",
-
+    "US": "NA",
+    "CA": "NA",
+    "MX": "NA",
+    "GT": "NA",
+    "BZ": "NA",
+    "HN": "NA",
+    "SV": "NA",
+    "NI": "NA",
+    "CR": "NA",
+    "PA": "NA",
+    "CU": "NA",
+    "JM": "NA",
+    "HT": "NA",
+    "DO": "NA",
+    "PR": "NA",
+    "BS": "NA",
+    "BB": "NA",
+    "TT": "NA",
     # South America
-    "BR": "SA", "AR": "SA", "CL": "SA", "CO": "SA", "PE": "SA", "VE": "SA",
-    "EC": "SA", "BO": "SA", "PY": "SA", "UY": "SA", "GY": "SA", "SR": "SA",
-
+    "BR": "SA",
+    "AR": "SA",
+    "CL": "SA",
+    "CO": "SA",
+    "PE": "SA",
+    "VE": "SA",
+    "EC": "SA",
+    "BO": "SA",
+    "PY": "SA",
+    "UY": "SA",
+    "GY": "SA",
+    "SR": "SA",
     # Europe
-    "GB": "EU", "DE": "EU", "FR": "EU", "IT": "EU", "ES": "EU", "PT": "EU",
-    "NL": "EU", "BE": "EU", "CH": "EU", "AT": "EU", "SE": "EU", "NO": "EU",
-    "DK": "EU", "FI": "EU", "IE": "EU", "PL": "EU", "CZ": "EU", "SK": "EU",
-    "HU": "EU", "RO": "EU", "BG": "EU", "GR": "EU", "HR": "EU", "SI": "EU",
-    "RS": "EU", "UA": "EU", "BY": "EU", "LT": "EU", "LV": "EU", "EE": "EU",
-    "LU": "EU", "MT": "EU", "CY": "EU", "IS": "EU", "AL": "EU", "MK": "EU",
-    "BA": "EU", "ME": "EU", "MD": "EU", "XK": "EU",
-
+    "GB": "EU",
+    "DE": "EU",
+    "FR": "EU",
+    "IT": "EU",
+    "ES": "EU",
+    "PT": "EU",
+    "NL": "EU",
+    "BE": "EU",
+    "CH": "EU",
+    "AT": "EU",
+    "SE": "EU",
+    "NO": "EU",
+    "DK": "EU",
+    "FI": "EU",
+    "IE": "EU",
+    "PL": "EU",
+    "CZ": "EU",
+    "SK": "EU",
+    "HU": "EU",
+    "RO": "EU",
+    "BG": "EU",
+    "GR": "EU",
+    "HR": "EU",
+    "SI": "EU",
+    "RS": "EU",
+    "UA": "EU",
+    "BY": "EU",
+    "LT": "EU",
+    "LV": "EU",
+    "EE": "EU",
+    "LU": "EU",
+    "MT": "EU",
+    "CY": "EU",
+    "IS": "EU",
+    "AL": "EU",
+    "MK": "EU",
+    "BA": "EU",
+    "ME": "EU",
+    "MD": "EU",
+    "XK": "EU",
     # Asia
-    "CN": "AS", "JP": "AS", "KR": "AS", "IN": "AS", "ID": "AS", "TH": "AS",
-    "VN": "AS", "MY": "AS", "SG": "AS", "PH": "AS", "TW": "AS", "HK": "AS",
-    "BD": "AS", "PK": "AS", "LK": "AS", "NP": "AS", "MM": "AS", "KH": "AS",
-    "LA": "AS", "MN": "AS", "KZ": "AS", "UZ": "AS", "TM": "AS", "TJ": "AS",
-    "KG": "AS", "AZ": "AS", "AM": "AS", "GE": "AS",
-
+    "CN": "AS",
+    "JP": "AS",
+    "KR": "AS",
+    "IN": "AS",
+    "ID": "AS",
+    "TH": "AS",
+    "VN": "AS",
+    "MY": "AS",
+    "SG": "AS",
+    "PH": "AS",
+    "TW": "AS",
+    "HK": "AS",
+    "BD": "AS",
+    "PK": "AS",
+    "LK": "AS",
+    "NP": "AS",
+    "MM": "AS",
+    "KH": "AS",
+    "LA": "AS",
+    "MN": "AS",
+    "KZ": "AS",
+    "UZ": "AS",
+    "TM": "AS",
+    "TJ": "AS",
+    "KG": "AS",
+    "AZ": "AS",
+    "AM": "AS",
+    "GE": "AS",
     # Middle East (part of Asia)
-    "TR": "AS", "IR": "AS", "IQ": "AS", "SA": "AS", "AE": "AS", "IL": "AS",
-    "JO": "AS", "LB": "AS", "SY": "AS", "YE": "AS", "OM": "AS", "KW": "AS",
-    "QA": "AS", "BH": "AS", "PS": "AS", "AF": "AS",
-
+    "TR": "AS",
+    "IR": "AS",
+    "IQ": "AS",
+    "SA": "AS",
+    "AE": "AS",
+    "IL": "AS",
+    "JO": "AS",
+    "LB": "AS",
+    "SY": "AS",
+    "YE": "AS",
+    "OM": "AS",
+    "KW": "AS",
+    "QA": "AS",
+    "BH": "AS",
+    "PS": "AS",
+    "AF": "AS",
     # Africa
-    "ZA": "AF", "EG": "AF", "NG": "AF", "KE": "AF", "ET": "AF", "GH": "AF",
-    "TZ": "AF", "UG": "AF", "MA": "AF", "DZ": "AF", "TN": "AF", "LY": "AF",
-    "SD": "AF", "AO": "AF", "MZ": "AF", "ZW": "AF", "ZM": "AF", "BW": "AF",
-    "NA": "AF", "CI": "AF", "CM": "AF", "SN": "AF", "ML": "AF", "NE": "AF",
-    "BF": "AF", "MG": "AF", "MW": "AF", "RW": "AF", "SO": "AF", "CD": "AF",
-    "CG": "AF", "GA": "AF", "MU": "AF", "SC": "AF", "CV": "AF",
-
+    "ZA": "AF",
+    "EG": "AF",
+    "NG": "AF",
+    "KE": "AF",
+    "ET": "AF",
+    "GH": "AF",
+    "TZ": "AF",
+    "UG": "AF",
+    "MA": "AF",
+    "DZ": "AF",
+    "TN": "AF",
+    "LY": "AF",
+    "SD": "AF",
+    "AO": "AF",
+    "MZ": "AF",
+    "ZW": "AF",
+    "ZM": "AF",
+    "BW": "AF",
+    "NA": "AF",
+    "CI": "AF",
+    "CM": "AF",
+    "SN": "AF",
+    "ML": "AF",
+    "NE": "AF",
+    "BF": "AF",
+    "MG": "AF",
+    "MW": "AF",
+    "RW": "AF",
+    "SO": "AF",
+    "CD": "AF",
+    "CG": "AF",
+    "GA": "AF",
+    "MU": "AF",
+    "SC": "AF",
+    "CV": "AF",
     # Oceania
-    "AU": "OC", "NZ": "OC", "FJ": "OC", "PG": "OC", "NC": "OC", "VU": "OC",
-    "WS": "OC", "TO": "OC", "PF": "OC", "GU": "OC", "FM": "OC", "SB": "OC",
-
+    "AU": "OC",
+    "NZ": "OC",
+    "FJ": "OC",
+    "PG": "OC",
+    "NC": "OC",
+    "VU": "OC",
+    "WS": "OC",
+    "TO": "OC",
+    "PF": "OC",
+    "GU": "OC",
+    "FM": "OC",
+    "SB": "OC",
     # Russia spans Europe/Asia - categorize as Europe for routing
     "RU": "EU",
 }
@@ -1247,6 +1346,7 @@ def compute_region_score(
 @dataclass
 class SeedRevocationRecord:
     """Record of a seed revocation for storage."""
+
     seed_id: str
     revocation_id: str
     reason: str
@@ -1350,10 +1450,7 @@ class SeedRevocationManager:
     def get_revoked_seed_ids(self) -> set:
         """Get set of all currently revoked seed IDs."""
         now = time.time()
-        return {
-            seed_id for seed_id, record in self._revocations.items()
-            if record.effective_at <= now
-        }
+        return {seed_id for seed_id, record in self._revocations.items() if record.effective_at <= now}
 
     def add_revocation(
         self,
@@ -1408,10 +1505,7 @@ class SeedRevocationManager:
         # If we have an older revocation for this seed, keep the newer one
         if existing and existing.timestamp > timestamp:
             # Existing is newer, ignore this one
-            logger.debug(
-                f"Ignoring older revocation for {seed_id[:20]}... "
-                f"(existing={existing.timestamp}, new={timestamp})"
-            )
+            logger.debug(f"Ignoring older revocation for {seed_id[:20]}... " f"(existing={existing.timestamp}, new={timestamp})")
             return True, None
 
         # Create and store the revocation record
@@ -1430,10 +1524,7 @@ class SeedRevocationManager:
 
         self._revocations[seed_id] = record
 
-        logger.info(
-            f"Added seed revocation: {seed_id[:20]}... "
-            f"reason={record.reason}, issuer={issuer_id[:20]}..., source={source}"
-        )
+        logger.info(f"Added seed revocation: {seed_id[:20]}... " f"reason={record.reason}, issuer={issuer_id[:20]}..., source={source}")
 
         return True, None
 
@@ -1482,7 +1573,7 @@ class SeedRevocationManager:
             "effective_at": revocation_data.get("effective_at"),
             "issuer_id": issuer_id,
         }
-        message = json.dumps(signed_data, sort_keys=True, separators=(',', ':')).encode()
+        message = json.dumps(signed_data, sort_keys=True, separators=(",", ":")).encode()
 
         try:
             # Parse public key from issuer_id (hex-encoded Ed25519 public key)
@@ -1559,10 +1650,7 @@ class SeedRevocationManager:
             else:
                 errors.append(f"revocation_error:{revocation.seed_id}:{error}")
 
-        logger.info(
-            f"Loaded {loaded_count} revocations from {file_path} "
-            f"(version={revocation_list.version}, errors={len(errors)})"
-        )
+        logger.info(f"Loaded {loaded_count} revocations from {file_path} " f"(version={revocation_list.version}, errors={len(errors)})")
 
         return loaded_count, errors
 
@@ -1606,9 +1694,7 @@ class SeedRevocationManager:
         # Load initial revocations from file if configured
         if self.config.seed_revocation_list_path:
             try:
-                loaded, errors = self.load_revocation_list_from_file(
-                    self.config.seed_revocation_list_path
-                )
+                loaded, errors = self.load_revocation_list_from_file(self.config.seed_revocation_list_path)
                 if errors:
                     logger.warning(f"Revocation list load errors: {errors}")
             except Exception as e:
@@ -1646,9 +1732,7 @@ class SeedRevocationManager:
                 mtime = os.path.getmtime(self.config.seed_revocation_list_path)
                 if mtime > self._revocation_list_mtime:
                     logger.info("Revocation list file updated, reloading...")
-                    self.load_revocation_list_from_file(
-                        self.config.seed_revocation_list_path
-                    )
+                    self.load_revocation_list_from_file(self.config.seed_revocation_list_path)
                     self._revocation_list_mtime = mtime
             except FileNotFoundError:
                 pass  # File doesn't exist yet
@@ -1658,10 +1742,7 @@ class SeedRevocationManager:
     def get_stats(self) -> dict[str, Any]:
         """Get revocation manager statistics."""
         now = time.time()
-        effective_count = sum(
-            1 for r in self._revocations.values()
-            if r.effective_at <= now
-        )
+        effective_count = sum(1 for r in self._revocations.values() if r.effective_at <= now)
 
         return {
             "enabled": self.config.seed_revocation_enabled,
@@ -1777,10 +1858,7 @@ class SeedPeerManager:
 
         self._running = True
         self._gossip_task = asyncio.create_task(self._gossip_loop())
-        logger.info(
-            f"Seed peer manager started with {len(self.peer_seeds)} peers, "
-            f"gossip interval={self.gossip_interval}s"
-        )
+        logger.info(f"Seed peer manager started with {len(self.peer_seeds)} peers, " f"gossip interval={self.gossip_interval}s")
 
     async def stop(self) -> None:
         """Stop the gossip loop."""
@@ -1821,18 +1899,12 @@ class SeedPeerManager:
             logger.debug("No routers to share in gossip")
 
         # Exchange with each peer concurrently
-        tasks = [
-            self._exchange_with_peer(peer_url, routers_to_share)
-            for peer_url in self.peer_seeds
-        ]
+        tasks = [self._exchange_with_peer(peer_url, routers_to_share) for peer_url in self.peer_seeds]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         successful = sum(1 for r in results if r is True)
-        logger.info(
-            f"Gossip round complete: {successful}/{len(self.peer_seeds)} peers exchanged, "
-            f"shared {len(routers_to_share)} routers"
-        )
+        logger.info(f"Gossip round complete: {successful}/{len(self.peer_seeds)} peers exchanged, " f"shared {len(routers_to_share)} routers")
 
     def _select_routers_for_gossip(self) -> list[dict[str, Any]]:
         """
@@ -1889,7 +1961,7 @@ class SeedPeerManager:
 
             # Include revocations in gossip exchange (Issue #121)
             revocations_to_share = []
-            if hasattr(self.seed, 'revocation_manager'):
+            if hasattr(self.seed, "revocation_manager"):
                 revocations_to_share = self.seed.revocation_manager.get_revocations_for_gossip()
 
             payload = {
@@ -1899,17 +1971,12 @@ class SeedPeerManager:
                 "revocations": revocations_to_share,  # Issue #121
             }
 
-            timeout = aiohttp.ClientTimeout(
-                total=self.seed.config.gossip_timeout_seconds
-            )
+            timeout = aiohttp.ClientTimeout(total=self.seed.config.gossip_timeout_seconds)
 
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(exchange_url, json=payload) as resp:
                     if resp.status != 200:
-                        logger.warning(
-                            f"Gossip exchange with {peer_url} failed: "
-                            f"status {resp.status}"
-                        )
+                        logger.warning(f"Gossip exchange with {peer_url} failed: " f"status {resp.status}")
                         self._update_peer_state(peer_url, success=False)
                         return False
 
@@ -1922,10 +1989,8 @@ class SeedPeerManager:
                     # Process received revocations (Issue #121)
                     revocations_merged = 0
                     received_revocations = data.get("revocations", [])
-                    if received_revocations and hasattr(self.seed, 'revocation_manager'):
-                        revocations_merged = self.seed.revocation_manager.process_gossip_revocations(
-                            received_revocations
-                        )
+                    if received_revocations and hasattr(self.seed, "revocation_manager"):
+                        revocations_merged = self.seed.revocation_manager.process_gossip_revocations(received_revocations)
 
                     self._update_peer_state(peer_url, success=True)
 
@@ -1974,10 +2039,7 @@ class SeedPeerManager:
                 # Check freshness of received router
                 last_seen = router_data.get("health", {}).get("last_seen", 0)
                 if now - last_seen > max_age:
-                    logger.debug(
-                        f"Skipping stale router {router_id[:20]}... from gossip "
-                        f"(age={now - last_seen:.0f}s)"
-                    )
+                    logger.debug(f"Skipping stale router {router_id[:20]}... from gossip " f"(age={now - last_seen:.0f}s)")
                     continue
 
                 # Check if we should merge
@@ -1993,10 +2055,7 @@ class SeedPeerManager:
                     self.seed.health_monitor.record_heartbeat(router_id)
 
                     merged += 1
-                    logger.debug(
-                        f"Added router {router_id[:20]}... from gossip "
-                        f"(peer={source_peer})"
-                    )
+                    logger.debug(f"Added router {router_id[:20]}... from gossip " f"(peer={source_peer})")
                 else:
                     # Existing router - compare freshness
                     existing_last_seen = existing.health.get("last_seen", 0)
@@ -2010,8 +2069,7 @@ class SeedPeerManager:
 
                         merged += 1
                         logger.debug(
-                            f"Updated router {router_id[:20]}... from gossip "
-                            f"(peer={source_peer}, delta={last_seen - existing_last_seen:.0f}s)"
+                            f"Updated router {router_id[:20]}... from gossip " f"(peer={source_peer}, delta={last_seen - existing_last_seen:.0f}s)"
                         )
 
             except Exception as e:
@@ -2089,7 +2147,7 @@ class SeedPeerManager:
         except Exception as e:
             return web.json_response(
                 {"status": "error", "reason": "invalid_json", "detail": str(e)},
-                status=400
+                status=400,
             )
 
         peer_seed_id = data.get("seed_id", "unknown")
@@ -2101,17 +2159,15 @@ class SeedPeerManager:
 
         # Process received revocations (Issue #121)
         revocations_merged = 0
-        if received_revocations and hasattr(self.seed, 'revocation_manager'):
-            revocations_merged = self.seed.revocation_manager.process_gossip_revocations(
-                received_revocations
-            )
+        if received_revocations and hasattr(self.seed, "revocation_manager"):
+            revocations_merged = self.seed.revocation_manager.process_gossip_revocations(received_revocations)
 
         # Select our routers to send back
         routers_to_share = self._select_routers_for_gossip()
 
         # Include revocations in response (Issue #121)
         revocations_to_share = []
-        if hasattr(self.seed, 'revocation_manager'):
+        if hasattr(self.seed, "revocation_manager"):
             revocations_to_share = self.seed.revocation_manager.get_revocations_for_gossip()
 
         logger.debug(
@@ -2120,12 +2176,14 @@ class SeedPeerManager:
             f"received {len(received_revocations)} revocations, merged {revocations_merged}"
         )
 
-        return web.json_response({
-            "seed_id": self.seed.seed_id,
-            "timestamp": time.time(),
-            "routers": routers_to_share,
-            "revocations": revocations_to_share,
-        })
+        return web.json_response(
+            {
+                "seed_id": self.seed.seed_id,
+                "timestamp": time.time(),
+                "routers": routers_to_share,
+                "revocations": revocations_to_share,
+            }
+        )
 
 
 # =============================================================================
@@ -2266,7 +2324,7 @@ class SeedNode:
     @property
     def sybil_resistance(self) -> SybilResistance:
         """Get the Sybil resistance manager, creating if needed (Issue #117)."""
-        if not hasattr(self, '_sybil_resistance') or self._sybil_resistance is None:
+        if not hasattr(self, "_sybil_resistance") or self._sybil_resistance is None:
             self._sybil_resistance = SybilResistance(self.config)
         return self._sybil_resistance
 
@@ -2433,7 +2491,7 @@ class SeedNode:
         # will have a very recent last_heartbeat
 
         # Check the router's recovery time if tracked
-        recovery_time = getattr(health_state, 'recovery_time', None)
+        recovery_time = getattr(health_state, "recovery_time", None)
         if recovery_time is None:
             return 1.0  # No recovery tracking, full weight
 
@@ -2480,10 +2538,7 @@ class SeedNode:
 
             # Sybil resistance: Filter by reputation (Issue #117)
             if not self.sybil_resistance.is_trusted_for_discovery(r.router_id):
-                logger.debug(
-                    f"Router {r.router_id[:20]}... excluded from discovery "
-                    f"(low reputation)"
-                )
+                logger.debug(f"Router {r.router_id[:20]}... excluded from discovery " f"(low reputation)")
                 continue
 
             candidates.append(r)
@@ -2526,10 +2581,7 @@ class SeedNode:
             if len(selected) >= count:
                 break
 
-        logger.debug(
-            f"Selected {len(selected)} routers from {len(candidates)} candidates "
-            f"(registry has {len(self.router_registry)} total)"
-        )
+        logger.debug(f"Selected {len(selected)} routers from {len(candidates)} candidates " f"(registry has {len(self.router_registry)} total)")
 
         return selected
 
@@ -2586,7 +2638,7 @@ class SeedNode:
 
             # Reconstruct the signed message (exclude signature from data)
             signed_data = {k: v for k, v in data.items() if k != "signature"}
-            message = json.dumps(signed_data, sort_keys=True, separators=(',', ':')).encode()
+            message = json.dumps(signed_data, sort_keys=True, separators=(",", ":")).encode()
 
             # Verify signature
             signature_bytes = bytes.fromhex(signature)
@@ -2659,10 +2711,7 @@ class SeedNode:
             if leading_zeros >= required_difficulty:
                 return True
             else:
-                logger.warning(
-                    f"PoW insufficient for {router_id[:20]}...: "
-                    f"got {leading_zeros} bits, need {required_difficulty}"
-                )
+                logger.warning(f"PoW insufficient for {router_id[:20]}...: " f"got {leading_zeros} bits, need {required_difficulty}")
                 return False
 
         except Exception as e:
@@ -2704,10 +2753,7 @@ class SeedNode:
                         logger.debug(f"Endpoint probe successful: {endpoint}")
                         return True
                     else:
-                        logger.warning(
-                            f"Endpoint probe failed for {endpoint}: "
-                            f"status {response.status}"
-                        )
+                        logger.warning(f"Endpoint probe failed for {endpoint}: " f"status {response.status}")
                         return False
 
         except TimeoutError:
@@ -2778,10 +2824,7 @@ class SeedNode:
             "other_seeds": self.known_seeds,
         }
 
-        logger.info(
-            f"Discovery request: requested={requested_count}, "
-            f"returned={len(routers)}, preferences={preferences}"
-        )
+        logger.info(f"Discovery request: requested={requested_count}, " f"returned={len(routers)}, preferences={preferences}")
 
         return web.json_response(response)
 
@@ -2813,7 +2856,7 @@ class SeedNode:
         except Exception as e:
             return web.json_response(
                 {"status": "rejected", "reason": "invalid_json", "detail": str(e)},
-                status=400
+                status=400,
             )
 
         # Get source IP for PoW difficulty calculation
@@ -2822,17 +2865,11 @@ class SeedNode:
         # Validate required fields
         router_id = data.get("router_id")
         if not router_id:
-            return web.json_response(
-                {"status": "rejected", "reason": "missing_router_id"},
-                status=400
-            )
+            return web.json_response({"status": "rejected", "reason": "missing_router_id"}, status=400)
 
         endpoints = data.get("endpoints", [])
         if not endpoints:
-            return web.json_response(
-                {"status": "rejected", "reason": "missing_endpoints"},
-                status=400
-            )
+            return web.json_response({"status": "rejected", "reason": "missing_endpoints"}, status=400)
 
         signature = data.get("signature", "")
         proof_of_work = data.get("proof_of_work")
@@ -2845,10 +2882,7 @@ class SeedNode:
         if not is_update:
             allowed, reason = self.sybil_resistance.check_registration(router_id, source_ip, endpoints)
             if not allowed:
-                logger.warning(
-                    f"Registration blocked by Sybil resistance: {router_id[:20]}... "
-                    f"reason={reason}, source_ip={source_ip}"
-                )
+                logger.warning(f"Registration blocked by Sybil resistance: {router_id[:20]}... " f"reason={reason}, source_ip={source_ip}")
                 self.sybil_resistance.on_registration_failure(router_id, source_ip)
                 return web.json_response(
                     {
@@ -2856,17 +2890,14 @@ class SeedNode:
                         "reason": "rate_limited",
                         "detail": reason,
                     },
-                    status=429  # Too Many Requests
+                    status=429,  # Too Many Requests
                 )
 
         # Verify Ed25519 signature
         if not self._verify_signature(router_id, data, signature):
             if not is_update:
                 self.sybil_resistance.on_registration_failure(router_id, source_ip)
-            return web.json_response(
-                {"status": "rejected", "reason": "invalid_signature"},
-                status=400
-            )
+            return web.json_response({"status": "rejected", "reason": "invalid_signature"}, status=400)
 
         # Check proof of work (only for new registrations)
         if not is_update:
@@ -2879,16 +2910,13 @@ class SeedNode:
                         "reason": "insufficient_pow",
                         "required_difficulty": required_difficulty,
                     },
-                    status=400
+                    status=400,
                 )
 
         # Probe endpoint reachability (only for new registrations or changed endpoints)
         if not is_update or endpoints != self.router_registry[router_id].endpoints:
             if not await self._probe_endpoint(endpoints[0]):
-                return web.json_response(
-                    {"status": "rejected", "reason": "unreachable"},
-                    status=400
-                )
+                return web.json_response({"status": "rejected", "reason": "unreachable"}, status=400)
 
         now = time.time()
 
@@ -2912,7 +2940,7 @@ class SeedNode:
             },
             regions=data.get("regions", []),
             features=data.get("features", []),
-            registered_at=now if not is_update else self.router_registry[router_id].registered_at,
+            registered_at=(now if not is_update else self.router_registry[router_id].registered_at),
             router_signature=signature,
             proof_of_work=proof_of_work,
             source_ip=source_ip,
@@ -2941,10 +2969,7 @@ class SeedNode:
                     "reputation_decay_hours": self.config.reputation_decay_period_hours,
                 }
 
-        logger.info(
-            f"Router {action}: {router_id[:20]}... "
-            f"endpoints={endpoints}, regions={record.regions}{region_info}, source_ip={source_ip}"
-        )
+        logger.info(f"Router {action}: {router_id[:20]}... " f"endpoints={endpoints}, regions={record.regions}{region_info}, source_ip={source_ip}")
 
         response = {
             "status": "accepted",
@@ -2979,31 +3004,29 @@ class SeedNode:
         except Exception as e:
             return web.json_response(
                 {"status": "error", "reason": "invalid_json", "detail": str(e)},
-                status=400
+                status=400,
             )
 
         router_id = data.get("router_id")
         if not router_id:
-            return web.json_response(
-                {"status": "error", "reason": "missing_router_id"},
-                status=400
-            )
+            return web.json_response({"status": "error", "reason": "missing_router_id"}, status=400)
 
         # Check if router is registered
         if router_id not in self.router_registry:
             return web.json_response(
-                {"status": "error", "reason": "not_registered", "hint": "Call /register first"},
-                status=404
+                {
+                    "status": "error",
+                    "reason": "not_registered",
+                    "hint": "Call /register first",
+                },
+                status=404,
             )
 
         # Verify signature if provided
         signature = data.get("signature", "")
         if signature and self.config.verify_signatures:
             if not self._verify_signature(router_id, data, signature):
-                return web.json_response(
-                    {"status": "error", "reason": "invalid_signature"},
-                    status=400
-                )
+                return web.json_response({"status": "error", "reason": "invalid_signature"}, status=400)
 
         # Update health and capacity
         record = self.router_registry[router_id]
@@ -3087,10 +3110,7 @@ class SeedNode:
         GET /status
         """
         now = time.time()
-        healthy_count = sum(
-            1 for r in self.router_registry.values()
-            if self._is_healthy(r, now)
-        )
+        healthy_count = sum(1 for r in self.router_registry.values() if self._is_healthy(r, now))
 
         # Get health monitor stats
         health_stats = self.health_monitor.get_stats()
@@ -3107,21 +3127,23 @@ class SeedNode:
         # Get revocation stats (Issue #121)
         revocation_stats = self.revocation_manager.get_stats() if self._revocation_manager else {}
 
-        return web.json_response({
-            "seed_id": self.seed_id,
-            "status": "running" if self._running else "stopped",
-            "timestamp": now,
-            "routers": {
-                "total": len(self.router_registry),
-                "healthy": healthy_count,
-            },
-            "health_monitor": health_stats,
-            "sybil_resistance": sybil_stats,
-            "misbehavior": misbehavior_stats,
-            "revocations": revocation_stats,
-            "known_seeds": len(self.known_seeds),
-            "peering": peer_stats,
-        })
+        return web.json_response(
+            {
+                "seed_id": self.seed_id,
+                "status": "running" if self._running else "stopped",
+                "timestamp": now,
+                "routers": {
+                    "total": len(self.router_registry),
+                    "healthy": healthy_count,
+                },
+                "health_monitor": health_stats,
+                "sybil_resistance": sybil_stats,
+                "misbehavior": misbehavior_stats,
+                "revocations": revocation_stats,
+                "known_seeds": len(self.known_seeds),
+                "peering": peer_stats,
+            }
+        )
 
     async def handle_health(self, request: web.Request) -> web.Response:
         """Health check endpoint for load balancers."""
@@ -3154,7 +3176,7 @@ class SeedNode:
         if not self.config.misbehavior_reports_enabled:
             return web.json_response(
                 {"status": "rejected", "reason": "misbehavior_reports_disabled"},
-                status=400
+                status=400,
             )
 
         try:
@@ -3162,23 +3184,17 @@ class SeedNode:
         except Exception as e:
             return web.json_response(
                 {"status": "error", "reason": "invalid_json", "detail": str(e)},
-                status=400
+                status=400,
             )
 
         router_id = data.get("router_id")
         reporter_id = data.get("reporter_id")
 
         if not router_id:
-            return web.json_response(
-                {"status": "error", "reason": "missing_router_id"},
-                status=400
-            )
+            return web.json_response({"status": "error", "reason": "missing_router_id"}, status=400)
 
         if not reporter_id:
-            return web.json_response(
-                {"status": "error", "reason": "missing_reporter_id"},
-                status=400
-            )
+            return web.json_response({"status": "error", "reason": "missing_reporter_id"}, status=400)
 
         # Verify reporter signature if enabled
         if self.config.misbehavior_verify_reporter_signature:
@@ -3187,10 +3203,7 @@ class SeedNode:
                 # Create data for signature verification (exclude signature field)
                 verify_data = {k: v for k, v in data.items() if k != "signature"}
                 if not self._verify_signature(reporter_id, verify_data, signature):
-                    return web.json_response(
-                        {"status": "error", "reason": "invalid_signature"},
-                        status=400
-                    )
+                    return web.json_response({"status": "error", "reason": "invalid_signature"}, status=400)
 
         # Store the report
         now = time.time()
@@ -3211,9 +3224,7 @@ class SeedNode:
         # Prune old reports outside the window
         window_cutoff = now - self.config.misbehavior_report_window_seconds
         self._misbehavior_reports[router_id] = {
-            r_id: r_data
-            for r_id, r_data in self._misbehavior_reports[router_id].items()
-            if r_data.get("received_at", 0) >= window_cutoff
+            r_id: r_data for r_id, r_data in self._misbehavior_reports[router_id].items() if r_data.get("received_at", 0) >= window_cutoff
         }
 
         # Limit reports per router
@@ -3222,11 +3233,9 @@ class SeedNode:
             sorted_reports = sorted(
                 self._misbehavior_reports[router_id].items(),
                 key=lambda x: x[1].get("received_at", 0),
-                reverse=True
+                reverse=True,
             )
-            self._misbehavior_reports[router_id] = dict(
-                sorted_reports[:self.config.misbehavior_max_reports_per_router]
-            )
+            self._misbehavior_reports[router_id] = dict(sorted_reports[: self.config.misbehavior_max_reports_per_router])
 
         # Check if router should be flagged
         reports = self._misbehavior_reports[router_id]
@@ -3244,8 +3253,7 @@ class SeedNode:
                     self._misbehavior_flagged_routers[router_id] = now
                     router_flagged = True
                     logger.warning(
-                        f"FLAGGED router {router_id[:20]}... for misbehavior: "
-                        f"{unique_reporters} reporters, avg_severity={avg_severity:.2f}"
+                        f"FLAGGED router {router_id[:20]}... for misbehavior: " f"{unique_reporters} reporters, avg_severity={avg_severity:.2f}"
                     )
 
         logger.info(
@@ -3254,13 +3262,15 @@ class SeedNode:
             f"severity={data.get('severity')}"
         )
 
-        return web.json_response({
-            "status": "accepted",
-            "report_id": data.get("report_id"),
-            "router_id": router_id,
-            "reports_for_router": unique_reporters,
-            "router_flagged": router_flagged,
-        })
+        return web.json_response(
+            {
+                "status": "accepted",
+                "report_id": data.get("report_id"),
+                "router_id": router_id,
+                "reports_for_router": unique_reporters,
+                "router_flagged": router_flagged,
+            }
+        )
 
     def is_router_misbehavior_flagged(self, router_id: str) -> bool:
         """
@@ -3335,49 +3345,39 @@ class SeedNode:
         - A trusted authority (from config.seed_revocation_trusted_authorities)
         """
         if not self.config.seed_revocation_enabled:
-            return web.json_response(
-                {"status": "rejected", "reason": "revocation_disabled"},
-                status=400
-            )
+            return web.json_response({"status": "rejected", "reason": "revocation_disabled"}, status=400)
 
         try:
             data = await request.json()
         except Exception as e:
             return web.json_response(
                 {"status": "error", "reason": "invalid_json", "detail": str(e)},
-                status=400
+                status=400,
             )
 
         seed_id = data.get("seed_id")
         if not seed_id:
-            return web.json_response(
-                {"status": "error", "reason": "missing_seed_id"},
-                status=400
-            )
+            return web.json_response({"status": "error", "reason": "missing_seed_id"}, status=400)
 
         # Add the revocation
         success, error = self.revocation_manager.add_revocation(data, source="direct")
 
         if not success:
-            return web.json_response(
-                {"status": "rejected", "reason": error},
-                status=400
-            )
+            return web.json_response({"status": "rejected", "reason": error}, status=400)
 
         # Get the record for response
         record = self.revocation_manager.get_revocation(seed_id)
 
-        logger.info(
-            f"Accepted seed revocation: {seed_id[:20]}... "
-            f"reason={data.get('reason')}"
-        )
+        logger.info(f"Accepted seed revocation: {seed_id[:20]}... " f"reason={data.get('reason')}")
 
-        return web.json_response({
-            "status": "accepted",
-            "seed_id": seed_id,
-            "revocation_id": record.revocation_id if record else data.get("revocation_id"),
-            "effective_at": record.effective_at if record else data.get("effective_at"),
-        })
+        return web.json_response(
+            {
+                "status": "accepted",
+                "seed_id": seed_id,
+                "revocation_id": (record.revocation_id if record else data.get("revocation_id")),
+                "effective_at": (record.effective_at if record else data.get("effective_at")),
+            }
+        )
 
     async def handle_get_revocations(self, request: web.Request) -> web.Response:
         """
@@ -3389,10 +3389,7 @@ class SeedNode:
         Returns list of all revocations, or single revocation if seed_id specified.
         """
         if not self.config.seed_revocation_enabled:
-            return web.json_response(
-                {"status": "error", "reason": "revocation_disabled"},
-                status=400
-            )
+            return web.json_response({"status": "error", "reason": "revocation_disabled"}, status=400)
 
         seed_id = request.query.get("seed_id")
 
@@ -3400,27 +3397,33 @@ class SeedNode:
             # Return single revocation
             record = self.revocation_manager.get_revocation(seed_id)
             if record is None:
-                return web.json_response({
-                    "revoked": False,
-                    "seed_id": seed_id,
-                })
+                return web.json_response(
+                    {
+                        "revoked": False,
+                        "seed_id": seed_id,
+                    }
+                )
 
-            return web.json_response({
-                "revoked": True,
-                "seed_id": seed_id,
-                "revocation": record.to_dict(),
-            })
+            return web.json_response(
+                {
+                    "revoked": True,
+                    "seed_id": seed_id,
+                    "revocation": record.to_dict(),
+                }
+            )
 
         # Return all revocations
         revocations = self.revocation_manager.get_all_revocations()
         revoked_ids = self.revocation_manager.get_revoked_seed_ids()
 
-        return web.json_response({
-            "total": len(revocations),
-            "effective": len(revoked_ids),
-            "revoked_seed_ids": list(revoked_ids),
-            "revocations": [r.to_dict() for r in revocations],
-        })
+        return web.json_response(
+            {
+                "total": len(revocations),
+                "effective": len(revoked_ids),
+                "revoked_seed_ids": list(revoked_ids),
+                "revocations": [r.to_dict() for r in revocations],
+            }
+        )
 
     def is_seed_revoked(self, seed_id: str) -> bool:
         """
@@ -3490,10 +3493,7 @@ class SeedNode:
         await self.revocation_manager.start()
 
         self._running = True
-        logger.info(
-            f"Seed node {self.seed_id} listening on "
-            f"{self.config.host}:{self.config.port}"
-        )
+        logger.info(f"Seed node {self.seed_id} listening on " f"{self.config.host}:{self.config.port}")
 
     async def stop(self) -> None:
         """Stop the seed node server."""

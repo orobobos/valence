@@ -80,30 +80,30 @@ DEFAULT_AUTHORITIES = [
 class DomainVerificationMethod(StrEnum):
     """Methods for verifying domain ownership."""
 
-    DNS_TXT = "dns_txt"                    # DNS TXT record with challenge token
-    DNS_CHALLENGE = "dns_challenge"        # Temporary DNS challenge
+    DNS_TXT = "dns_txt"  # DNS TXT record with challenge token
+    DNS_CHALLENGE = "dns_challenge"  # Temporary DNS challenge
     MUTUAL_ATTESTATION = "mutual_attestation"  # Federation vouches for another
     EXTERNAL_AUTHORITY = "external_authority"  # Third-party verification
-    DID_DOCUMENT = "did_document"          # DID document service endpoint
-    COMBINED = "combined"                  # Multiple methods confirmed
+    DID_DOCUMENT = "did_document"  # DID document service endpoint
+    COMBINED = "combined"  # Multiple methods confirmed
 
 
 class ChallengeStatus(StrEnum):
     """Status of a domain verification challenge."""
 
-    PENDING = "pending"          # Challenge created, awaiting verification
-    VERIFIED = "verified"        # Challenge successfully verified
-    EXPIRED = "expired"          # Challenge TTL exceeded
-    FAILED = "failed"            # Verification attempted but failed
-    CANCELLED = "cancelled"      # Challenge was cancelled
+    PENDING = "pending"  # Challenge created, awaiting verification
+    VERIFIED = "verified"  # Challenge successfully verified
+    EXPIRED = "expired"  # Challenge TTL exceeded
+    FAILED = "failed"  # Verification attempted but failed
+    CANCELLED = "cancelled"  # Challenge was cancelled
 
 
 class AttestationType(StrEnum):
     """Types of domain attestation."""
 
-    DIRECT = "direct"            # Direct attestation by a trusted federation
-    TRANSITIVE = "transitive"    # Attestation through a chain of trust
-    REVOKED = "revoked"          # Previously valid attestation now revoked
+    DIRECT = "direct"  # Direct attestation by a trusted federation
+    TRANSITIVE = "transitive"  # Attestation through a chain of trust
+    REVOKED = "revoked"  # Previously valid attestation now revoked
 
 
 # =============================================================================
@@ -158,7 +158,7 @@ class VerificationEvidence:
         """Create from dictionary."""
         return cls(
             method=DomainVerificationMethod(data["method"]),
-            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now(),
+            timestamp=(datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now()),
             dns_record=data.get("dns_record"),
             dns_query_domain=data.get("dns_query_domain"),
             attester_did=data.get("attester_did"),
@@ -227,9 +227,9 @@ class DomainVerificationResult:
             verified=data["verified"],
             status=VerificationStatus(data["status"]),
             method=DomainVerificationMethod(data["method"]),
-            timestamp=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now(),
+            timestamp=(datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.now()),
             evidence=[VerificationEvidence.from_dict(e) for e in data.get("evidence", [])],
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
             verification_duration_ms=data.get("verification_duration_ms", 0.0),
             error=data.get("error"),
             cached=data.get("cached", False),
@@ -314,7 +314,7 @@ class DomainChallenge:
             federation_did=data["federation_did"],
             token=data["token"],
             status=ChallengeStatus(data["status"]),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
             dns_subdomain=data.get("dns_subdomain", DNS_CHALLENGE_SUBDOMAIN),
             dns_txt_value=data.get("dns_txt_value", ""),
         )
@@ -335,8 +335,8 @@ class DomainAttestation:
 
     attestation_id: str
     domain: str
-    subject_did: str          # Federation being vouched for
-    attester_did: str         # Federation doing the vouching
+    subject_did: str  # Federation being vouched for
+    attester_did: str  # Federation doing the vouching
     attestation_type: AttestationType = AttestationType.DIRECT
 
     # Validity
@@ -392,9 +392,9 @@ class DomainAttestation:
             subject_did=data["subject_did"],
             attester_did=data["attester_did"],
             attestation_type=AttestationType(data.get("attestation_type", "direct")),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
-            expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
-            revoked_at=datetime.fromisoformat(data["revoked_at"]) if data.get("revoked_at") else None,
+            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            expires_at=(datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None),
+            revoked_at=(datetime.fromisoformat(data["revoked_at"]) if data.get("revoked_at") else None),
             signature=data.get("signature"),
             signature_algorithm=data.get("signature_algorithm", "Ed25519"),
             chain=data.get("chain"),
@@ -451,17 +451,11 @@ class ChallengeStore:
             challenge = self._challenges[challenge_id]
             del self._challenges[challenge_id]
             if challenge.domain in self._by_domain:
-                self._by_domain[challenge.domain] = [
-                    cid for cid in self._by_domain[challenge.domain]
-                    if cid != challenge_id
-                ]
+                self._by_domain[challenge.domain] = [cid for cid in self._by_domain[challenge.domain] if cid != challenge_id]
 
     def cleanup_expired(self) -> int:
         """Remove expired challenges. Returns count removed."""
-        expired = [
-            cid for cid, c in self._challenges.items()
-            if c.is_expired
-        ]
+        expired = [cid for cid, c in self._challenges.items() if c.is_expired]
         for cid in expired:
             self.remove(cid)
         return len(expired)
@@ -509,10 +503,7 @@ class AttestationStore:
     ) -> list[DomainAttestation]:
         """Get attestations for a domain."""
         attestation_ids = self._by_domain.get(domain.lower(), [])
-        attestations: list[DomainAttestation] = [
-            a for a in (self._attestations.get(aid) for aid in attestation_ids)
-            if a is not None
-        ]
+        attestations: list[DomainAttestation] = [a for a in (self._attestations.get(aid) for aid in attestation_ids) if a is not None]
 
         if subject_did:
             attestations = [a for a in attestations if a.subject_did == subject_did]
@@ -529,10 +520,7 @@ class AttestationStore:
     ) -> list[DomainAttestation]:
         """Get all attestations for a subject federation."""
         attestation_ids = self._by_subject.get(subject_did, [])
-        attestations: list[DomainAttestation] = [
-            a for a in (self._attestations.get(aid) for aid in attestation_ids)
-            if a is not None
-        ]
+        attestations: list[DomainAttestation] = [a for a in (self._attestations.get(aid) for aid in attestation_ids) if a is not None]
 
         if valid_only:
             attestations = [a for a in attestations if a.is_valid]
@@ -742,10 +730,7 @@ async def create_challenge(
     # Store it
     get_challenge_store().add(challenge)
 
-    logger.info(
-        f"Created domain verification challenge for {domain} "
-        f"(federation={federation_did}, expires={challenge.expires_at})"
-    )
+    logger.info(f"Created domain verification challenge for {domain} " f"(federation={federation_did}, expires={challenge.expires_at})")
 
     return challenge
 
@@ -956,7 +941,11 @@ async def verify_domain(
                 federation_did=federation_did,
                 verified=cached.verified,
                 status=cached.status,
-                method=DomainVerificationMethod(cached.method.value) if cached.method.value in [m.value for m in DomainVerificationMethod] else DomainVerificationMethod.DNS_TXT,
+                method=(
+                    DomainVerificationMethod(cached.method.value)
+                    if cached.method.value in [m.value for m in DomainVerificationMethod]
+                    else DomainVerificationMethod.DNS_TXT
+                ),
                 cached=True,
                 verification_duration_ms=0,
             )
@@ -970,57 +959,57 @@ async def verify_domain(
     for method in methods:
         try:
             if method == DomainVerificationMethod.DNS_TXT:
-                verified, txt_record, error = await verify_dns_txt_record(
-                    domain, federation_did
-                )
+                verified, txt_record, error = await verify_dns_txt_record(domain, federation_did)
                 method_results[method] = verified
                 if verified:
-                    evidence_list.append(VerificationEvidence(
-                        method=method,
-                        dns_record=txt_record,
-                        dns_query_domain=domain,
-                    ))
+                    evidence_list.append(
+                        VerificationEvidence(
+                            method=method,
+                            dns_record=txt_record,
+                            dns_query_domain=domain,
+                        )
+                    )
                 elif error:
                     errors.append(f"DNS: {error}")
 
             elif method == DomainVerificationMethod.MUTUAL_ATTESTATION:
-                verified, attestation = await _verify_mutual_attestation(
-                    domain, federation_did, local_did
-                )
+                verified, attestation = await _verify_mutual_attestation(domain, federation_did, local_did)
                 method_results[method] = verified
                 if verified and attestation:
-                    evidence_list.append(VerificationEvidence(
-                        method=method,
-                        attester_did=attestation.attester_did,
-                        attestation_signature=attestation.signature,
-                        attestation_chain=attestation.chain,
-                    ))
+                    evidence_list.append(
+                        VerificationEvidence(
+                            method=method,
+                            attester_did=attestation.attester_did,
+                            attestation_signature=attestation.signature,
+                            attestation_chain=attestation.chain,
+                        )
+                    )
                 elif not verified:
                     errors.append("Attestation: No valid attestation found")
 
             elif method == DomainVerificationMethod.EXTERNAL_AUTHORITY:
-                verified, response, error = await _verify_external_authority(
-                    domain, federation_did
-                )
+                verified, response, error = await _verify_external_authority(domain, federation_did)
                 method_results[method] = verified
                 if verified:
-                    evidence_list.append(VerificationEvidence(
-                        method=method,
-                        authority_response=response,
-                    ))
+                    evidence_list.append(
+                        VerificationEvidence(
+                            method=method,
+                            authority_response=response,
+                        )
+                    )
                 elif error:
                     errors.append(f"External: {error}")
 
             elif method == DomainVerificationMethod.DID_DOCUMENT:
-                verified, endpoint, error = await verify_did_document_claim(
-                    federation_did, domain
-                )
+                verified, endpoint, error = await verify_did_document_claim(federation_did, domain)
                 method_results[method] = verified
                 if verified:
-                    evidence_list.append(VerificationEvidence(
-                        method=method,
-                        did_service_endpoint=endpoint,
-                    ))
+                    evidence_list.append(
+                        VerificationEvidence(
+                            method=method,
+                            did_service_endpoint=endpoint,
+                        )
+                    )
                 elif error:
                     errors.append(f"DID: {error}")
 
@@ -1063,9 +1052,7 @@ async def verify_domain(
     # We'd need to convert to VerificationResult for caching, skip for simplicity
 
     logger.info(
-        f"Domain verification for {domain} by {federation_did}: "
-        f"verified={verified}, method={primary_method.value}, "
-        f"duration={duration:.2f}ms"
+        f"Domain verification for {domain} by {federation_did}: " f"verified={verified}, method={primary_method.value}, " f"duration={duration:.2f}ms"
     )
 
     return result
@@ -1114,10 +1101,7 @@ async def create_attestation(
 
     get_attestation_store().add(attestation)
 
-    logger.info(
-        f"Created domain attestation: {attester_did} vouches for "
-        f"{subject_did}'s control of {domain}"
-    )
+    logger.info(f"Created domain attestation: {attester_did} vouches for " f"{subject_did}'s control of {domain}")
 
     return attestation
 
@@ -1166,10 +1150,7 @@ async def _verify_mutual_attestation(
         trust = await get_federation_trust(local_did, attestation.attester_did)
 
         if trust >= min_trust:
-            logger.debug(
-                f"Domain {domain} verified via attestation from {attestation.attester_did} "
-                f"(trust={trust:.2f})"
-            )
+            logger.debug(f"Domain {domain} verified via attestation from {attestation.attester_did} " f"(trust={trust:.2f})")
             return True, attestation
 
         # Try transitive attestation (chain)
@@ -1179,10 +1160,7 @@ async def _verify_mutual_attestation(
             for chain_did in attestation.chain:
                 chain_trust = await get_federation_trust(local_did, chain_did)
                 if chain_trust >= min_trust:
-                    logger.debug(
-                        f"Domain {domain} verified via transitive attestation "
-                        f"through {chain_did} (trust={chain_trust:.2f})"
-                    )
+                    logger.debug(f"Domain {domain} verified via transitive attestation " f"through {chain_did} (trust={chain_trust:.2f})")
                     return True, attestation
 
     return False, None
@@ -1313,9 +1291,7 @@ def verify_domain_sync(
     use_cache: bool = True,
 ) -> DomainVerificationResult:
     """Synchronous version of verify_domain."""
-    return asyncio.run(verify_domain(
-        domain, federation_did, local_did, methods, require_all, use_cache
-    ))
+    return asyncio.run(verify_domain(domain, federation_did, local_did, methods, require_all, use_cache))
 
 
 # =============================================================================

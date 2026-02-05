@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 class DIDSignatureError(Exception):
     """Error during DID signature verification."""
+
     pass
 
 
@@ -138,6 +139,7 @@ def require_did_signature(handler: Callable) -> Callable:
             # request.state.did_info contains verified DID info
             ...
     """
+
     @wraps(handler)
     async def wrapper(request: Request) -> JSONResponse:
         settings = get_settings()
@@ -151,7 +153,7 @@ def require_did_signature(handler: Callable) -> Callable:
         if not did_info:
             return auth_error(
                 "DID signature verification failed. Required headers: X-VFP-DID, X-VFP-Signature, X-VFP-Timestamp, X-VFP-Nonce",
-                code=AUTH_SIGNATURE_FAILED
+                code=AUTH_SIGNATURE_FAILED,
             )
 
         # Attach verified DID info to request state
@@ -238,6 +240,7 @@ def _build_did_document(settings: Any) -> dict[str, Any]:
     elif settings.external_url:
         # Derive from external URL
         from urllib.parse import urlparse
+
         parsed = urlparse(settings.external_url)
         did = f"did:vkb:web:{parsed.netloc}"
     else:
@@ -256,12 +259,14 @@ def _build_did_document(settings: Any) -> dict[str, Any]:
     # Add verification method if public key is configured
     if settings.federation_public_key:
         vm_id = f"{did}#keys-1"
-        doc_dict["verificationMethod"] = [{
-            "id": vm_id,
-            "type": "Ed25519VerificationKey2020",
-            "controller": did,
-            "publicKeyMultibase": settings.federation_public_key,
-        }]
+        doc_dict["verificationMethod"] = [
+            {
+                "id": vm_id,
+                "type": "Ed25519VerificationKey2020",
+                "controller": did,
+                "publicKeyMultibase": settings.federation_public_key,
+            }
+        ]
         doc_dict["authentication"] = [vm_id]
         doc_dict["assertionMethod"] = [vm_id]
 
@@ -270,18 +275,22 @@ def _build_did_document(settings: Any) -> dict[str, Any]:
 
     # Federation endpoint
     if settings.external_url:
-        services.append({
-            "id": f"{did}#vfp",
-            "type": "ValenceFederationProtocol",
-            "serviceEndpoint": f"{settings.external_url}/federation",
-        })
+        services.append(
+            {
+                "id": f"{did}#vfp",
+                "type": "ValenceFederationProtocol",
+                "serviceEndpoint": f"{settings.external_url}/federation",
+            }
+        )
 
         # MCP endpoint
-        services.append({
-            "id": f"{did}#mcp",
-            "type": "ModelContextProtocol",
-            "serviceEndpoint": f"{settings.external_url}/mcp",
-        })
+        services.append(
+            {
+                "id": f"{did}#mcp",
+                "type": "ModelContextProtocol",
+                "serviceEndpoint": f"{settings.external_url}/mcp",
+            }
+        )
 
     if services:
         doc_dict["service"] = services
@@ -312,7 +321,8 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
         from ..core.db import get_cursor
 
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     fn.did,
                     fn.trust_phase,
@@ -328,7 +338,8 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
                   OR unt.trust_preference = 'anchor'
                 ORDER BY COALESCE((nt.trust->>'overall')::numeric, 0) DESC
                 LIMIT 100
-            """)
+            """
+            )
 
             rows = cur.fetchall()
 
@@ -337,8 +348,8 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
                     "did": row["did"],
                     "trust_level": row["trust_phase"],
                     "domains": row["domains"] or [],
-                    "trust_score": float(row["trust_overall"]) if row["trust_overall"] else None,
-                    "relationship_started_at": row["relationship_started_at"].isoformat() if row["relationship_started_at"] else None,
+                    "trust_score": (float(row["trust_overall"]) if row["trust_overall"] else None),
+                    "relationship_started_at": (row["relationship_started_at"].isoformat() if row["relationship_started_at"] else None),
                 }
                 for row in rows
             ]
@@ -373,21 +384,24 @@ async def federation_status(request: Request) -> JSONResponse:
     # Get federation statistics
     stats = _get_federation_stats()
 
-    return JSONResponse({
-        "node": {
-            "did": settings.federation_node_did or _derive_did(settings),
-            "name": settings.federation_node_name,
-            "capabilities": settings.federation_capabilities or ["belief_sync"],
-            "protocol_version": "1.0",
-        },
-        "federation": stats,
-    })
+    return JSONResponse(
+        {
+            "node": {
+                "did": settings.federation_node_did or _derive_did(settings),
+                "name": settings.federation_node_name,
+                "capabilities": settings.federation_capabilities or ["belief_sync"],
+                "protocol_version": "1.0",
+            },
+            "federation": stats,
+        }
+    )
 
 
 def _derive_did(settings: Any) -> str:
     """Derive DID from settings."""
     if settings.external_url:
         from urllib.parse import urlparse
+
         parsed = urlparse(settings.external_url)
         return f"did:vkb:web:{parsed.netloc}"
     return f"did:vkb:web:localhost:{settings.port}"
@@ -400,32 +414,38 @@ def _get_federation_stats() -> dict[str, Any]:
 
         with get_cursor() as cur:
             # Get node counts by status
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT status, COUNT(*) as count
                 FROM federation_nodes
                 GROUP BY status
-            """)
+            """
+            )
             nodes_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
 
             # Get sync statistics
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) as total_syncing,
                     SUM(beliefs_sent) as total_beliefs_sent,
                     SUM(beliefs_received) as total_beliefs_received
                 FROM sync_state
                 WHERE status IN ('idle', 'syncing')
-            """)
+            """
+            )
             sync_row = cur.fetchone()
 
             # Get belief counts
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT
                     COUNT(*) FILTER (WHERE is_local = TRUE) as local_beliefs,
                     COUNT(*) FILTER (WHERE is_local = FALSE) as federated_beliefs
                 FROM beliefs
                 WHERE status = 'active'
-            """)
+            """
+            )
             belief_row = cur.fetchone()
 
             return {
@@ -436,7 +456,7 @@ def _get_federation_stats() -> dict[str, Any]:
                 "sync": {
                     "active_peers": sync_row["total_syncing"] if sync_row else 0,
                     "beliefs_sent": sync_row["total_beliefs_sent"] if sync_row else 0,
-                    "beliefs_received": sync_row["total_beliefs_received"] if sync_row else 0,
+                    "beliefs_received": (sync_row["total_beliefs_received"] if sync_row else 0),
                 },
                 "beliefs": {
                     "local": belief_row["local_beliefs"] if belief_row else 0,
@@ -496,7 +516,7 @@ async def federation_protocol(request: Request) -> JSONResponse:
         # Handle the message
         response = await handle_message(message)
 
-        return JSONResponse(response.to_dict() if hasattr(response, 'to_dict') else response)
+        return JSONResponse(response.to_dict() if hasattr(response, "to_dict") else response)
 
     except json.JSONDecodeError:
         return invalid_json_error()
@@ -828,7 +848,9 @@ async def federation_corroboration_check(request: Request) -> JSONResponse:
         if not belief_id and not content:
             return missing_field_error("belief_id or content")
 
-        from ..federation.tools import federation_corroboration_check as check_corroboration
+        from ..federation.tools import (
+            federation_corroboration_check as check_corroboration,
+        )
 
         result = check_corroboration(
             belief_id=belief_id,
@@ -855,34 +877,55 @@ FEDERATION_ROUTES = [
     # ==========================================================================
     ("/.well-known/vfp-node-metadata", vfp_node_metadata, ["GET"]),
     ("/.well-known/vfp-trust-anchors", vfp_trust_anchors, ["GET"]),
-
     # ==========================================================================
     # FEDERATION API ENDPOINTS
     # Read endpoints require standard OAuth/bearer auth (handled by caller)
     # Write endpoints require DID signature verification (@require_did_signature)
     # ==========================================================================
-
     # Status (read-only, OAuth auth from caller)
     ("/federation/status", federation_status, ["GET"]),
-
     # Protocol endpoint (DID signature required via decorator)
     ("/federation/protocol", federation_protocol, ["POST"]),
-
     # Node management
     ("/federation/nodes", federation_nodes_list, ["GET"]),  # OAuth auth from caller
-    ("/federation/nodes/discover", federation_nodes_discover, ["POST"]),  # DID signature required
-    ("/federation/nodes/{node_id}", federation_nodes_get, ["GET"]),  # OAuth auth from caller
-
+    (
+        "/federation/nodes/discover",
+        federation_nodes_discover,
+        ["POST"],
+    ),  # DID signature required
+    (
+        "/federation/nodes/{node_id}",
+        federation_nodes_get,
+        ["GET"],
+    ),  # OAuth auth from caller
     # Trust management
-    ("/federation/nodes/{node_id}/trust", federation_trust_get, ["GET"]),  # OAuth auth from caller
-    ("/federation/nodes/{node_id}/trust", federation_trust_set, ["POST"]),  # DID signature required
-
+    (
+        "/federation/nodes/{node_id}/trust",
+        federation_trust_get,
+        ["GET"],
+    ),  # OAuth auth from caller
+    (
+        "/federation/nodes/{node_id}/trust",
+        federation_trust_set,
+        ["POST"],
+    ),  # DID signature required
     # Sync management
     ("/federation/sync", federation_sync_status, ["GET"]),  # OAuth auth from caller
     ("/federation/sync", federation_sync_trigger, ["POST"]),  # DID signature required
-
     # Belief federation (all POST endpoints require DID signature)
-    ("/federation/beliefs/share", federation_belief_share, ["POST"]),  # DID signature required
-    ("/federation/beliefs/query", federation_belief_query, ["POST"]),  # DID signature required
-    ("/federation/beliefs/corroboration", federation_corroboration_check, ["POST"]),  # DID signature required
+    (
+        "/federation/beliefs/share",
+        federation_belief_share,
+        ["POST"],
+    ),  # DID signature required
+    (
+        "/federation/beliefs/query",
+        federation_belief_query,
+        ["POST"],
+    ),  # DID signature required
+    (
+        "/federation/beliefs/corroboration",
+        federation_corroboration_check,
+        ["POST"],
+    ),  # DID signature required
 ]
