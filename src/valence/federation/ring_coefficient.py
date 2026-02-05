@@ -456,7 +456,7 @@ class TrustVelocityAnalyzer:
             historical_std = 0.0
 
         # Calculate anomaly score
-        if historical_std > 0:
+        if historical_std > 1e-10:  # Use epsilon for floating point comparison
             anomaly_score = abs(current_velocity - historical_mean) / historical_std
         else:
             anomaly_score = 0.0 if current_velocity <= self.max_normal_velocity else float("inf")
