@@ -174,23 +174,23 @@ class VRFOutput:
 class VRF:
     """Verifiable Random Function using Ed25519.
 SIMPLIFIED CONSTRUCTION - See module docstring for security analysis.
-    
+
     Uses Ed25519 signing as the core primitive. This differs from full RFC 9381
     ECVRF-EDWARDS25519-SHA512-TAI but provides equivalent security properties
     for the validator selection use case.
-    
+
     Construction:
         1. Input is hashed with domain separator: H = SHA512(domain || input)
-        2. Sign the hash: sig = Ed25519_Sign(sk, H)  
+        2. Sign the hash: sig = Ed25519_Sign(sk, H)
         3. Derive ticket: ticket = SHA512(domain2 || sig || H)[:32]
         4. Proof = signature components (verifiable via Ed25519_Verify)
-    
+
     Security Properties (verified by design):
         - Deterministic: Ed25519 uses deterministic nonces (RFC 8032 §5.1.6)
         - Unpredictable: Signatures require private key (DL hardness)
         - Verifiable: Ed25519 verification confirms signer
         - Unique: Deterministic nonce → one valid signature per (key, message)
-    
+
     Limitations vs Full ECVRF:
         - No hash-to-curve (Elligator2) - uses SHA512 instead
         - Proof format is non-standard (signature-based, not gamma/c/s scalars)
