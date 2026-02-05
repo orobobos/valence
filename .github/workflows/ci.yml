@@ -19,7 +19,7 @@ jobs:
           cache: "pip"
 
       - name: Install dev dependencies
-        run: pip install ruff black mypy
+        run: pip install ruff black mypy types-PyYAML
 
       - name: Lint (ruff)
         run: ruff check src/valence
