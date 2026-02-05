@@ -238,11 +238,13 @@ def seed_entities(db_conn_committed) -> list[dict]:
     created = []
     with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         for entity in entities_data:
+            # Use upsert matching the unique index on (name, type) WHERE canonical_id IS NULL
             cur.execute(
                 """
                 INSERT INTO entities (name, type, aliases)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (name) WHERE canonical_id IS NULL DO UPDATE SET type = EXCLUDED.type
+                ON CONFLICT (name, type) WHERE canonical_id IS NULL 
+                DO UPDATE SET aliases = EXCLUDED.aliases
                 RETURNING id, name, type, aliases, created_at
             """,
                 (
