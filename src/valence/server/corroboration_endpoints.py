@@ -89,7 +89,7 @@ async def belief_corroboration_endpoint(request: Request) -> JSONResponse:
     
     except Exception as e:
         logger.exception(f"Error getting corroboration for {belief_id_str}")
-        return internal_error(str(e))
+        return internal_error("Internal server error")
 
 
 async def most_corroborated_beliefs_endpoint(request: Request) -> JSONResponse:
@@ -140,4 +140,4 @@ async def most_corroborated_beliefs_endpoint(request: Request) -> JSONResponse:
     
     except Exception as e:
         logger.exception("Error getting most corroborated beliefs")
-        return internal_error(str(e))
+        return internal_error("Internal server error")

@@ -503,7 +503,7 @@ async def federation_protocol(request: Request) -> JSONResponse:
         return invalid_json_error()
     except Exception as e:
         logger.exception("Error handling federation protocol message")
-        return internal_error(str(e))
+        return internal_error("Internal server error")
 
 
 # =============================================================================

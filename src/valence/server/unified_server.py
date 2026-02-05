@@ -101,7 +101,7 @@ def create_server() -> Server:
                     text=json.dumps(
                         {
                             "success": False,
-                            "error": f"Internal error: {str(e)}",
+                            "error": "Internal error",
                         }
                     ),
                 )
