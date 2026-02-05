@@ -778,6 +778,22 @@ class GroupState:
             "updated_at": self.updated_at.isoformat(),
         }
     
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GroupState":
+        """Restore from dictionary."""
+        from datetime import datetime
+        return cls(
+            id=UUID(data["id"]),
+            name=data["name"],
+            epoch=data.get("epoch", 0),
+            status=GroupStatus(data.get("status", "active")),
+            members={did: GroupMember.from_dict(m) for did, m in data.get("members", {}).items()},
+            config=data.get("config", {}),
+            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
+            created_by=data.get("created_by", ""),
+            updated_at=datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now(),
+        )
+    
     def get_group_info(self) -> dict:
         """Get group info for welcome messages."""
         return {
@@ -1859,12 +1875,18 @@ def create_federation_group(
             encryption_algorithm=serialization.NoEncryption(),
         )
     
+    # Generate KeyPackage for creator from signing key
+    creator_key_package, _ = KeyPackage.generate(
+        member_did=creator_did,
+        signing_private_key=creator_signing_key,
+    )
+    
     # Use existing create_group from #72
     group_name = name or f"Federation {federation_id} Group"
-    group_state, creator_key_package = create_group(
+    group_state = create_group(
         name=group_name,
         creator_did=creator_did,
-        creator_signing_key=creator_signing_key,
+        creator_key_package=creator_key_package,
         config=metadata,
     )
     
