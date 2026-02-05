@@ -1,0 +1,13 @@
+#!/bin/bash
+# Auto-fix common issues
+# Usage: ./scripts/fix
+
+cd "$(dirname "$0")/.."
+
+echo "Fixing lint issues..."
+ruff check src/valence tests --fix --quiet 2>&1 | grep -v "^$" | head -5
+
+echo "Formatting..."
+ruff format src/valence tests 2>&1 | tail -1
+
+echo "Done. Run ./scripts/check to verify."

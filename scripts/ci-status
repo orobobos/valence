@@ -1,0 +1,19 @@
+#!/bin/bash
+# Check CI status for current branch or PR
+# Usage: ./scripts/ci-status [pr-number]
+
+cd "$(dirname "$0")/.."
+
+if [[ -n "$1" ]]; then
+    # Check specific PR
+    gh pr view "$1" --json statusCheckRollup --jq '
+        .statusCheckRollup[] | 
+        "\(.context // .name): \(.state // .conclusion)"
+    ' 2>/dev/null | head -10
+else
+    # Check latest run on current branch
+    BRANCH=$(git branch --show-current)
+    gh run list --branch "$BRANCH" --limit 1 --json status,conclusion,name,databaseId --jq '
+        .[] | "\(.name): \(.status)/\(.conclusion // "pending") [#\(.databaseId)]"
+    ' 2>/dev/null
+fi

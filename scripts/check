@@ -1,0 +1,33 @@
+#!/bin/bash
+# Lean local check - runs lint/format/tests with minimal output
+# Usage: ./scripts/check [--full]
+
+set -e
+cd "$(dirname "$0")/.."
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+pass() { echo -e "${GREEN}✓${NC} $1"; }
+fail() { echo -e "${RED}✗${NC} $1"; exit 1; }
+
+echo "=== Quick Check ==="
+
+# Lint (quiet - only errors)
+ruff check src/valence --quiet && pass "ruff lint" || fail "ruff lint"
+
+# Format check (just count)
+FMT=$(ruff format --check src/valence tests 2>&1 | tail -1)
+echo "$FMT" | grep -q "already formatted" && pass "ruff format" || fail "ruff format: $FMT"
+
+# Tests (short output unless --full)
+if [[ "$1" == "--full" ]]; then
+    pytest tests/ -x -q --tb=short 2>&1 | tail -20
+else
+    # Unit tests only, fail fast, minimal output
+    pytest tests/unit tests/api -x -q --tb=line 2>&1 | tail -10
+fi
+
+echo -e "\n${GREEN}=== All checks passed ===${NC}"
