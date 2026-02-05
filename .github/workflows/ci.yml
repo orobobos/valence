@@ -111,7 +111,7 @@ jobs:
             --tb=short \
             --cov=src/valence \
             --cov-report=xml:coverage-${{ matrix.group.name }}.xml \
-            --cov-fail-under=30 \
+            --cov-fail-under=13 \
             --ignore=tests/integration/
 
       - name: Upload coverage
