@@ -21,6 +21,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .config import get_settings
+from .rate_limit import check_oauth_rate_limit, rate_limit_response
 from .oauth_models import (
     create_access_token,
     get_client_store,
@@ -89,7 +90,23 @@ async def register_client(request: Request) -> JSONResponse:
     """Dynamic Client Registration endpoint.
 
     Allows clients like Claude to register themselves.
+    
+    Rate limited per IP address to prevent abuse.
     """
+    settings = get_settings()
+
+    # Rate limit check (Issue #173: protect against abuse)
+    rate_limit_result = check_oauth_rate_limit(
+        request,
+        client_id=None,  # No client_id for registration
+        rpm_limit=settings.rate_limit_rpm,
+    )
+    if not rate_limit_result.allowed:
+        logger.warning(
+            f"OAuth register endpoint rate limited: key={rate_limit_result.key}"
+        )
+        return rate_limit_response()
+
     try:
         body = await request.json()
     except Exception:
@@ -295,6 +312,8 @@ async def token(request: Request) -> JSONResponse:
     """OAuth 2.1 Token Endpoint.
 
     Handles authorization_code and refresh_token grants.
+    
+    Rate limited per IP address and client_id to prevent brute-force attacks.
     """
     settings = get_settings()
 
@@ -308,6 +327,19 @@ async def token(request: Request) -> JSONResponse:
         )
 
     grant_type = form.get("grant_type")
+    client_id = form.get("client_id")
+
+    # Rate limit check (Issue #173: protect against brute-force attacks)
+    rate_limit_result = check_oauth_rate_limit(
+        request,
+        client_id=str(client_id) if client_id else None,
+        rpm_limit=settings.rate_limit_rpm,
+    )
+    if not rate_limit_result.allowed:
+        logger.warning(
+            f"OAuth token endpoint rate limited: key={rate_limit_result.key}"
+        )
+        return rate_limit_response()
 
     if grant_type == "authorization_code":
         return await _handle_authorization_code_grant(form)
