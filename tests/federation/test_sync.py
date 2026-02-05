@@ -18,7 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-
 from valence.federation.models import SyncStatus
 from valence.federation.sync import (
     SyncManager,
@@ -167,9 +166,7 @@ class TestUpdateSyncState:
         """Test updating sync state cursors."""
         node_id = uuid4()
 
-        result = update_sync_state(
-            node_id, last_received_cursor="cursor123", last_sent_cursor="cursor456"
-        )
+        result = update_sync_state(node_id, last_received_cursor="cursor123", last_sent_cursor="cursor456")
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -180,9 +177,7 @@ class TestUpdateSyncState:
         """Test updating sync state with beliefs delta."""
         node_id = uuid4()
 
-        result = update_sync_state(
-            node_id, beliefs_sent_delta=5, beliefs_received_delta=10
-        )
+        result = update_sync_state(node_id, beliefs_sent_delta=5, beliefs_received_delta=10)
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -244,9 +239,7 @@ class TestQueueBeliefForSync:
         belief_id = uuid4()
         target_node_id = uuid4()
 
-        result = queue_belief_for_sync(
-            belief_id, target_node_id=target_node_id, priority=1
-        )
+        result = queue_belief_for_sync(belief_id, target_node_id=target_node_id, priority=1)
 
         assert result is True
         call_args = mock_get_cursor.execute.call_args
@@ -359,7 +352,7 @@ class TestSyncManager:
 
     def test_sync_manager_init(self):
         """Test SyncManager initialization."""
-        with patch("valence.federation.sync.get_settings") as mock_settings:
+        with patch("valence.federation.sync.get_federation_config") as mock_settings:
             mock_settings.return_value = MagicMock()
             manager = SyncManager()
             assert manager._running is False
@@ -368,7 +361,7 @@ class TestSyncManager:
     @pytest.mark.asyncio
     async def test_sync_manager_start_stop(self):
         """Test SyncManager start and stop."""
-        with patch("valence.federation.sync.get_settings") as mock_settings:
+        with patch("valence.federation.sync.get_federation_config") as mock_settings:
             mock_settings.return_value = MagicMock(federation_sync_interval_seconds=0.1)
             manager = SyncManager()
 
@@ -389,7 +382,7 @@ class TestSyncManager:
     @pytest.mark.asyncio
     async def test_sync_manager_already_running(self):
         """Test that start() does nothing if already running."""
-        with patch("valence.federation.sync.get_settings") as mock_settings:
+        with patch("valence.federation.sync.get_federation_config") as mock_settings:
             mock_settings.return_value = MagicMock(federation_sync_interval_seconds=0.1)
             manager = SyncManager()
             manager._running = True
@@ -402,7 +395,7 @@ class TestSyncManager:
     async def test_sync_manager_process_outbound_queue(self):
         """Test processing outbound queue."""
         with (
-            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_federation_config") as mock_settings,
             patch("valence.federation.sync.get_cursor") as mock_cursor_ctx,
             patch("valence.federation.sync.get_pending_sync_items"),
             patch("valence.federation.sync.get_node_trust"),
@@ -425,7 +418,7 @@ class TestSyncManager:
     async def test_sync_manager_belief_to_federated(self):
         """Test converting belief to federated format."""
         with (
-            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_federation_config") as mock_settings,
             patch("valence.federation.identity.sign_belief_content") as mock_sign,
         ):
             mock_settings.return_value = MagicMock(
@@ -567,7 +560,7 @@ class TestTriggerSync:
     async def test_trigger_sync_all_nodes(self):
         """Test triggering sync for all nodes."""
         with (
-            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_federation_config") as mock_settings,
             patch("valence.federation.sync.SyncManager") as MockManager,  # noqa: N806
         ):
             mock_settings.return_value = MagicMock()
@@ -586,7 +579,7 @@ class TestTriggerSync:
         node_id = uuid4()
 
         with (
-            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_federation_config") as mock_settings,
             patch("valence.federation.sync.get_node_by_id") as mock_get_node,
             patch("valence.federation.sync.get_node_trust") as mock_get_trust,
             patch("valence.federation.sync.get_sync_state") as mock_get_state,
@@ -598,9 +591,7 @@ class TestTriggerSync:
             mock_node.federation_endpoint = "https://test.example.com/federation"
             mock_get_node.return_value = mock_node
             mock_get_trust.return_value = MagicMock(overall=0.5)
-            mock_get_state.return_value = MagicMock(
-                last_received_cursor=None, last_sync_at=None
-            )
+            mock_get_state.return_value = MagicMock(last_received_cursor=None, last_sync_at=None)
 
             mock_manager = MagicMock()
             mock_manager._pull_from_node = AsyncMock()
@@ -615,7 +606,7 @@ class TestTriggerSync:
     async def test_trigger_sync_node_not_found(self):
         """Test triggering sync when node not found."""
         with (
-            patch("valence.federation.sync.get_settings") as mock_settings,
+            patch("valence.federation.sync.get_federation_config") as mock_settings,
             patch("valence.federation.sync.get_node_by_id") as mock_get_node,
         ):
             mock_settings.return_value = MagicMock()
