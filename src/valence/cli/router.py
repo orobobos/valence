@@ -102,9 +102,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
                     return 1
 
     except aiohttp.ClientConnectorError:
-        print(
-            f"❌ Cannot connect to router at {args.host}:{args.port}", file=sys.stderr
-        )
+        print(f"❌ Cannot connect to router at {args.host}:{args.port}", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
@@ -223,11 +221,6 @@ Environment Variables:
         default=300,
         help="Seconds between seed heartbeats (default: 300)",
     )
-    start_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
-    )
 
     # status command
     status_parser = subparsers.add_parser(
@@ -246,11 +239,6 @@ Environment Variables:
         type=int,
         default=8471,
         help="Router port (default: 8471)",
-    )
-    status_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output as JSON",
     )
 
     return parser

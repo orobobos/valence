@@ -13,7 +13,6 @@ import argparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from valence.cli.router import (
     _print_status,
     async_main,
@@ -95,7 +94,7 @@ class TestCreateParser:
     def test_start_command_json_flag(self):
         """Start command with JSON output flag."""
         parser = create_parser()
-        args = parser.parse_args(["start", "--json"])
+        args = parser.parse_args(["--json", "start"])
         assert args.json is True
 
     def test_status_command_defaults(self):
@@ -112,12 +111,12 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(
             [
+                "--json",
                 "status",
                 "--host",
                 "192.168.1.100",
                 "--port",
                 "8500",
-                "--json",
             ]
         )
 
@@ -235,24 +234,24 @@ class TestCmdStatus:
             "port": 8471,
         }
 
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value=mock_response_data)
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_response),
-                __aexit__=AsyncMock(return_value=None),
-            )
-        )
+        # Create async context manager for response
+        mock_get_cm = MagicMock()
+        mock_get_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_get_cm.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("aiohttp.ClientSession") as mock_client:
-            mock_client.return_value = AsyncMock(
-                __aenter__=AsyncMock(return_value=mock_session),
-                __aexit__=AsyncMock(return_value=None),
-            )
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_get_cm)
 
+        # Create async context manager for session
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_cm):
             result = await cmd_status(args)
 
         assert result == 0
@@ -344,11 +343,7 @@ class TestCmdStatus:
 
         mock_session_ctx = AsyncMock()
         mock_session = AsyncMock()
-        mock_session.get = MagicMock(
-            side_effect=aiohttp.ClientConnectorError(
-                connection_key=MagicMock(), os_error=OSError("Connection refused")
-            )
-        )
+        mock_session.get = MagicMock(side_effect=aiohttp.ClientConnectorError(connection_key=MagicMock(), os_error=OSError("Connection refused")))
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
@@ -380,9 +375,7 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch(
-            "valence.cli.router.cmd_status", new_callable=AsyncMock
-        ) as mock_status:
+        with patch("valence.cli.router.cmd_status", new_callable=AsyncMock) as mock_status:
             mock_status.return_value = 0
             result = await async_main(args)
 

@@ -25,6 +25,7 @@ from valence.cli.federation import (
     main,
     sign_request,
 )
+from valence.core.config import clear_config_cache
 
 # =============================================================================
 # FIXTURES
@@ -167,9 +168,7 @@ class TestParser:
     def test_list_with_filters(self):
         """Test list command with filters."""
         parser = create_parser()
-        args = parser.parse_args(
-            ["list", "--status", "active", "--trust-phase", "participant", "-n", "10"]
-        )
+        args = parser.parse_args(["list", "--status", "active", "--trust-phase", "participant", "-n", "10"])
 
         assert args.command == "list"
         assert args.status == "active"
@@ -187,9 +186,7 @@ class TestParser:
         """Test trust command parsing."""
         parser = create_parser()
         node_id = str(uuid4())
-        args = parser.parse_args(
-            ["trust", node_id, "elevated", "--reason", "Trusted partner"]
-        )
+        args = parser.parse_args(["trust", node_id, "elevated", "--reason", "Trusted partner"])
 
         assert args.command == "trust"
         assert args.node_id == node_id
@@ -242,6 +239,7 @@ class TestConfiguration:
 
     def test_get_private_key_from_env(self, monkeypatch):
         """Test getting private key from environment."""
+        clear_config_cache()
         test_key = "0" * 64  # 32 bytes in hex
         monkeypatch.setenv("VALENCE_FEDERATION_PRIVATE_KEY", test_key)
 
@@ -251,6 +249,7 @@ class TestConfiguration:
 
     def test_get_private_key_missing(self, monkeypatch):
         """Test missing private key."""
+        clear_config_cache()
         monkeypatch.delenv("VALENCE_FEDERATION_PRIVATE_KEY", raising=False)
 
         key = get_private_key()
@@ -258,6 +257,7 @@ class TestConfiguration:
 
     def test_get_public_key_multibase(self, monkeypatch):
         """Test getting public key from environment."""
+        clear_config_cache()
         test_key = "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
         monkeypatch.setenv("VALENCE_FEDERATION_PUBLIC_KEY", test_key)
 
@@ -266,6 +266,7 @@ class TestConfiguration:
 
     def test_get_local_did(self, monkeypatch):
         """Test getting local DID from environment."""
+        clear_config_cache()
         test_did = "did:vkb:web:localhost"
         monkeypatch.setenv("VALENCE_FEDERATION_DID", test_did)
 
@@ -465,9 +466,7 @@ class TestTrustCommand:
 
         with (
             patch("valence.federation.tools.federation_trust_get") as mock_get,
-            patch(
-                "valence.federation.tools.federation_trust_set_preference"
-            ) as mock_set,
+            patch("valence.federation.tools.federation_trust_set_preference") as mock_set,
         ):
             mock_get.return_value = {"success": True, "effective_trust": 0.5}
             mock_set.return_value = {"success": True, "effective_trust": 0.75}
