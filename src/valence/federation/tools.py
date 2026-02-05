@@ -10,47 +10,39 @@ These tools enable Claude to interact with the federation layer:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from datetime import datetime
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from mcp.types import Tool
 
-from .models import (
-    Visibility,
-    ShareLevel,
-    TrustPreference,
-    TrustPhase,
-    NodeStatus,
-)
-from .identity import create_web_did, generate_keypair, DIDDocument
+from ..core.db import get_cursor
 from .discovery import (
-    discover_node,
+    bootstrap_federation_sync,
     discover_node_sync,
-    register_node,
     get_node_by_did,
     get_node_by_id,
     list_nodes,
     list_nodes_with_trust,
-    bootstrap_federation_sync,
+    register_node,
+)
+from .models import (
+    NodeStatus,
+    ShareLevel,
+    TrustPhase,
+    TrustPreference,
+    Visibility,
 )
 from .sync import (
     get_sync_state,
     get_sync_status,
-    trigger_sync,
     queue_belief_for_sync,
+    trigger_sync,
 )
 from .trust import (
-    TrustManager,
     get_trust_manager,
-    get_effective_trust,
-    process_corroboration,
-    process_dispute,
-    assess_and_respond_to_threat,
 )
-from ..core.db import get_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -892,7 +884,7 @@ def federation_belief_query(
         }
 
     except Exception as e:
-        logger.exception(f"Error querying federation beliefs")
+        logger.exception("Error querying federation beliefs")
         return {
             "success": False,
             "error": str(e),
@@ -986,7 +978,7 @@ def federation_corroboration_check(
     domain: list[str] | None = None,
 ) -> dict[str, Any]:
     """Check if a belief has been corroborated by federation nodes.
-    
+
     Uses semantic similarity for accurate corroboration detection.
     """
     try:
@@ -999,14 +991,14 @@ def federation_corroboration_check(
         # If belief_id provided, use the new corroboration module directly
         if belief_id:
             from ..core.corroboration import get_corroboration
-            
+
             corroboration_info = get_corroboration(UUID(belief_id))
             if not corroboration_info:
                 return {
                     "success": False,
                     "error": f"Belief not found: {belief_id}",
                 }
-            
+
             return {
                 "success": True,
                 "belief_id": str(corroboration_info.belief_id),
@@ -1020,7 +1012,7 @@ def federation_corroboration_check(
         # If only content provided, check for similar beliefs
         # content is guaranteed non-None here since we check for both None above
         assert content is not None
-        
+
         with get_cursor() as cur:
             # Search for similar beliefs from other nodes
             cur.execute("""
@@ -1087,8 +1079,8 @@ def federation_endorsement_give(
 ) -> dict[str, Any]:
     """Endorse another federation node."""
     try:
-        from .models import TrustAttestation
         from ..server.config import get_settings
+        from .models import TrustAttestation
 
         uuid = UUID(node_id)
         trust_manager = get_trust_manager()
@@ -1123,7 +1115,7 @@ def federation_endorsement_give(
         # Process the endorsement
         # Note: In a full implementation, this would also be signed and
         # broadcast to the federation
-        node_trust = trust_manager.process_endorsement(
+        trust_manager.process_endorsement(
             subject_node_id=uuid,
             endorser_node_id=uuid,  # Self-endorsement in local context
             attestation=attestation,

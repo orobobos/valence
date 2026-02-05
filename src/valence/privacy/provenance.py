@@ -8,16 +8,16 @@ Issue #97: Different audiences see different provenance detail levels.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 class ProvenanceTier(Enum):
     """Graduated levels of provenance disclosure.
-    
+
     Controls how much detail about belief origin and verification
     is exposed to different audiences.
     """
-    
+
     FULL = "full"          # Complete chain with identities
     PARTIAL = "partial"    # Chain structure, no identities
     ANONYMOUS = "anonymous"  # "verified by N sources" summary
@@ -27,39 +27,39 @@ class ProvenanceTier(Enum):
 @dataclass
 class ProvenanceChain:
     """A provenance chain with identity and verification info.
-    
+
     This is the internal representation with full details.
     filter_provenance() creates audience-appropriate views.
     """
-    
+
     # Origin information
-    origin_did: Optional[str] = None
-    origin_node: Optional[str] = None
-    origin_timestamp: Optional[float] = None
-    
+    origin_did: str | None = None
+    origin_node: str | None = None
+    origin_timestamp: float | None = None
+
     # Hop chain - list of intermediate handlers
-    hops: List[Dict[str, Any]] = field(default_factory=list)
-    
+    hops: list[dict[str, Any]] = field(default_factory=list)
+
     # Signatures and verification
-    origin_signature: Optional[bytes] = None
-    chain_signatures: List[bytes] = field(default_factory=list)
+    origin_signature: bytes | None = None
+    chain_signatures: list[bytes] = field(default_factory=list)
     signature_verified: bool = False
-    
+
     # Federation path (node DIDs traversed)
-    federation_path: List[str] = field(default_factory=list)
-    
+    federation_path: list[str] = field(default_factory=list)
+
     # Corroboration info
     corroborating_sources: int = 0
-    corroboration_attestations: List[Dict[str, Any]] = field(default_factory=list)
-    
+    corroboration_attestations: list[dict[str, Any]] = field(default_factory=list)
+
     # Policy context
-    share_level: Optional[str] = None
-    consent_chain_id: Optional[str] = None
-    
+    share_level: str | None = None
+    consent_chain_id: str | None = None
+
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary (full details)."""
         return {
             "origin_did": self.origin_did,
@@ -76,21 +76,21 @@ class ProvenanceChain:
             "consent_chain_id": self.consent_chain_id,
             "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProvenanceChain":
+    def from_dict(cls, data: dict[str, Any]) -> "ProvenanceChain":
         """Deserialize from dictionary."""
         origin_sig = data.get("origin_signature")
         if isinstance(origin_sig, str):
             origin_sig = bytes.fromhex(origin_sig)
-        
+
         chain_sigs = []
         for sig in data.get("chain_signatures", []):
             if isinstance(sig, str):
                 chain_sigs.append(bytes.fromhex(sig))
             else:
                 chain_sigs.append(sig)
-        
+
         return cls(
             origin_did=data.get("origin_did"),
             origin_node=data.get("origin_node"),
@@ -106,7 +106,7 @@ class ProvenanceChain:
             consent_chain_id=data.get("consent_chain_id"),
             metadata=data.get("metadata", {}),
         )
-    
+
     @classmethod
     def from_consent_chain(cls, consent_chain: Any) -> "ProvenanceChain":
         """Create from a ConsentChainEntry object."""
@@ -117,7 +117,7 @@ class ProvenanceChain:
             origin_signature=getattr(consent_chain, "origin_signature", None),
             consent_chain_id=getattr(consent_chain, "id", None),
         )
-    
+
     @classmethod
     def from_belief_provenance(cls, belief_provenance: Any) -> "ProvenanceChain":
         """Create from a BeliefProvenance object (federation module)."""
@@ -137,68 +137,68 @@ class ProvenanceChain:
 @dataclass
 class FilteredProvenance:
     """A filtered view of provenance appropriate for an audience tier.
-    
+
     Created by filter_provenance() based on the requested tier.
     """
-    
+
     tier: ProvenanceTier
-    
+
     # FULL tier only
-    origin_did: Optional[str] = None
-    origin_node: Optional[str] = None
-    hops: Optional[List[Dict[str, Any]]] = None
-    federation_path: Optional[List[str]] = None
+    origin_did: str | None = None
+    origin_node: str | None = None
+    hops: list[dict[str, Any]] | None = None
+    federation_path: list[str] | None = None
     signatures_present: bool = False
     signature_verified: bool = False
-    
+
     # PARTIAL tier and above
-    chain_length: Optional[int] = None
+    chain_length: int | None = None
     has_origin: bool = False
-    
+
     # ANONYMOUS tier and above
-    verified_by_sources: Optional[int] = None
-    verification_summary: Optional[str] = None
-    
+    verified_by_sources: int | None = None
+    verification_summary: str | None = None
+
     # NONE tier - nothing
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary (only includes tier-appropriate fields)."""
-        result: Dict[str, Any] = {"tier": self.tier.value}
-        
+        result: dict[str, Any] = {"tier": self.tier.value}
+
         if self.tier == ProvenanceTier.NONE:
             return result
-        
+
         if self.tier == ProvenanceTier.ANONYMOUS:
             result["verified_by_sources"] = self.verified_by_sources
             result["verification_summary"] = self.verification_summary
             return result
-        
+
         if self.tier in (ProvenanceTier.PARTIAL, ProvenanceTier.FULL):
             result["chain_length"] = self.chain_length
             result["has_origin"] = self.has_origin
             result["signatures_present"] = self.signatures_present
             result["signature_verified"] = self.signature_verified
-        
+
         if self.tier == ProvenanceTier.FULL:
             result["origin_did"] = self.origin_did
             result["origin_node"] = self.origin_node
             result["hops"] = self.hops
             result["federation_path"] = self.federation_path
-        
+
         return result
-    
+
     def __str__(self) -> str:
         """Human-readable string representation."""
         if self.tier == ProvenanceTier.NONE:
             return "No provenance available"
-        
+
         if self.tier == ProvenanceTier.ANONYMOUS:
             return self.verification_summary or "Unverified"
-        
+
         if self.tier == ProvenanceTier.PARTIAL:
             verified = "✓" if self.signature_verified else "?"
             return f"Chain length: {self.chain_length} [{verified}]"
-        
+
         # FULL
         origin = self.origin_did or self.origin_node or "unknown"
         verified = "verified" if self.signature_verified else "unverified"
@@ -207,22 +207,22 @@ class FilteredProvenance:
 
 
 def filter_provenance(
-    chain: Union[ProvenanceChain, Dict[str, Any], Any],
+    chain: ProvenanceChain | dict[str, Any] | Any,
     tier: ProvenanceTier,
 ) -> FilteredProvenance:
     """Filter provenance information based on audience tier.
-    
+
     Takes a full provenance chain and returns a filtered view appropriate
     for the specified audience tier.
-    
+
     Args:
         chain: ProvenanceChain, dict representation, or any object with
                provenance attributes (ConsentChainEntry, BeliefProvenance)
         tier: The ProvenanceTier determining what information to include
-        
+
     Returns:
         FilteredProvenance with tier-appropriate information
-        
+
     Examples:
         >>> chain = ProvenanceChain(origin_did="did:example:alice", hops=[...])
         >>> full_view = filter_provenance(chain, ProvenanceTier.FULL)
@@ -242,26 +242,26 @@ def filter_provenance(
     else:
         # Unknown type, create empty chain
         pchain = ProvenanceChain()
-    
+
     # NONE tier - no provenance information
     if tier == ProvenanceTier.NONE:
         return FilteredProvenance(tier=tier)
-    
+
     # Calculate common values
     hop_count = len(pchain.hops) if pchain.hops else 0
     path_count = len(pchain.federation_path) if pchain.federation_path else 0
     chain_length = max(hop_count, path_count)
-    
+
     has_origin = bool(pchain.origin_did or pchain.origin_node)
     signatures_present = bool(pchain.origin_signature or pchain.chain_signatures)
-    
+
     # Count verifiable sources
     source_count = pchain.corroborating_sources
     if has_origin:
         source_count = max(source_count, 1)
     if pchain.corroboration_attestations:
         source_count = max(source_count, len(pchain.corroboration_attestations))
-    
+
     # ANONYMOUS tier - just source count summary
     if tier == ProvenanceTier.ANONYMOUS:
         if source_count == 0:
@@ -276,13 +276,13 @@ def filter_provenance(
                 summary = f"Verified by {source_count} sources"
             else:
                 summary = f"From {source_count} sources"
-        
+
         return FilteredProvenance(
             tier=tier,
             verified_by_sources=source_count,
             verification_summary=summary,
         )
-    
+
     # PARTIAL tier - structure without identities
     if tier == ProvenanceTier.PARTIAL:
         return FilteredProvenance(
@@ -292,7 +292,7 @@ def filter_provenance(
             signatures_present=signatures_present,
             signature_verified=pchain.signature_verified,
         )
-    
+
     # FULL tier - everything
     # Sanitize hops to remove any accidentally included sensitive data
     sanitized_hops = []
@@ -301,7 +301,7 @@ def filter_provenance(
             sanitized_hops.append(hop.copy())
         else:
             sanitized_hops.append({"hop": str(hop)})
-    
+
     return FilteredProvenance(
         tier=tier,
         origin_did=pchain.origin_did,
@@ -317,20 +317,20 @@ def filter_provenance(
 
 def get_tier_for_audience(
     audience_type: str,
-    custom_mapping: Optional[Dict[str, ProvenanceTier]] = None,
+    custom_mapping: dict[str, ProvenanceTier] | None = None,
 ) -> ProvenanceTier:
     """Get the appropriate provenance tier for an audience type.
-    
+
     Provides sensible defaults for common audience types, with the ability
     to customize via a mapping dictionary.
-    
+
     Args:
         audience_type: String identifying the audience (e.g., "owner", "public")
         custom_mapping: Optional dict mapping audience types to tiers
-        
+
     Returns:
         ProvenanceTier appropriate for the audience
-        
+
     Examples:
         >>> get_tier_for_audience("owner")
         ProvenanceTier.FULL
@@ -342,22 +342,22 @@ def get_tier_for_audience(
         "owner": ProvenanceTier.FULL,
         "admin": ProvenanceTier.FULL,
         "self": ProvenanceTier.FULL,
-        
+
         # Partial access (trusted but not owner)
         "trusted": ProvenanceTier.PARTIAL,
         "collaborator": ProvenanceTier.PARTIAL,
         "federation": ProvenanceTier.PARTIAL,
         "node": ProvenanceTier.PARTIAL,
-        
+
         # Anonymous (public-ish)
         "public": ProvenanceTier.ANONYMOUS,
         "reader": ProvenanceTier.ANONYMOUS,
         "viewer": ProvenanceTier.ANONYMOUS,
-        
+
         # No provenance
         "anonymous": ProvenanceTier.NONE,
         "minimal": ProvenanceTier.NONE,
     }
-    
+
     mapping = {**default_mapping, **(custom_mapping or {})}
     return mapping.get(audience_type.lower(), ProvenanceTier.ANONYMOUS)

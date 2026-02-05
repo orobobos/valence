@@ -24,25 +24,16 @@ from uuid import UUID, uuid4
 
 import aiohttp
 
-from ..core.db import get_cursor
 from ..core.config import get_federation_config
+from ..core.db import get_cursor
 from .discovery import get_node_by_id, get_node_trust, mark_node_active, mark_node_unreachable
 from .models import (
-    FederationNode,
-    NodeTrust,
     SyncState,
     SyncStatus,
-    Visibility,
-    ShareLevel,
 )
 from .protocol import (
-    SyncRequest,
-    SyncResponse,
-    SyncChange,
     ShareBeliefRequest,
-    ShareBeliefResponse,
     handle_share_belief,
-    handle_sync_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,12 +46,12 @@ logger = logging.getLogger(__name__)
 
 def _bucket_count(count: int) -> str:
     """Convert exact count to privacy-preserving bucket for logging.
-    
+
     Prevents traffic analysis by not revealing exact sync volumes.
-    
+
     Args:
         count: Exact count value
-        
+
     Returns:
         Bucketed string representation (e.g., "1-5", "10-20", "50+")
     """
@@ -82,14 +73,14 @@ def _bucket_count(count: int) -> str:
 
 def _noisy_count(count: int, noise_scale: float = 0.1) -> int:
     """Add noise to a count for privacy-preserving logging.
-    
+
     Uses Laplace-like noise to obscure exact values while preserving
     approximate magnitude for operational monitoring.
-    
+
     Args:
         count: Exact count value
         noise_scale: Scale of noise relative to count (default 10%)
-        
+
     Returns:
         Count with random noise added
     """
@@ -362,7 +353,7 @@ class SyncManager:
             try:
                 await self._process_outbound_queue()
                 await self._sync_with_peers()
-            except Exception as e:
+            except Exception:
                 logger.exception("Error in sync loop")
 
             # Wait for next sync interval
@@ -501,14 +492,14 @@ class SyncManager:
 
     def _belief_to_federated(self, row: dict[str, Any]) -> dict[str, Any] | None:
         """Convert a belief row to federated format with federation-standard embedding."""
-        from .identity import sign_belief_content
         from ..core.federation_embedding import (
-            FEDERATION_EMBEDDING_MODEL,
             FEDERATION_EMBEDDING_DIMS,
+            FEDERATION_EMBEDDING_MODEL,
             FEDERATION_EMBEDDING_TYPE,
             is_federation_compatible,
         )
         from ..embeddings.providers.local import generate_embedding
+        from .identity import sign_belief_content
 
         settings = self.settings
         did = settings.federation_node_did or f"did:vkb:web:localhost:{settings.port}"
@@ -535,7 +526,7 @@ class SyncManager:
         # Check if row has compatible embedding already
         embedding_type = row.get("embedding_type")
         dimensions = row.get("dimensions")
-        
+
         if is_federation_compatible(embedding_type, dimensions) and row.get("embedding_384"):
             # Use existing compatible embedding
             embedding = row["embedding_384"]
@@ -549,7 +540,7 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Failed to generate embedding for belief {row['id']}: {e}")
                 # Continue without embedding - receiver can regenerate
-        
+
         # Add embedding metadata
         if "embedding" in result:
             result["embedding_model"] = FEDERATION_EMBEDDING_MODEL

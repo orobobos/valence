@@ -16,23 +16,21 @@ Examples:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
-from urllib.parse import urlparse
 
 # Try to import cryptography for Ed25519, fall back to pure Python if needed
 try:
+    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
         Ed25519PublicKey,
     )
-    from cryptography.hazmat.primitives import serialization
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -61,7 +59,7 @@ WELL_KNOWN_TRUST_ANCHORS = "/.well-known/vfp-trust-anchors"
 # =============================================================================
 
 
-class DIDMethod(str, Enum):
+class DIDMethod(StrEnum):
     """DID method variants for did:vkb."""
     WEB = "web"      # Domain-verified
     KEY = "key"      # Self-sovereign (key-based)
@@ -263,7 +261,7 @@ def parse_did(did_string: str) -> DID:
     parts = did_string[len(DID_PREFIX):].split(":")
 
     if len(parts) < 2:
-        raise ValueError(f"Invalid DID: missing method or identifier")
+        raise ValueError("Invalid DID: missing method or identifier")
 
     method_str = parts[0]
 
@@ -301,7 +299,7 @@ def parse_did(did_string: str) -> DID:
     elif method == DIDMethod.KEY:
         # Validate multibase format (should start with z for base58btc)
         if not identifier.startswith("z"):
-            raise ValueError(f"Invalid key DID: must use base58btc encoding (start with 'z')")
+            raise ValueError("Invalid key DID: must use base58btc encoding (start with 'z')")
         try:
             multibase_decode(identifier)
         except Exception as e:

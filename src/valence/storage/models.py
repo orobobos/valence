@@ -7,7 +7,7 @@ erasure-coded storage of beliefs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -15,44 +15,44 @@ from uuid import UUID, uuid4
 
 class RedundancyLevel(Enum):
     """Predefined redundancy levels per spec.
-    
+
     Each level specifies (data_shards, total_shards):
     - PERSONAL: 3 of 5 - 67% overhead, survives any 2 failures
     - FEDERATION: 5 of 9 - 80% overhead, survives any 4 failures
     - PARANOID: 7 of 15 - 114% overhead, survives any 8 failures
     - MINIMAL: 2 of 3 - 50% overhead, survives 1 failure (testing)
     """
-    
+
     MINIMAL = (2, 3)      # 50% overhead, survives 1 failure
     PERSONAL = (3, 5)     # 67% overhead, survives 2 failures
     FEDERATION = (5, 9)   # 80% overhead, survives 4 failures
     PARANOID = (7, 15)    # 114% overhead, survives 8 failures
-    
+
     @property
     def data_shards(self) -> int:
         """Number of data shards (k)."""
         return self.value[0]
-    
+
     @property
     def total_shards(self) -> int:
         """Total number of shards (n)."""
         return self.value[1]
-    
+
     @property
     def parity_shards(self) -> int:
         """Number of parity/recovery shards."""
         return self.total_shards - self.data_shards
-    
+
     @property
     def max_failures(self) -> int:
         """Maximum number of shard failures that can be tolerated."""
         return self.parity_shards
-    
+
     @property
     def overhead_percent(self) -> float:
         """Storage overhead as a percentage."""
         return ((self.total_shards - self.data_shards) / self.data_shards) * 100
-    
+
     @classmethod
     def from_string(cls, name: str) -> RedundancyLevel:
         """Create from string name (case-insensitive)."""
@@ -61,11 +61,11 @@ class RedundancyLevel(Enum):
         except KeyError:
             valid = [level.name.lower() for level in cls]
             raise ValueError(f"Unknown redundancy level: {name}. Valid: {valid}")
-    
+
     @classmethod
     def custom(cls, data_shards: int, total_shards: int) -> tuple[int, int]:
         """Validate custom redundancy parameters.
-        
+
         Returns (k, n) tuple if valid, raises ValueError otherwise.
         """
         if data_shards < 1:
@@ -80,16 +80,16 @@ class RedundancyLevel(Enum):
 @dataclass
 class ShardMetadata:
     """Metadata for a single shard."""
-    
+
     shard_id: UUID = field(default_factory=uuid4)
     index: int = 0                    # Position in shard set (0 to n-1)
     is_parity: bool = False           # True if this is a parity shard
     size_bytes: int = 0               # Size of shard data
     checksum: str = ""                # SHA-256 hash of shard data
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     backend_id: str | None = None     # Which backend stores this shard
     location: str | None = None       # Backend-specific location
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -102,7 +102,7 @@ class ShardMetadata:
             "backend_id": self.backend_id,
             "location": self.location,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ShardMetadata:
         """Create from dictionary."""
@@ -121,15 +121,15 @@ class ShardMetadata:
 @dataclass
 class StorageShard:
     """A single shard of erasure-coded data."""
-    
+
     data: bytes                       # The actual shard data
     metadata: ShardMetadata           # Shard metadata
-    
+
     @property
     def index(self) -> int:
         """Shard index for convenience."""
         return self.metadata.index
-    
+
     @property
     def is_valid(self) -> bool:
         """Check if shard data matches its checksum."""
@@ -138,7 +138,7 @@ class StorageShard:
         import hashlib
         actual = hashlib.sha256(self.data).hexdigest()
         return actual == self.metadata.checksum
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (data as base64)."""
         import base64
@@ -146,7 +146,7 @@ class StorageShard:
             "data": base64.b64encode(self.data).decode("ascii"),
             "metadata": self.metadata.to_dict(),
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StorageShard:
         """Create from dictionary."""
@@ -160,54 +160,54 @@ class StorageShard:
 @dataclass
 class ShardSet:
     """A complete set of shards for a piece of data.
-    
+
     Contains all shards (data + parity) plus metadata about
     the original data and encoding parameters.
     """
-    
+
     set_id: UUID = field(default_factory=uuid4)
     shards: list[StorageShard | None] = field(default_factory=list)
-    
+
     # Encoding parameters
     data_shards_k: int = 3            # Number of data shards
     total_shards_n: int = 5           # Total number of shards
-    
+
     # Original data metadata
     original_size: int = 0            # Size of original data
     original_checksum: str = ""       # SHA-256 of original data
     content_type: str = "application/octet-stream"
-    
+
     # Merkle tree for integrity
     merkle_root: str = ""             # Root hash of Merkle tree
-    
+
     # Timestamps
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     verified_at: datetime | None = None
-    
+
     # Optional reference to what this stores
     belief_id: UUID | None = None
-    
+
     @property
     def available_shards(self) -> list[StorageShard]:
         """Return list of non-None shards."""
         return [s for s in self.shards if s is not None]
-    
+
     @property
     def available_count(self) -> int:
         """Number of available shards."""
         return len(self.available_shards)
-    
+
     @property
     def can_recover(self) -> bool:
         """Whether we have enough shards to recover original data."""
         return self.available_count >= self.data_shards_k
-    
+
     @property
     def missing_indices(self) -> list[int]:
         """Indices of missing/corrupted shards."""
         available_indices = {s.index for s in self.available_shards}
         return [i for i in range(self.total_shards_n) if i not in available_indices]
-    
+
     @property
     def redundancy_level(self) -> RedundancyLevel | None:
         """Return matching RedundancyLevel if one exists."""
@@ -215,7 +215,7 @@ class ShardSet:
             if level.data_shards == self.data_shards_k and level.total_shards == self.total_shards_n:
                 return level
         return None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -231,7 +231,7 @@ class ShardSet:
             "verified_at": self.verified_at.isoformat() if self.verified_at else None,
             "belief_id": str(self.belief_id) if self.belief_id else None,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ShardSet:
         """Create from dictionary."""
@@ -257,7 +257,7 @@ class ShardSet:
 @dataclass
 class RecoveryResult:
     """Result of a data recovery operation."""
-    
+
     success: bool
     data: bytes | None = None
     shards_used: int = 0
@@ -266,7 +266,7 @@ class RecoveryResult:
     recovery_time_ms: float = 0.0
     error_message: str | None = None
     repaired_indices: list[int] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         import base64
@@ -285,9 +285,9 @@ class RecoveryResult:
 @dataclass
 class IntegrityReport:
     """Report from integrity verification."""
-    
+
     is_valid: bool
-    checked_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     total_shards: int = 0
     valid_shards: int = 0
     corrupted_shards: list[int] = field(default_factory=list)
@@ -296,7 +296,7 @@ class IntegrityReport:
     checksum_valid: bool = True
     can_recover: bool = True
     details: str = ""
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {

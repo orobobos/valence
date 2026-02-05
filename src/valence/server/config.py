@@ -6,7 +6,6 @@ import logging
 import secrets
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -202,7 +201,7 @@ class ServerSettings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_production_settings(self) -> "ServerSettings":
+    def validate_production_settings(self) -> ServerSettings:
         """Validate security settings for production environments.
 
         In production (when host is not localhost/127.0.0.1 or external_url is set),

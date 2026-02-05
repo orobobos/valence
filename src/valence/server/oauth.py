@@ -10,7 +10,6 @@ Implements:
 
 from __future__ import annotations
 
-import hashlib
 import html
 import logging
 import secrets
@@ -21,7 +20,6 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from .config import get_settings
-from .rate_limit import check_oauth_rate_limit, rate_limit_response
 from .oauth_models import (
     create_access_token,
     get_client_store,
@@ -29,6 +27,7 @@ from .oauth_models import (
     get_refresh_store,
     verify_pkce,
 )
+from .rate_limit import check_oauth_rate_limit, rate_limit_response
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +89,7 @@ async def register_client(request: Request) -> JSONResponse:
     """Dynamic Client Registration endpoint.
 
     Allows clients like Claude to register themselves.
-    
+
     Rate limited per IP address to prevent abuse.
     """
     settings = get_settings()
@@ -182,7 +181,7 @@ async def authorize(request: Request) -> Response:
 
     Handles the authorization code flow with PKCE.
     """
-    settings = get_settings()
+    get_settings()
 
     # Get query parameters
     params = dict(request.query_params)
@@ -252,7 +251,7 @@ async def _handle_authorize_post(
     form = await request.form()
     username_raw = form.get("username", "")
     password_raw = form.get("password", "")
-    
+
     # Ensure string types (form.get can return UploadFile for file fields)
     username = str(username_raw) if username_raw else ""
     password = str(password_raw) if password_raw else ""
@@ -318,7 +317,7 @@ async def token(request: Request) -> JSONResponse:
     """OAuth 2.1 Token Endpoint.
 
     Handles authorization_code and refresh_token grants.
-    
+
     Rate limited per IP address and client_id to prevent brute-force attacks.
     """
     settings = get_settings()

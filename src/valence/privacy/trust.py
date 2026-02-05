@@ -26,8 +26,8 @@ import math
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 CLOCK_SKEW_TOLERANCE = timedelta(minutes=5)
 
 
-class DecayModel(str, Enum):
+class DecayModel(StrEnum):
     """Models for how trust decays over time."""
 
     NONE = "none"  # No decay - trust stays constant
@@ -56,7 +56,7 @@ class DecayModel(str, Enum):
 
 
 # Singleton store instance
-_default_store: Optional[TrustGraphStore] = None
+_default_store: TrustGraphStore | None = None
 _default_store_lock = threading.Lock()
 
 
@@ -94,16 +94,16 @@ class TrustEdge:
     integrity: float = 0.5
     confidentiality: float = 0.5
     judgment: float = 0.1  # Very low default - trust in judgment must be earned
-    domain: Optional[str] = None
+    domain: str | None = None
     can_delegate: bool = False  # Default: non-transitive trust
     delegation_depth: int = 0  # 0 = no limit when can_delegate=True
     decay_rate: float = 0.0  # 0.0 = no decay
     decay_model: DecayModel = DecayModel.EXPONENTIAL
     last_refreshed: datetime = field(default_factory=lambda: datetime.now(UTC))
-    id: Optional[UUID] = None
+    id: UUID | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -616,7 +616,7 @@ def compute_transitive_trust(
     trust_graph: dict[tuple[str, str], TrustEdge],
     max_hops: int = 3,
     respect_delegation: bool = True,
-) -> Optional[TrustEdge]:
+) -> TrustEdge | None:
     """Compute transitive trust through the graph.
 
     Uses breadth-first search to find trust paths and combines them.
@@ -821,8 +821,8 @@ class TrustGraphStore:
         self,
         source_did: str,
         target_did: str,
-        domain: Optional[str] = None,
-    ) -> Optional[TrustEdge]:
+        domain: str | None = None,
+    ) -> TrustEdge | None:
         """Get a specific trust edge.
 
         Args:
@@ -884,7 +884,7 @@ class TrustGraphStore:
     def get_edges_from(
         self,
         source_did: str,
-        domain: Optional[str] = None,
+        domain: str | None = None,
         include_expired: bool = False,
     ) -> list[TrustEdge]:
         """Get all trust edges from a DID.
@@ -942,7 +942,7 @@ class TrustGraphStore:
     def get_edges_to(
         self,
         target_did: str,
-        domain: Optional[str] = None,
+        domain: str | None = None,
         include_expired: bool = False,
     ) -> list[TrustEdge]:
         """Get all trust edges to a DID.
@@ -1001,7 +1001,7 @@ class TrustGraphStore:
         self,
         source_did: str,
         target_did: str,
-        domain: Optional[str] = None,
+        domain: str | None = None,
     ) -> bool:
         """Delete a trust edge.
 
@@ -1105,9 +1105,9 @@ class TrustGraphStore:
 
     def count_edges(
         self,
-        source_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        domain: Optional[str] = None,
+        source_did: str | None = None,
+        target_did: str | None = None,
+        domain: str | None = None,
     ) -> int:
         """Count trust edges with optional filters.
 
@@ -1885,11 +1885,11 @@ class FederationTrustEdge:
     confidentiality: float = 0.5
     judgment: float = 0.3  # Moderate default - federation's judgment about members
     inheritance_factor: float = 0.5  # How much members inherit (0.5 = 50%)
-    domain: Optional[str] = None
-    id: Optional[UUID] = None
+    domain: str | None = None
+    id: UUID | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""

@@ -15,22 +15,23 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .config import get_settings
 from .errors import (
-    missing_field_error,
-    invalid_json_error,
+    AUTH_SIGNATURE_FAILED,
     auth_error,
-    not_found_error,
     feature_not_enabled_error,
     internal_error,
-    AUTH_SIGNATURE_FAILED,
+    invalid_json_error,
+    missing_field_error,
+    not_found_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,13 +231,6 @@ def _build_did_document(settings: Any) -> dict[str, Any]:
     Returns:
         DID Document as dictionary
     """
-    from ..federation.identity import (
-        DIDDocument,
-        VerificationMethod,
-        ServiceEndpoint,
-        create_web_did,
-        create_did_document,
-    )
 
     # Determine the node's DID
     if settings.federation_node_did:
@@ -479,7 +473,7 @@ async def federation_protocol(request: Request) -> JSONResponse:
     Endpoint: POST /federation/protocol
     Requires: Valid DID signature (X-VFP-DID, X-VFP-Signature, X-VFP-Timestamp, X-VFP-Nonce headers)
     """
-    settings = get_settings()
+    get_settings()
 
     # Note: federation_enabled check is done by @require_did_signature
 
@@ -492,7 +486,7 @@ async def federation_protocol(request: Request) -> JSONResponse:
             return missing_field_error("message type")
 
         # Import protocol handler
-        from ..federation.protocol import parse_message, handle_message
+        from ..federation.protocol import handle_message, parse_message
 
         # Parse and handle the message
         message = parse_message(body)
@@ -506,7 +500,7 @@ async def federation_protocol(request: Request) -> JSONResponse:
 
     except json.JSONDecodeError:
         return invalid_json_error()
-    except Exception as e:
+    except Exception:
         logger.exception("Error handling federation protocol message")
         return internal_error("Internal server error")
 
@@ -580,7 +574,7 @@ async def federation_nodes_discover(request: Request) -> JSONResponse:
     Endpoint: POST /federation/nodes/discover
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json()
@@ -650,7 +644,7 @@ async def federation_trust_set(request: Request) -> JSONResponse:
     Endpoint: POST /federation/nodes/{node_id}/trust
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json()
@@ -717,7 +711,7 @@ async def federation_sync_trigger(request: Request) -> JSONResponse:
     Endpoint: POST /federation/sync
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json() if await request.body() else {}
@@ -751,7 +745,7 @@ async def federation_belief_share(request: Request) -> JSONResponse:
     Endpoint: POST /federation/beliefs/share
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json()
@@ -788,7 +782,7 @@ async def federation_belief_query(request: Request) -> JSONResponse:
     Endpoint: POST /federation/beliefs/query
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json()
@@ -824,7 +818,7 @@ async def federation_corroboration_check(request: Request) -> JSONResponse:
     Endpoint: POST /federation/beliefs/corroboration
     Requires: Valid DID signature
     """
-    settings = get_settings()
+    get_settings()
 
     try:
         body = await request.json()

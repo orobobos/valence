@@ -7,23 +7,28 @@ This module implements the consensus node selection mechanism per NODE-SELECTION
 - Slashing conditions for misbehavior
 """
 
-from .vrf import VRF, VRFProof, VRFOutput
+from .anti_gaming import (
+    AntiGamingEngine,
+    compute_diversity_score,
+    compute_tenure_penalty,
+    detect_collusion_patterns,
+)
 from .models import (
-    Validator,
-    ValidatorSet,
-    ValidatorTier,
-    ValidatorStatus,
-    StakeRegistration,
-    StakeStatus,
-    IdentityAttestation,
     AttestationType,
-    SlashingEvent,
-    SlashingOffense,
-    SlashingStatus,
-    EpochTransition,
     DiversityConstraints,
     ElevationProposal,
     ElevationVote,
+    EpochTransition,
+    IdentityAttestation,
+    SlashingEvent,
+    SlashingOffense,
+    SlashingStatus,
+    StakeRegistration,
+    StakeStatus,
+    Validator,
+    ValidatorSet,
+    ValidatorStatus,
+    ValidatorTier,
 )
 from .selection import (
     ValidatorSelector,
@@ -31,12 +36,7 @@ from .selection import (
     derive_epoch_seed,
     select_validators,
 )
-from .anti_gaming import (
-    AntiGamingEngine,
-    compute_tenure_penalty,
-    compute_diversity_score,
-    detect_collusion_patterns,
-)
+from .vrf import VRF, VRFOutput, VRFProof
 
 __all__ = [
     # VRF

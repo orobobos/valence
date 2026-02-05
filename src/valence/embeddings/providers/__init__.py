@@ -8,12 +8,22 @@ Configure via VALENCE_EMBEDDING_PROVIDER environment variable.
 """
 
 from .local import (
-    generate_embedding as local_generate_embedding,
-    generate_embeddings_batch as local_generate_embeddings_batch,
-    get_model as get_local_model,
-    reset_model as reset_local_model,
     EMBEDDING_DIMENSIONS as LOCAL_EMBEDDING_DIMENSIONS,
+)
+from .local import (
     MODEL_NAME as LOCAL_MODEL_NAME,
+)
+from .local import (
+    generate_embedding as local_generate_embedding,
+)
+from .local import (
+    generate_embeddings_batch as local_generate_embeddings_batch,
+)
+from .local import (
+    get_model as get_local_model,
+)
+from .local import (
+    reset_model as reset_local_model,
 )
 
 __all__ = [

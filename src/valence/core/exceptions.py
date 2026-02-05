@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-class ValenceException(Exception):
+class ValenceException(Exception):  # noqa: N818 - kept for backwards compatibility
     """Base exception for all Valence errors.
 
     All Valence-specific exceptions should inherit from this class.

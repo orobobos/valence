@@ -42,7 +42,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-
 # =============================================================================
 # Exceptions
 # =============================================================================
@@ -86,19 +85,19 @@ class PREInvalidCiphertextError(PREError):
 @dataclass
 class PREPublicKey:
     """A public key for proxy re-encryption.
-    
+
     Attributes:
         key_id: Identifier for the key (e.g., owner DID)
         key_bytes: The actual public key material
         created_at: When the key was generated
         metadata: Optional metadata (algorithm, params, etc.)
     """
-    
+
     key_id: bytes
     key_bytes: bytes
     created_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -107,9 +106,9 @@ class PREPublicKey:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PREPublicKey":
+    def from_dict(cls, data: dict[str, Any]) -> PREPublicKey:
         """Create from dictionary."""
         return cls(
             key_id=bytes.fromhex(data["key_id"]),
@@ -117,10 +116,10 @@ class PREPublicKey:
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
             metadata=data.get("metadata", {}),
         )
-    
+
     def __hash__(self) -> int:
         return hash((self.key_id, self.key_bytes))
-    
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PREPublicKey):
             return False
@@ -130,22 +129,22 @@ class PREPublicKey:
 @dataclass
 class PREPrivateKey:
     """A private key for proxy re-encryption.
-    
+
     Attributes:
         key_id: Identifier for the key (matches public key)
         key_bytes: The actual private key material (SENSITIVE!)
         created_at: When the key was generated
         metadata: Optional metadata
     """
-    
+
     key_id: bytes
     key_bytes: bytes
     created_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.
-        
+
         WARNING: This includes private key material. Handle with care.
         """
         return {
@@ -154,9 +153,9 @@ class PREPrivateKey:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PREPrivateKey":
+    def from_dict(cls, data: dict[str, Any]) -> PREPrivateKey:
         """Create from dictionary."""
         return cls(
             key_id=bytes.fromhex(data["key_id"]),
@@ -164,10 +163,10 @@ class PREPrivateKey:
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
             metadata=data.get("metadata", {}),
         )
-    
+
     def __hash__(self) -> int:
         return hash((self.key_id, self.key_bytes))
-    
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PREPrivateKey):
             return False
@@ -177,32 +176,32 @@ class PREPrivateKey:
 @dataclass
 class PREKeyPair:
     """A public/private key pair for proxy re-encryption.
-    
+
     Attributes:
         public_key: The public key
         private_key: The private key (SENSITIVE!)
     """
-    
+
     public_key: PREPublicKey
     private_key: PREPrivateKey
-    
+
     @property
     def key_id(self) -> bytes:
         """Get the key pair identifier."""
         return self.public_key.key_id
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.
-        
+
         WARNING: This includes private key material. Handle with care.
         """
         return {
             "public_key": self.public_key.to_dict(),
             "private_key": self.private_key.to_dict(),
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PREKeyPair":
+    def from_dict(cls, data: dict[str, Any]) -> PREKeyPair:
         """Create from dictionary."""
         return cls(
             public_key=PREPublicKey.from_dict(data["public_key"]),
@@ -213,11 +212,11 @@ class PREKeyPair:
 @dataclass
 class ReEncryptionKey:
     """A re-encryption key for transforming ciphertexts.
-    
+
     This key allows a proxy to transform ciphertext encrypted for the
     delegator into ciphertext decryptable by the delegatee, without
     the proxy being able to decrypt either.
-    
+
     Attributes:
         rekey_id: Unique identifier for this rekey
         delegator_id: Key ID of the original encryption key owner
@@ -227,7 +226,7 @@ class ReEncryptionKey:
         expires_at: Optional expiration time
         metadata: Optional metadata (conditions, policy, etc.)
     """
-    
+
     rekey_id: bytes
     delegator_id: bytes
     delegatee_id: bytes
@@ -235,14 +234,14 @@ class ReEncryptionKey:
     created_at: datetime = field(default_factory=datetime.now)
     expires_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-    
+
     @property
     def is_expired(self) -> bool:
         """Check if the rekey has expired."""
         if self.expires_at is None:
             return False
         return datetime.now() > self.expires_at
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -254,9 +253,9 @@ class ReEncryptionKey:
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ReEncryptionKey":
+    def from_dict(cls, data: dict[str, Any]) -> ReEncryptionKey:
         """Create from dictionary."""
         return cls(
             rekey_id=bytes.fromhex(data["rekey_id"]),
@@ -272,7 +271,7 @@ class ReEncryptionKey:
 @dataclass
 class PRECiphertext:
     """Ciphertext that can be re-encrypted.
-    
+
     Attributes:
         ciphertext_id: Unique identifier for this ciphertext
         encrypted_data: The encrypted payload
@@ -282,7 +281,7 @@ class PRECiphertext:
         created_at: When the ciphertext was created
         metadata: Optional metadata (algorithm params, etc.)
     """
-    
+
     ciphertext_id: bytes
     encrypted_data: bytes
     recipient_id: bytes
@@ -290,7 +289,7 @@ class PRECiphertext:
     original_recipient_id: bytes | None = None
     created_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -302,9 +301,9 @@ class PRECiphertext:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PRECiphertext":
+    def from_dict(cls, data: dict[str, Any]) -> PRECiphertext:
         """Create from dictionary."""
         return cls(
             ciphertext_id=bytes.fromhex(data["ciphertext_id"]),
@@ -324,12 +323,12 @@ class PRECiphertext:
 
 class PREBackend(ABC):
     """Abstract interface for Proxy Re-Encryption operations.
-    
+
     This defines the contract that any PRE implementation must fulfill.
     Implementations include:
     - MockPREBackend: For testing (simulated crypto)
     - Future: UmbralPREBackend (using nucypher/pyUmbral)
-    
+
     Security Model:
     - Delegator has keypair (pk_A, sk_A)
     - Delegatee has keypair (pk_B, sk_B)
@@ -338,19 +337,19 @@ class PREBackend(ABC):
     - Proxy CANNOT decrypt ciphertext_A or ciphertext_B
     - Only delegatee can decrypt ciphertext_B with sk_B
     """
-    
+
     @abstractmethod
     def generate_keypair(self, key_id: bytes) -> PREKeyPair:
         """Generate a new key pair for PRE.
-        
+
         Args:
             key_id: Identifier for the key pair (e.g., user DID)
-        
+
         Returns:
             New PREKeyPair
         """
         pass
-    
+
     @abstractmethod
     def generate_rekey(
         self,
@@ -360,25 +359,25 @@ class PREBackend(ABC):
         metadata: dict[str, Any] | None = None,
     ) -> ReEncryptionKey:
         """Generate a re-encryption key.
-        
+
         This creates a key that allows a proxy to transform ciphertext
         encrypted for the delegator into ciphertext decryptable by
         the delegatee.
-        
+
         Args:
             delegator_private_key: Private key of the delegating party
             delegatee_public_key: Public key of the receiving party
             expires_at: Optional expiration time for the rekey
             metadata: Optional metadata (policy conditions, etc.)
-        
+
         Returns:
             ReEncryptionKey for the proxy to use
-        
+
         Raises:
             PREKeyError: If key generation fails
         """
         pass
-    
+
     @abstractmethod
     def encrypt(
         self,
@@ -387,20 +386,20 @@ class PREBackend(ABC):
         metadata: dict[str, Any] | None = None,
     ) -> PRECiphertext:
         """Encrypt data for a recipient.
-        
+
         Args:
             plaintext: Data to encrypt
             recipient_public_key: Public key of the intended recipient
             metadata: Optional metadata
-        
+
         Returns:
             PRECiphertext that can be decrypted or re-encrypted
-        
+
         Raises:
             PREEncryptionError: If encryption fails
         """
         pass
-    
+
     @abstractmethod
     def decrypt(
         self,
@@ -408,20 +407,20 @@ class PREBackend(ABC):
         recipient_private_key: PREPrivateKey,
     ) -> bytes:
         """Decrypt ciphertext.
-        
+
         Args:
             ciphertext: The ciphertext to decrypt
             recipient_private_key: Private key of the recipient
-        
+
         Returns:
             Decrypted plaintext
-        
+
         Raises:
             PREDecryptionError: If decryption fails
             PREKeyError: If wrong key is used
         """
         pass
-    
+
     @abstractmethod
     def re_encrypt(
         self,
@@ -429,30 +428,30 @@ class PREBackend(ABC):
         rekey: ReEncryptionKey,
     ) -> PRECiphertext:
         """Re-encrypt ciphertext for a new recipient.
-        
+
         This transforms ciphertext encrypted for the delegator into
         ciphertext decryptable by the delegatee, without decrypting.
-        
+
         Args:
             ciphertext: Original ciphertext (encrypted for delegator)
             rekey: Re-encryption key (delegator -> delegatee)
-        
+
         Returns:
             New PRECiphertext (encrypted for delegatee)
-        
+
         Raises:
             PREReEncryptionError: If re-encryption fails
             PREInvalidCiphertextError: If ciphertext is invalid
         """
         pass
-    
+
     @abstractmethod
     def verify_ciphertext(self, ciphertext: PRECiphertext) -> bool:
         """Verify ciphertext integrity.
-        
+
         Args:
             ciphertext: The ciphertext to verify
-        
+
         Returns:
             True if ciphertext is valid, False otherwise
         """
@@ -466,22 +465,22 @@ class PREBackend(ABC):
 
 class MockPREBackend(PREBackend):
     """Mock PRE implementation for testing.
-    
+
     This provides a functional but NOT cryptographically secure implementation.
     It simulates PRE behavior for testing federation flows without requiring
     actual cryptographic libraries.
-    
+
     SECURITY WARNING:
     This implementation uses XOR and hashing to simulate encryption.
     It is NOT secure and should NEVER be used in production.
     Use UmbralPREBackend (when implemented) for real cryptographic security.
-    
+
     The mock maintains internal state to enable realistic testing:
     - Tracks which keys exist
     - Validates key relationships in re-encryption
     - Simulates failure modes
     """
-    
+
     def __init__(self) -> None:
         """Initialize the mock backend."""
         # Track keypairs by key_id for validation
@@ -490,34 +489,34 @@ class MockPREBackend(PREBackend):
         self._rekeys: dict[bytes, ReEncryptionKey] = {}
         # Track ciphertexts for validation
         self._ciphertexts: dict[bytes, tuple[bytes, bytes]] = {}  # id -> (plaintext, recipient_id)
-    
+
     def generate_keypair(self, key_id: bytes) -> PREKeyPair:
         """Generate a mock key pair."""
         # Generate random key material
         public_bytes = crypto_secrets.token_bytes(32)
         private_bytes = crypto_secrets.token_bytes(32)
-        
+
         now = datetime.now()
-        
+
         public_key = PREPublicKey(
             key_id=key_id,
             key_bytes=public_bytes,
             created_at=now,
             metadata={"algorithm": "mock-pre", "version": "1.0"},
         )
-        
+
         private_key = PREPrivateKey(
             key_id=key_id,
             key_bytes=private_bytes,
             created_at=now,
             metadata={"algorithm": "mock-pre", "version": "1.0"},
         )
-        
+
         keypair = PREKeyPair(public_key=public_key, private_key=private_key)
         self._keypairs[key_id] = keypair
-        
+
         return keypair
-    
+
     def generate_rekey(
         self,
         delegator_private_key: PREPrivateKey,
@@ -530,7 +529,7 @@ class MockPREBackend(PREBackend):
         # For mock, we just generate random bytes but track the relationship
         rekey_bytes = crypto_secrets.token_bytes(32)
         rekey_id = crypto_secrets.token_bytes(16)
-        
+
         rekey = ReEncryptionKey(
             rekey_id=rekey_id,
             delegator_id=delegator_private_key.key_id,
@@ -540,11 +539,11 @@ class MockPREBackend(PREBackend):
             expires_at=expires_at,
             metadata=metadata or {},
         )
-        
+
         self._rekeys[rekey_id] = rekey
-        
+
         return rekey
-    
+
     def encrypt(
         self,
         plaintext: bytes,
@@ -552,17 +551,17 @@ class MockPREBackend(PREBackend):
         metadata: dict[str, Any] | None = None,
     ) -> PRECiphertext:
         """Mock encrypt data.
-        
+
         Uses XOR with a derived key (NOT SECURE - for testing only).
         """
         ciphertext_id = crypto_secrets.token_bytes(16)
-        
+
         # Derive a "key" from the public key (NOT SECURE)
         derived_key = hashlib.sha256(recipient_public_key.key_bytes).digest()
-        
+
         # XOR encrypt (NOT SECURE - for testing only)
         encrypted = self._xor_bytes(plaintext, derived_key)
-        
+
         ciphertext = PRECiphertext(
             ciphertext_id=ciphertext_id,
             encrypted_data=encrypted,
@@ -572,12 +571,12 @@ class MockPREBackend(PREBackend):
             created_at=datetime.now(),
             metadata=metadata or {},
         )
-        
+
         # Track for validation
         self._ciphertexts[ciphertext_id] = (plaintext, recipient_public_key.key_id)
-        
+
         return ciphertext
-    
+
     def decrypt(
         self,
         ciphertext: PRECiphertext,
@@ -590,24 +589,24 @@ class MockPREBackend(PREBackend):
                 f"Key mismatch: ciphertext for {ciphertext.recipient_id.hex()}, "
                 f"but got key {recipient_private_key.key_id.hex()}"
             )
-        
+
         # Look up original plaintext (mock shortcut)
         if ciphertext.ciphertext_id in self._ciphertexts:
             plaintext, _ = self._ciphertexts[ciphertext.ciphertext_id]
             return plaintext
-        
+
         # Fallback: try to decrypt with XOR
         if recipient_private_key.key_id not in self._keypairs:
             raise PREDecryptionError("Unknown private key")
-        
+
         keypair = self._keypairs[recipient_private_key.key_id]
         derived_key = hashlib.sha256(keypair.public_key.key_bytes).digest()
-        
+
         try:
             return self._xor_bytes(ciphertext.encrypted_data, derived_key)
         except Exception as e:
             raise PREDecryptionError(f"Decryption failed: {e}") from e
-    
+
     def re_encrypt(
         self,
         ciphertext: PRECiphertext,
@@ -620,16 +619,16 @@ class MockPREBackend(PREBackend):
                 f"Rekey delegator {rekey.delegator_id.hex()} doesn't match "
                 f"ciphertext recipient {ciphertext.recipient_id.hex()}"
             )
-        
+
         # Check expiration
         if rekey.is_expired:
             raise PREReEncryptionError("Re-encryption key has expired")
-        
+
         # In real PRE, this would transform the ciphertext cryptographically
         # For mock, we create a new ciphertext pointing to same plaintext
-        
+
         new_ciphertext_id = crypto_secrets.token_bytes(16)
-        
+
         # Get delegatee public key for "encryption"
         if rekey.delegatee_id in self._keypairs:
             delegatee_keypair = self._keypairs[rekey.delegatee_id]
@@ -637,7 +636,7 @@ class MockPREBackend(PREBackend):
         else:
             # Use rekey bytes as fallback
             derived_key = hashlib.sha256(rekey.key_bytes).digest()
-        
+
         # Get original plaintext and re-encrypt
         if ciphertext.ciphertext_id in self._ciphertexts:
             plaintext, _ = self._ciphertexts[ciphertext.ciphertext_id]
@@ -645,7 +644,7 @@ class MockPREBackend(PREBackend):
         else:
             # Just transform the bytes (won't decrypt correctly, but simulates)
             encrypted = self._xor_bytes(ciphertext.encrypted_data, rekey.key_bytes)
-        
+
         new_ciphertext = PRECiphertext(
             ciphertext_id=new_ciphertext_id,
             encrypted_data=encrypted,
@@ -659,22 +658,22 @@ class MockPREBackend(PREBackend):
                 "rekey_id": rekey.rekey_id.hex(),
             },
         )
-        
+
         # Track the new ciphertext with same plaintext
         if ciphertext.ciphertext_id in self._ciphertexts:
             plaintext, _ = self._ciphertexts[ciphertext.ciphertext_id]
             self._ciphertexts[new_ciphertext_id] = (plaintext, rekey.delegatee_id)
-        
+
         return new_ciphertext
-    
+
     def verify_ciphertext(self, ciphertext: PRECiphertext) -> bool:
         """Verify ciphertext is tracked (mock validation)."""
         return ciphertext.ciphertext_id in self._ciphertexts
-    
+
     @staticmethod
     def _xor_bytes(data: bytes, key: bytes) -> bytes:
         """XOR data with key (repeated if necessary).
-        
+
         NOT SECURE - for testing only.
         """
         result = bytearray(len(data))

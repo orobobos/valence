@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-from .db import get_connection_params, table_exists, DatabaseStats
+from .db import DatabaseStats, get_connection_params, table_exists
 from .exceptions import ConfigException, DatabaseException
 
 logger = logging.getLogger(__name__)
@@ -301,7 +301,7 @@ def startup_checks(fail_fast: bool = True) -> HealthStatus:
 
     if status.healthy:
         logger.info("All startup checks passed")
-        logger.info(f"  Database: connected")
+        logger.info("  Database: connected")
         logger.info(f"  Schema: valid ({len(REQUIRED_TABLES)} tables)")
         logger.info(f"  pgvector: {'available' if status.pgvector_available else 'not available'}")
 

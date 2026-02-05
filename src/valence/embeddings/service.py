@@ -14,18 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import struct
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from typing import Any
 
-import numpy as np
 from openai import OpenAI
 
 from ..core.config import get_config
 from ..core.db import get_cursor
-from ..core.exceptions import EmbeddingException, DatabaseException
-from .registry import get_embedding_type, ensure_default_type
+from ..core.exceptions import DatabaseException, EmbeddingException
+from .registry import ensure_default_type, get_embedding_type
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +37,7 @@ class EmbeddingProvider(StrEnum):
 
 def get_embedding_provider() -> EmbeddingProvider:
     """Get configured embedding provider from config.
-    
+
     Defaults to 'local' for privacy and to avoid API costs.
     Set VALENCE_EMBEDDING_PROVIDER=openai to use OpenAI embeddings.
     """
@@ -73,17 +71,17 @@ def get_openai_client() -> OpenAI:
 
 def generate_local_embedding(text: str) -> list[float]:
     """Generate embedding using local sentence-transformers model.
-    
+
     Uses BAAI/bge-small-en-v1.5 by default, which produces 384-dimensional
     L2-normalized embeddings with excellent semantic similarity.
-    
+
     Configure via environment variables:
     - VALENCE_EMBEDDING_MODEL_PATH: Model name or local path
     - VALENCE_EMBEDDING_DEVICE: Device to use (cpu|cuda)
-    
+
     Args:
         text: Text to embed
-        
+
     Returns:
         384-dimensional embedding vector (L2 normalized)
     """
@@ -92,37 +90,37 @@ def generate_local_embedding(text: str) -> list[float]:
 
 
 def generate_embedding(
-    text: str, 
+    text: str,
     model: str = "text-embedding-3-small",
     provider: EmbeddingProvider | None = None,
 ) -> list[float]:
     """Generate embedding for text.
-    
+
     Args:
         text: Text to embed
         model: Model name (for OpenAI provider)
         provider: Embedding provider (defaults to env config)
-        
+
     Returns:
         Embedding vector
-        
+
     Raises:
         ValueError: If provider not configured correctly
         NotImplementedError: If local provider requested but not implemented
     """
     if provider is None:
         provider = get_embedding_provider()
-    
+
     # Truncate very long text
     if len(text) > 8000:
         text = text[:8000]
-    
+
     if provider == EmbeddingProvider.LOCAL:
         return generate_local_embedding(text)
-    
+
     # Default: OpenAI
     client = get_openai_client()
-    
+
     response = client.embeddings.create(
         model=model,
         input=text,

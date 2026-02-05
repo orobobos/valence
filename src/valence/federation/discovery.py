@@ -11,28 +11,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import aiohttp
 
 from ..core.db import get_cursor
 from .identity import (
-    DID,
-    DIDDocument,
-    parse_did,
-    resolve_did,
     WELL_KNOWN_NODE_METADATA,
+    DIDDocument,
+    resolve_did,
 )
 from .models import (
     FederationNode,
-    NodeTrust,
     NodeStatus,
+    NodeTrust,
     TrustPhase,
-    SyncState,
-    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -222,7 +217,7 @@ def register_node(did_document: DIDDocument) -> FederationNode | None:
 
             return FederationNode.from_row(row)
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error registering node {did}")
         return None
 
@@ -455,7 +450,7 @@ async def check_all_nodes_health() -> dict[str, bool]:
             else:
                 results[node.did] = health
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error checking node health")
 
     return results

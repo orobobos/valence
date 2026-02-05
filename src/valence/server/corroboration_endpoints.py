@@ -13,11 +13,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .errors import (
-    missing_field_error,
-    invalid_format_error,
-    not_found_error,
-    internal_error,
     NOT_FOUND_BELIEF,
+    internal_error,
+    invalid_format_error,
+    missing_field_error,
+    not_found_error,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,23 +48,23 @@ async def belief_corroboration_endpoint(request: Request) -> JSONResponse:
     }
     """
     belief_id_str = request.path_params.get("belief_id")
-    
+
     if not belief_id_str:
         return missing_field_error("belief_id")
-    
+
     try:
         belief_id = UUID(belief_id_str)
     except ValueError:
         return invalid_format_error("belief_id", "must be valid UUID")
-    
+
     try:
         from ..core.corroboration import get_corroboration
-        
+
         corroboration = get_corroboration(belief_id)
-        
+
         if not corroboration:
             return not_found_error("Belief", code=NOT_FOUND_BELIEF)
-        
+
         # Generate confidence label
         count = corroboration.corroboration_count
         if count == 0:
@@ -77,7 +77,7 @@ async def belief_corroboration_endpoint(request: Request) -> JSONResponse:
             label = "well corroborated"
         else:
             label = "highly corroborated"
-        
+
         return JSONResponse({
             "success": True,
             "belief_id": str(corroboration.belief_id),
@@ -86,8 +86,8 @@ async def belief_corroboration_endpoint(request: Request) -> JSONResponse:
             "corroborating_sources": corroboration.sources,
             "confidence_label": label,
         })
-    
-    except Exception as e:
+
+    except Exception:
         logger.exception(f"Error getting corroboration for {belief_id_str}")
         return internal_error("Internal server error")
 
@@ -121,23 +121,23 @@ async def most_corroborated_beliefs_endpoint(request: Request) -> JSONResponse:
         limit = int(request.query_params.get("limit", 10))
         min_count = int(request.query_params.get("min_count", 1))
         domain = request.query_params.get("domain")
-        
+
         domain_filter = [domain] if domain else None
-        
+
         from ..core.corroboration import get_most_corroborated_beliefs
-        
+
         beliefs = get_most_corroborated_beliefs(
             limit=limit,
             min_count=min_count,
             domain_filter=domain_filter,
         )
-        
+
         return JSONResponse({
             "success": True,
             "beliefs": beliefs,
             "total_count": len(beliefs),
         })
-    
-    except Exception as e:
+
+    except Exception:
         logger.exception("Error getting most corroborated beliefs")
         return internal_error("Internal server error")

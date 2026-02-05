@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class DeletionReason(StrEnum):
     """Legal basis for deletion request."""
-    
+
     USER_REQUEST = "user_request"           # GDPR Article 17
     CONSENT_WITHDRAWAL = "consent_withdrawal"
     LEGAL_ORDER = "legal_order"             # Court order, subpoena
@@ -39,35 +39,35 @@ class DeletionReason(StrEnum):
 @dataclass
 class Tombstone:
     """Record marking deleted content for federation propagation.
-    
+
     Tombstones are:
     - Propagated to all federation members
     - Retained for audit compliance (7 years per COMPLIANCE.md)
     - Used to track deletion verification
     """
-    
+
     id: UUID
     target_type: str  # 'belief', 'aggregate', 'membership', 'user'
     target_id: UUID
-    
+
     created_at: datetime
     created_by: str  # DID or user identifier (hashed)
     reason: DeletionReason
-    
+
     # Legal basis for GDPR compliance
     legal_basis: str | None = None
-    
+
     # Cryptographic erasure tracking
     encryption_key_revoked: bool = False
     key_revocation_timestamp: datetime | None = None
-    
+
     # Propagation tracking
     propagation_started: datetime | None = None
     acknowledged_by: dict[str, datetime] = field(default_factory=dict)
-    
+
     # Verification
     signature: bytes | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON storage."""
         return {
@@ -80,11 +80,11 @@ class Tombstone:
             "legal_basis": self.legal_basis,
             "encryption_key_revoked": self.encryption_key_revoked,
             "key_revocation_timestamp": (
-                self.key_revocation_timestamp.isoformat() 
+                self.key_revocation_timestamp.isoformat()
                 if self.key_revocation_timestamp else None
             ),
             "propagation_started": (
-                self.propagation_started.isoformat() 
+                self.propagation_started.isoformat()
                 if self.propagation_started else None
             ),
             "acknowledged_by": {
@@ -92,14 +92,14 @@ class Tombstone:
             },
             "signature": self.signature.hex() if self.signature else None,
         }
-    
+
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> Tombstone:
         """Create from database row."""
         acknowledged = row.get("acknowledged_by", {})
         if isinstance(acknowledged, str):
             acknowledged = json.loads(acknowledged)
-        
+
         # Parse acknowledged timestamps
         parsed_ack = {}
         for k, v in acknowledged.items():
@@ -107,13 +107,13 @@ class Tombstone:
                 parsed_ack[k] = datetime.fromisoformat(v)
             else:
                 parsed_ack[k] = v
-        
+
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
             target_type=row["target_type"],
             target_id=(
-                row["target_id"] 
-                if isinstance(row["target_id"], UUID) 
+                row["target_id"]
+                if isinstance(row["target_id"], UUID)
                 else UUID(row["target_id"])
             ),
             created_at=row["created_at"],
@@ -131,7 +131,7 @@ class Tombstone:
 @dataclass
 class DeletionResult:
     """Result of a deletion operation."""
-    
+
     success: bool
     tombstone_id: UUID | None = None
     beliefs_deleted: int = 0
@@ -140,7 +140,7 @@ class DeletionResult:
     exchanges_deleted: int = 0
     patterns_deleted: int = 0
     error: str | None = None
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for API response."""
         return {
@@ -175,14 +175,14 @@ def create_tombstone(
     legal_basis: str | None = None,
 ) -> Tombstone:
     """Create and persist a tombstone record.
-    
+
     Args:
         target_type: Type of content being deleted
         target_id: UUID of the deleted content
         created_by: Identifier of who requested deletion (will be hashed)
         reason: Legal basis for deletion
         legal_basis: Additional legal basis description
-        
+
     Returns:
         Created Tombstone record
     """
@@ -195,7 +195,7 @@ def create_tombstone(
         reason=reason,
         legal_basis=legal_basis,
     )
-    
+
     with get_cursor() as cur:
         cur.execute(
             """
@@ -215,29 +215,29 @@ def create_tombstone(
                 False,
             )
         )
-    
+
     logger.info(
         f"Created tombstone {tombstone.id} for {target_type}:{target_id} "
         f"reason={reason.value}"
     )
-    
+
     return tombstone
 
 
 def perform_cryptographic_erasure(tombstone_id: UUID) -> bool:
     """Perform cryptographic erasure by revoking encryption keys.
-    
+
     In a full implementation, this would:
     1. Revoke the encryption key from key servers
     2. Trigger key rotation for affected federations
     3. Mark content as cryptographically erased
-    
+
     For MVP, we mark the tombstone as key-revoked and overwrite
     sensitive content fields with random data.
-    
+
     Args:
         tombstone_id: ID of the tombstone to process
-        
+
     Returns:
         True if erasure succeeded
     """
@@ -253,15 +253,15 @@ def perform_cryptographic_erasure(tombstone_id: UUID) -> bool:
             """,
             (str(tombstone_id),)
         )
-        
+
         row = cur.fetchone()
         if not row:
             logger.error(f"Tombstone not found: {tombstone_id}")
             return False
-        
+
         target_type = row["target_type"]
         target_id = row["target_id"]
-        
+
         # Overwrite sensitive content with random data (cryptographic erasure simulation)
         if target_type == "belief":
             cur.execute(
@@ -275,7 +275,7 @@ def perform_cryptographic_erasure(tombstone_id: UUID) -> bool:
                 """,
                 (str(target_id),)
             )
-        
+
         logger.info(f"Cryptographic erasure complete for tombstone {tombstone_id}")
         return True
 
@@ -286,25 +286,25 @@ def delete_user_data(
     legal_basis: str | None = None,
 ) -> DeletionResult:
     """Delete all data associated with a user (GDPR Article 17).
-    
+
     This implements the full deletion protocol from COMPLIANCE.md §3:
     1. Validate requester has deletion rights
     2. Create tombstone records for each deleted item
     3. Perform cryptographic erasure (key revocation)
     4. Propagate tombstones for federation sync
     5. Log to audit trail
-    
+
     Args:
         user_id: Identifier of the user requesting deletion
         reason: Legal basis for the deletion
         legal_basis: Additional description of legal basis
-        
+
     Returns:
         DeletionResult with counts and tombstone ID
     """
     result = DeletionResult(success=False)
     user_hash = _hash_user_id(user_id)
-    
+
     try:
         # Create master tombstone for this deletion operation
         master_tombstone = create_tombstone(
@@ -315,7 +315,7 @@ def delete_user_data(
             legal_basis=legal_basis or f"GDPR Article 17 - {reason.value}",
         )
         result.tombstone_id = master_tombstone.id
-        
+
         with get_cursor() as cur:
             # Delete beliefs created by this user
             # In a real system, we'd track user_id on beliefs
@@ -331,7 +331,7 @@ def delete_user_data(
                 (user_id, user_hash)
             )
             belief_ids = [row["id"] for row in cur.fetchall()]
-            
+
             # Create tombstones and delete each belief
             for belief_id in belief_ids:
                 create_tombstone(
@@ -340,7 +340,7 @@ def delete_user_data(
                     created_by=user_id,
                     reason=reason,
                 )
-                
+
                 # Archive the belief (cryptographic erasure)
                 cur.execute(
                     """
@@ -354,7 +354,7 @@ def delete_user_data(
                     (str(belief_id),)
                 )
                 result.beliefs_deleted += 1
-            
+
             # Delete sessions
             cur.execute(
                 """
@@ -365,7 +365,7 @@ def delete_user_data(
                 (user_id, user_hash)
             )
             session_ids = [row["id"] for row in cur.fetchall()]
-            
+
             for session_id in session_ids:
                 # Delete exchanges in session
                 cur.execute(
@@ -376,14 +376,14 @@ def delete_user_data(
                     (str(session_id),)
                 )
                 result.exchanges_deleted += cur.rowcount
-                
+
                 # Delete session
                 cur.execute(
                     "DELETE FROM sessions WHERE id = %s",
                     (str(session_id),)
                 )
                 result.sessions_deleted += 1
-            
+
             # Anonymize entity references (don't delete - others may reference)
             cur.execute(
                 """
@@ -398,7 +398,7 @@ def delete_user_data(
                 (user_id, user_id)
             )
             result.entities_anonymized = cur.rowcount
-            
+
             # Delete patterns associated with user's sessions
             cur.execute(
                 """
@@ -409,36 +409,36 @@ def delete_user_data(
                 ([str(s) for s in session_ids],)
             )
             result.patterns_deleted = cur.rowcount
-        
+
         # Perform cryptographic erasure
         perform_cryptographic_erasure(master_tombstone.id)
-        
+
         # Start federation propagation
         _start_tombstone_propagation(master_tombstone.id)
-        
+
         result.success = True
-        
+
         logger.info(
             f"User data deletion complete: user_hash={user_hash} "
             f"beliefs={result.beliefs_deleted} sessions={result.sessions_deleted} "
             f"tombstone={result.tombstone_id}"
         )
-        
+
     except Exception as e:
         logger.exception(f"User data deletion failed: {e}")
         result.error = str(e)
-    
+
     return result
 
 
 def _start_tombstone_propagation(tombstone_id: UUID) -> None:
     """Start propagating tombstone to federation peers.
-    
+
     In a full implementation, this would:
     1. Query active federation peers
     2. Send tombstone via VFP protocol
     3. Track acknowledgments
-    
+
     For MVP, we just mark propagation as started.
     """
     with get_cursor() as cur:
@@ -450,16 +450,16 @@ def _start_tombstone_propagation(tombstone_id: UUID) -> None:
             """,
             (str(tombstone_id),)
         )
-    
+
     logger.info(f"Tombstone propagation started: {tombstone_id}")
 
 
 def get_deletion_verification(tombstone_id: UUID) -> dict[str, Any] | None:
     """Get deletion verification report for compliance.
-    
+
     Args:
         tombstone_id: ID of the tombstone to verify
-        
+
     Returns:
         Verification report or None if not found
     """
@@ -469,16 +469,16 @@ def get_deletion_verification(tombstone_id: UUID) -> dict[str, Any] | None:
             (str(tombstone_id),)
         )
         row = cur.fetchone()
-        
+
         if not row:
             return None
-        
+
         tombstone = Tombstone.from_row(dict(row))
-        
+
         return {
             "tombstone_id": str(tombstone.id),
             "status": (
-                "complete" if tombstone.encryption_key_revoked 
+                "complete" if tombstone.encryption_key_revoked
                 else "processing"
             ),
             "tombstone_created": tombstone.created_at.isoformat(),

@@ -19,23 +19,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Peer:
     """A federation peer node."""
-    
+
     did: str
     endpoint: str
     public_key_multibase: str
     name: str | None = None
-    
+
     # Trust tracking
     trust_score: float = 0.5  # Start neutral
     beliefs_received: int = 0
     beliefs_sent: int = 0
     queries_received: int = 0
     queries_sent: int = 0
-    
+
     # Timestamps
     first_seen: datetime = field(default_factory=datetime.now)
     last_seen: datetime = field(default_factory=datetime.now)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -51,7 +51,7 @@ class Peer:
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Peer:
         """Create from dictionary."""
@@ -72,27 +72,27 @@ class Peer:
 
 class PeerStore:
     """In-memory storage for federation peers.
-    
+
     Optionally persists to a JSON file.
     """
-    
+
     def __init__(self, persist_path: str | Path | None = None):
         """Initialize peer store.
-        
+
         Args:
             persist_path: Optional path to persist peers to disk
         """
         self._peers: dict[str, Peer] = {}  # DID -> Peer
         self._persist_path = Path(persist_path) if persist_path else None
-        
+
         if self._persist_path and self._persist_path.exists():
             self._load()
-    
+
     def _load(self) -> None:
         """Load peers from disk."""
         if not self._persist_path:
             return
-            
+
         try:
             with open(self._persist_path) as f:
                 data = json.load(f)
@@ -102,12 +102,12 @@ class PeerStore:
             logger.info(f"Loaded {len(self._peers)} peers from {self._persist_path}")
         except Exception as e:
             logger.warning(f"Failed to load peers: {e}")
-    
+
     def _save(self) -> None:
         """Save peers to disk."""
         if not self._persist_path:
             return
-            
+
         try:
             self._persist_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._persist_path, "w") as f:
@@ -116,7 +116,7 @@ class PeerStore:
                 }, f, indent=2)
         except Exception as e:
             logger.warning(f"Failed to save peers: {e}")
-    
+
     def add_peer(
         self,
         did: str,
@@ -125,13 +125,13 @@ class PeerStore:
         name: str | None = None,
     ) -> Peer:
         """Add or update a peer.
-        
+
         Args:
             did: Peer's DID
             endpoint: Peer's federation endpoint URL
             public_key_multibase: Peer's public key
             name: Optional human-readable name
-            
+
         Returns:
             The Peer object
         """
@@ -153,21 +153,21 @@ class PeerStore:
             )
             self._peers[did] = peer
             logger.info(f"Added new peer: {did}")
-        
+
         self._save()
         return peer
-    
+
     def get_peer(self, did: str) -> Peer | None:
         """Get a peer by DID."""
         return self._peers.get(did)
-    
+
     def list_peers(self) -> list[Peer]:
         """List all peers."""
         return list(self._peers.values())
-    
+
     def remove_peer(self, did: str) -> bool:
         """Remove a peer.
-        
+
         Returns:
             True if peer was removed, False if not found
         """
@@ -176,27 +176,27 @@ class PeerStore:
             self._save()
             return True
         return False
-    
+
     def update_trust(self, did: str, delta: float) -> float | None:
         """Update a peer's trust score.
-        
+
         Args:
             did: Peer's DID
             delta: Amount to change trust by (-1.0 to 1.0)
-            
+
         Returns:
             New trust score, or None if peer not found
         """
         peer = self._peers.get(did)
         if not peer:
             return None
-        
+
         # Clamp to 0.0-1.0
         peer.trust_score = max(0.0, min(1.0, peer.trust_score + delta))
         peer.last_seen = datetime.now()
         self._save()
         return peer.trust_score
-    
+
     def record_belief_sent(self, did: str) -> None:
         """Record that we sent a belief to a peer."""
         peer = self._peers.get(did)
@@ -204,7 +204,7 @@ class PeerStore:
             peer.beliefs_sent += 1
             peer.last_seen = datetime.now()
             self._save()
-    
+
     def record_belief_received(self, did: str) -> None:
         """Record that we received a belief from a peer."""
         peer = self._peers.get(did)
@@ -213,10 +213,10 @@ class PeerStore:
             peer.last_seen = datetime.now()
             # Small trust increase for sharing beliefs
             self.update_trust(did, 0.01)
-    
+
     def record_query(self, did: str, direction: str = "received") -> None:
         """Record a query.
-        
+
         Args:
             did: Peer's DID
             direction: "sent" or "received"
@@ -237,16 +237,16 @@ _global_peer_store: PeerStore | None = None
 
 def get_peer_store(persist_path: str | Path | None = None) -> PeerStore:
     """Get or create the global peer store.
-    
+
     Args:
         persist_path: Optional path for persistence (only used on first call)
-        
+
     Returns:
         The global PeerStore instance
     """
     global _global_peer_store
-    
+
     if _global_peer_store is None:
         _global_peer_store = PeerStore(persist_path)
-    
+
     return _global_peer_store

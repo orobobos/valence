@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from starlette.responses import JSONResponse
 
-
 # =============================================================================
 # STANDARD ERROR CODES
 # =============================================================================
@@ -72,12 +71,12 @@ def error_response(
     status_code: int = 400,
 ) -> JSONResponse:
     """Create a standardized error response.
-    
+
     Args:
         code: Error code (e.g., VALIDATION_MISSING_FIELD)
         message: Human-readable error message
         status_code: HTTP status code (default 400)
-    
+
     Returns:
         JSONResponse with standardized error format
     """

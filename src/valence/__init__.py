@@ -11,19 +11,26 @@ Valence provides:
 __version__ = "1.0.0"
 
 # Core library
-from . import core
-
 # Knowledge substrate (EKB)
-from . import substrate
-
 # Conversation tracking (VKB)
-from . import vkb
-
 # Embedding infrastructure
-from . import embeddings
-
 # Agent implementations
-from . import agents
-
 # Consensus mechanism
-from . import consensus
+from . import (
+    agents as agents,
+)
+from . import (
+    consensus as consensus,
+)
+from . import (
+    core as core,
+)
+from . import (
+    embeddings as embeddings,
+)
+from . import (
+    substrate as substrate,
+)
+from . import (
+    vkb as vkb,
+)

@@ -240,7 +240,7 @@ async def mcp_endpoint(request: Request) -> Response:
             },
             status_code=400,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error handling MCP request")
         return JSONResponse(
             {
@@ -310,7 +310,7 @@ async def _handle_rpc_request(request: dict[str, Any]) -> dict[str, Any] | None:
             "error": {"code": -32602, "message": str(e)},
             "id": request_id,
         }
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error in method {method}")
         if is_notification:
             return None
@@ -833,7 +833,7 @@ def create_app() -> Starlette:
     settings = get_settings()
 
     # API version prefix for all REST endpoints
-    API_V1 = "/api/v1"
+    API_V1 = "/api/v1"  # noqa: N806 - intentionally constant-style naming
 
     # Define routes
     routes = [

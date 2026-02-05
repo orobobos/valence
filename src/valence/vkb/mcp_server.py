@@ -19,13 +19,13 @@ from uuid import UUID
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
-from ..core.db import get_cursor, init_schema
-from ..core.models import Session, Exchange, Pattern
 from ..core.confidence import DimensionalConfidence
-from ..core.health import startup_checks, cli_health_check
+from ..core.db import get_cursor, init_schema
 from ..core.exceptions import DatabaseException, ValidationException
+from ..core.health import cli_health_check, startup_checks
+from ..core.models import Exchange, Pattern, Session
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

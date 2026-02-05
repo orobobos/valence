@@ -13,21 +13,20 @@ PII sanitization (Issue #177): MetadataSanitizer provides automatic
 scrubbing of sensitive data from audit event metadata before logging.
 """
 
-from enum import Enum
-from typing import Optional, Dict, Any, List, Protocol, Tuple, runtime_checkable, Callable, cast
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from abc import ABC, abstractmethod
-import uuid
-import json
-import hashlib
-from pathlib import Path
-import threading
-import os
 import base64
-import secrets
+import hashlib
+import json
 import re
-
+import secrets
+import threading
+import uuid
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Protocol, cast
 
 # =============================================================================
 # PII SANITIZATION (Issue #177)
@@ -35,7 +34,7 @@ import re
 
 
 # Default patterns for PII detection (can be extended via MetadataSanitizer)
-DEFAULT_PII_PATTERNS: Dict[str, re.Pattern] = {
+DEFAULT_PII_PATTERNS: dict[str, re.Pattern] = {
     "email": re.compile(r'\b[\w.-]+@[\w.-]+\.\w+\b'),
     "phone_us": re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'),
     "phone_intl": re.compile(r'\+\d{1,3}[-.\s]?\d{1,14}\b'),
@@ -62,12 +61,12 @@ REDACTED_PII_PLACEHOLDER = "[PII_REDACTED]"
 @dataclass
 class SanitizationResult:
     """Result of metadata sanitization with audit trail."""
-    
-    sanitized_metadata: Dict[str, Any]
-    fields_redacted: List[str]  # Keys that were fully redacted
-    pii_scrubbed: List[str]  # Keys where PII patterns were replaced
+
+    sanitized_metadata: dict[str, Any]
+    fields_redacted: list[str]  # Keys that were fully redacted
+    pii_scrubbed: list[str]  # Keys where PII patterns were replaced
     original_hash: str  # SHA-256 of original for forensic correlation
-    
+
     @property
     def was_modified(self) -> bool:
         """Check if any sanitization occurred."""
@@ -76,31 +75,31 @@ class SanitizationResult:
 
 class MetadataSanitizer:
     """Sanitizes potentially sensitive data from audit event metadata.
-    
+
     Provides multiple sanitization strategies:
     - Key-based blocking: Redact entire values for sensitive key names
     - Pattern-based scrubbing: Replace PII patterns within values
     - Custom rules: User-defined sanitization functions
-    
+
     Usage:
         sanitizer = MetadataSanitizer()
         result = sanitizer.sanitize({"email": "user@example.com", "action": "login"})
         # result.sanitized_metadata = {"email": "[PII_REDACTED]", "action": "login"}
-    
+
     Warning: Sanitization is best-effort. For maximum security, avoid logging
     PII in metadata in the first place. This layer provides defense-in-depth.
     """
-    
+
     def __init__(
         self,
-        sensitive_keys: Optional[frozenset[str]] = None,
-        pii_patterns: Optional[Dict[str, re.Pattern]] = None,
-        preserve_keys: Optional[frozenset[str]] = None,
-        custom_sanitizers: Optional[Dict[str, Callable[[Any], Any]]] = None,
+        sensitive_keys: frozenset[str] | None = None,
+        pii_patterns: dict[str, re.Pattern] | None = None,
+        preserve_keys: frozenset[str] | None = None,
+        custom_sanitizers: dict[str, Callable[[Any], Any]] | None = None,
         enabled: bool = True,
     ):
         """Initialize the sanitizer.
-        
+
         Args:
             sensitive_keys: Keys whose values should be fully redacted
             pii_patterns: Regex patterns for PII detection
@@ -113,18 +112,18 @@ class MetadataSanitizer:
         self.preserve_keys = preserve_keys or frozenset()
         self.custom_sanitizers = custom_sanitizers or {}
         self.enabled = enabled
-    
+
     def sanitize(
         self,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         preserve_original_hash: bool = True,
     ) -> SanitizationResult:
         """Sanitize metadata dictionary.
-        
+
         Args:
             metadata: Original metadata to sanitize
             preserve_original_hash: Include hash of original for forensic use
-            
+
         Returns:
             SanitizationResult with sanitized data and audit info
         """
@@ -135,29 +134,29 @@ class MetadataSanitizer:
                 pii_scrubbed=[],
                 original_hash=self._compute_hash(metadata) if preserve_original_hash else "",
             )
-        
+
         original_hash = self._compute_hash(metadata) if preserve_original_hash else ""
-        sanitized: Dict[str, Any] = {}
-        fields_redacted: List[str] = []
-        pii_scrubbed: List[str] = []
-        
+        sanitized: dict[str, Any] = {}
+        fields_redacted: list[str] = []
+        pii_scrubbed: list[str] = []
+
         for key, value in metadata.items():
             # Check preserve list first
             if key.lower() in self.preserve_keys:
                 sanitized[key] = value
                 continue
-            
+
             # Apply custom sanitizer if available
             if key in self.custom_sanitizers:
                 sanitized[key] = self.custom_sanitizers[key](value)
                 continue
-            
+
             # Check if key is in sensitive list
             if self._is_sensitive_key(key):
                 sanitized[key] = REDACTED_PLACEHOLDER
                 fields_redacted.append(key)
                 continue
-            
+
             # Scrub PII from string values
             if isinstance(value, str):
                 scrubbed_value, had_pii = self._scrub_pii(value)
@@ -178,54 +177,54 @@ class MetadataSanitizer:
                 ]
             else:
                 sanitized[key] = value
-        
+
         return SanitizationResult(
             sanitized_metadata=sanitized,
             fields_redacted=fields_redacted,
             pii_scrubbed=pii_scrubbed,
             original_hash=original_hash,
         )
-    
+
     def _is_sensitive_key(self, key: str) -> bool:
         """Check if a key name indicates sensitive content."""
         key_lower = key.lower().replace("-", "_")
         return any(sensitive in key_lower for sensitive in self.sensitive_keys)
-    
-    def _scrub_pii(self, value: str) -> Tuple[str, bool]:
+
+    def _scrub_pii(self, value: str) -> tuple[str, bool]:
         """Scrub PII patterns from a string value.
-        
+
         Returns:
             Tuple of (scrubbed_value, had_pii)
         """
         had_pii = False
         result = value
-        
+
         for pattern_name, pattern in self.pii_patterns.items():
             if pattern.search(result):
                 result = pattern.sub(REDACTED_PII_PLACEHOLDER, result)
                 had_pii = True
-        
+
         return result, had_pii
-    
-    def _compute_hash(self, data: Dict[str, Any]) -> str:
+
+    def _compute_hash(self, data: dict[str, Any]) -> str:
         """Compute SHA-256 hash of metadata for forensic correlation."""
         try:
             json_str = json.dumps(data, sort_keys=True, default=str)
             return hashlib.sha256(json_str.encode()).hexdigest()[:16]
         except (TypeError, ValueError):
             return ""
-    
+
     def add_sensitive_key(self, key: str) -> None:
         """Add a key to the sensitive keys list."""
         self.sensitive_keys = self.sensitive_keys | {key.lower()}
-    
+
     def add_pii_pattern(self, name: str, pattern: re.Pattern) -> None:
         """Add a custom PII pattern."""
         self.pii_patterns[name] = pattern
 
 
 # Global sanitizer instance (can be configured at startup)
-_default_sanitizer: Optional[MetadataSanitizer] = None
+_default_sanitizer: MetadataSanitizer | None = None
 _sanitizer_lock = threading.Lock()
 
 
@@ -246,14 +245,14 @@ def set_metadata_sanitizer(sanitizer: MetadataSanitizer) -> None:
         _default_sanitizer = sanitizer
 
 
-def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Convenience function to sanitize metadata using the default sanitizer.
-    
+
     This is the primary entry point for sanitizing audit metadata.
-    
+
     Args:
         metadata: Metadata dict to sanitize
-        
+
     Returns:
         Sanitized metadata dict
     """
@@ -262,34 +261,34 @@ def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
 class AuditEventType(Enum):
     """Types of security-relevant events that can be audited."""
-    
+
     # Sharing events
     SHARE = "share"                    # Belief shared with another DID
     RECEIVE = "receive"                # Belief received from another DID
     REVOKE = "revoke"                  # Share revoked
-    
+
     # Trust events
     GRANT_TRUST = "grant_trust"        # Trust edge created
     REVOKE_TRUST = "revoke_trust"      # Trust edge removed
     UPDATE_TRUST = "update_trust"      # Trust level modified
-    
+
     # Domain events
     DOMAIN_CREATE = "domain_create"    # Domain created
     DOMAIN_DELETE = "domain_delete"    # Domain deleted
     MEMBER_ADD = "member_add"          # Member added to domain
     MEMBER_REMOVE = "member_remove"    # Member removed from domain
     ROLE_CHANGE = "role_change"        # Member role changed
-    
+
     # Access events
     ACCESS_GRANTED = "access_granted"  # Access to resource granted
     ACCESS_DENIED = "access_denied"    # Access to resource denied
     ACCESS_EXPIRED = "access_expired"  # Access expired
-    
+
     # Belief events
     BELIEF_CREATE = "belief_create"    # New belief created
     BELIEF_UPDATE = "belief_update"    # Belief modified
     BELIEF_DELETE = "belief_delete"    # Belief deleted
-    
+
     # System events
     KEY_ROTATION = "key_rotation"      # Encryption key rotated
     CONFIG_CHANGE = "config_change"    # Configuration changed
@@ -298,7 +297,7 @@ class AuditEventType(Enum):
 @dataclass
 class AuditEvent:
     """A security-relevant event to be logged for compliance.
-    
+
     Attributes:
         event_id: Unique identifier for this event
         event_type: Category of event (from AuditEventType)
@@ -312,36 +311,36 @@ class AuditEvent:
         previous_hash: SHA-256 hash of the previous event (None for genesis)
         event_hash: SHA-256 hash of this event's data + previous_hash
     """
-    
+
     event_type: AuditEventType
     actor_did: str
     resource: str
     action: str
     success: bool
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    target_did: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    previous_hash: Optional[str] = None  # None for genesis event
+    target_did: str | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = field(default_factory=dict)
+    previous_hash: str | None = None  # None for genesis event
     event_hash: str = field(default="")
-    
+
     def __post_init__(self):
         """Compute event_hash if not provided and sanitize metadata."""
         # Sanitize metadata to prevent PII leakage (Issue #177)
         if self.metadata:
             self.metadata = sanitize_metadata(self.metadata)
-        
+
         if not self.event_hash:
             self.event_hash = self._compute_hash()
-    
+
     def _compute_hash(self) -> str:
         """Compute SHA-256 hash from event data + previous_hash."""
         data = self._get_hashable_data()
         return hashlib.sha256(data.encode("utf-8")).hexdigest()
-    
+
     def _get_hashable_data(self) -> str:
         """Get canonical JSON representation for hashing.
-        
+
         Uses sort_keys for deterministic ordering.
         """
         hashable = {
@@ -357,15 +356,15 @@ class AuditEvent:
             "previous_hash": self.previous_hash,
         }
         return json.dumps(hashable, sort_keys=True, separators=(",", ":"))
-    
+
     def verify_hash(self) -> bool:
         """Verify that event_hash matches computed hash.
-        
+
         Returns True if hash is valid, False if data may be tampered.
         """
         return self.event_hash == self._compute_hash()
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
         return {
             "event_id": self.event_id,
@@ -380,16 +379,16 @@ class AuditEvent:
             "previous_hash": self.previous_hash,
             "event_hash": self.event_hash,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AuditEvent":
+    def from_dict(cls, data: dict[str, Any]) -> "AuditEvent":
         """Deserialize from dictionary."""
         timestamp = data.get("timestamp")
         if isinstance(timestamp, str):
             timestamp = datetime.fromisoformat(timestamp)
         elif timestamp is None:
-            timestamp = datetime.now(timezone.utc)
-            
+            timestamp = datetime.now(UTC)
+
         return cls(
             event_id=data.get("event_id", str(uuid.uuid4())),
             event_type=AuditEventType(data["event_type"]),
@@ -403,11 +402,11 @@ class AuditEvent:
             previous_hash=data.get("previous_hash"),
             event_hash=data.get("event_hash", ""),
         )
-    
+
     def to_json(self) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict())
-    
+
     @classmethod
     def from_json(cls, json_str: str) -> "AuditEvent":
         """Deserialize from JSON string."""
@@ -416,7 +415,7 @@ class AuditEvent:
 
 class ChainVerificationError(Exception):
     """Raised when audit chain verification fails."""
-    
+
     def __init__(self, message: str, event_index: int, event_id: str):
         self.message = message
         self.event_index = event_index
@@ -426,29 +425,29 @@ class ChainVerificationError(Exception):
 
 class AuditBackend(Protocol):
     """Protocol for audit log storage backends."""
-    
+
     def write(self, event: AuditEvent) -> None:
         """Write an event to the audit log."""
         ...
-    
+
     def query(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        resource: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        target_did: str | None = None,
+        resource: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Query events from the audit log."""
         ...
-    
+
     def count(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        success: Optional[bool] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        success: bool | None = None,
     ) -> int:
         """Count events matching criteria."""
         ...
@@ -456,27 +455,27 @@ class AuditBackend(Protocol):
 
 class InMemoryAuditBackend:
     """In-memory audit log backend for testing and development.
-    
+
     Thread-safe but not persistent - data lost on restart.
     Maintains hash chain integrity for tamper detection.
     """
-    
+
     def __init__(self, max_events: int = 10000):
         """Initialize with optional max event limit."""
-        self._events: List[AuditEvent] = []
+        self._events: list[AuditEvent] = []
         self._max_events = max_events
         self._lock = threading.Lock()
-        self._last_hash: Optional[str] = None
-    
+        self._last_hash: str | None = None
+
     @property
-    def last_hash(self) -> Optional[str]:
+    def last_hash(self) -> str | None:
         """Get the hash of the last event, or None if empty."""
         with self._lock:
             return self._last_hash
-    
+
     def write(self, event: AuditEvent) -> None:
         """Write an event to the in-memory log.
-        
+
         Automatically sets previous_hash and computes event_hash
         if not already set.
         """
@@ -485,25 +484,25 @@ class InMemoryAuditBackend:
             if not event.previous_hash and self._last_hash:
                 event.previous_hash = self._last_hash
                 event.event_hash = event._compute_hash()
-            
+
             self._events.append(event)
             self._last_hash = event.event_hash
-            
+
             # Trim oldest events if over limit
             # Note: trimming breaks chain verification for full history
             if len(self._events) > self._max_events:
                 self._events = self._events[-self._max_events:]
-    
+
     def query(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        resource: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        target_did: str | None = None,
+        resource: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Query events from the in-memory log."""
         with self._lock:
             results = []
@@ -524,12 +523,12 @@ class InMemoryAuditBackend:
                 if len(results) >= limit:
                     break
             return results
-    
+
     def count(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        success: Optional[bool] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        success: bool | None = None,
     ) -> int:
         """Count events matching criteria."""
         with self._lock:
@@ -543,26 +542,26 @@ class InMemoryAuditBackend:
                     continue
                 count += 1
             return count
-    
+
     def clear(self) -> None:
         """Clear all events (for testing)."""
         with self._lock:
             self._events.clear()
             self._last_hash = None
-    
-    def all_events(self) -> List[AuditEvent]:
+
+    def all_events(self) -> list[AuditEvent]:
         """Get all events (for testing)."""
         with self._lock:
             return list(self._events)
-    
-    def verify_chain(self) -> Tuple[bool, Optional[ChainVerificationError]]:
+
+    def verify_chain(self) -> tuple[bool, ChainVerificationError | None]:
         """Verify the integrity of the entire audit chain.
-        
+
         Checks:
         1. Genesis event has null previous_hash
         2. Each event's hash is correctly computed
         3. Each event's previous_hash matches the prior event's hash
-        
+
         Returns:
             Tuple of (is_valid, error_or_none)
         """
@@ -572,15 +571,15 @@ class InMemoryAuditBackend:
 
 class FileAuditBackend:
     """File-based audit log backend for persistence.
-    
+
     Writes events as JSON lines (one event per line) for easy parsing.
     Thread-safe with file locking.
     Maintains hash chain integrity for tamper detection.
     """
-    
+
     def __init__(self, log_path: Path, rotate_size_mb: float = 10.0):
         """Initialize with log file path.
-        
+
         Args:
             log_path: Path to the audit log file
             rotate_size_mb: Rotate log when it exceeds this size (MB)
@@ -588,22 +587,22 @@ class FileAuditBackend:
         self._log_path = Path(log_path)
         self._rotate_size_bytes = int(rotate_size_mb * 1024 * 1024)
         self._lock = threading.Lock()
-        self._last_hash: Optional[str] = None
-        
+        self._last_hash: str | None = None
+
         # Ensure parent directory exists
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Load last hash from existing log
         self._load_last_hash()
-    
+
     def _load_last_hash(self) -> None:
         """Load the last event's hash from the log file."""
         if not self._log_path.exists():
             return
-        
-        with open(self._log_path, "r") as f:
+
+        with open(self._log_path) as f:
             lines = f.readlines()
-        
+
         # Find last valid event
         for line in reversed(lines):
             line = line.strip()
@@ -615,77 +614,77 @@ class FileAuditBackend:
                 return
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
-    
+
     @property
-    def last_hash(self) -> Optional[str]:
+    def last_hash(self) -> str | None:
         """Get the hash of the last event, or None if empty."""
         with self._lock:
             return self._last_hash
-    
+
     def write(self, event: AuditEvent) -> None:
         """Write an event to the log file.
-        
+
         Automatically sets previous_hash and computes event_hash
         if not already set.
         """
         with self._lock:
             self._maybe_rotate()
-            
+
             # Set previous_hash to chain to prior event
             if not event.previous_hash and self._last_hash:
                 event.previous_hash = self._last_hash
                 event.event_hash = event._compute_hash()
-            
+
             with open(self._log_path, "a") as f:
                 f.write(event.to_json() + "\n")
-            
+
             self._last_hash = event.event_hash
-    
+
     def _maybe_rotate(self) -> None:
         """Rotate log file if it exceeds size limit."""
         if not self._log_path.exists():
             return
-        
+
         if self._log_path.stat().st_size >= self._rotate_size_bytes:
             # Rename with timestamp
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             rotated_path = self._log_path.with_suffix(f".{timestamp}.jsonl")
             self._log_path.rename(rotated_path)
-    
+
     def query(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        resource: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        target_did: str | None = None,
+        resource: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Query events from the log file.
-        
+
         Note: This reads the entire file which may be slow for large logs.
         For production, consider a database backend.
         """
         with self._lock:
             if not self._log_path.exists():
                 return []
-            
+
             results = []
-            with open(self._log_path, "r") as f:
+            with open(self._log_path) as f:
                 # Read lines in reverse for most recent first
                 lines = f.readlines()
-            
+
             for line in reversed(lines):
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 try:
                     event = AuditEvent.from_json(line)
                 except (json.JSONDecodeError, KeyError, ValueError):
                     continue  # Skip malformed lines
-                
+
                 if event_type and event.event_type != event_type:
                     continue
                 if actor_did and event.actor_did != actor_did:
@@ -698,55 +697,55 @@ class FileAuditBackend:
                     continue
                 if end_time and event.timestamp > end_time:
                     continue
-                
+
                 results.append(event)
                 if len(results) >= limit:
                     break
-            
+
             return results
-    
+
     def count(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        success: Optional[bool] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        success: bool | None = None,
     ) -> int:
         """Count events matching criteria."""
         with self._lock:
             if not self._log_path.exists():
                 return 0
-            
+
             count = 0
-            with open(self._log_path, "r") as f:
+            with open(self._log_path) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
                         continue
-                    
+
                     try:
                         event = AuditEvent.from_json(line)
                     except (json.JSONDecodeError, KeyError, ValueError):
                         continue
-                    
+
                     if event_type and event.event_type != event_type:
                         continue
                     if actor_did and event.actor_did != actor_did:
                         continue
                     if success is not None and event.success != success:
                         continue
-                    
+
                     count += 1
-            
+
             return count
-    
-    def all_events(self) -> List[AuditEvent]:
+
+    def all_events(self) -> list[AuditEvent]:
         """Get all events from the log file."""
         with self._lock:
             if not self._log_path.exists():
                 return []
-            
+
             events = []
-            with open(self._log_path, "r") as f:
+            with open(self._log_path) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -756,22 +755,22 @@ class FileAuditBackend:
                     except (json.JSONDecodeError, KeyError, ValueError):
                         continue
             return events
-    
-    def verify_chain(self) -> Tuple[bool, Optional[ChainVerificationError]]:
+
+    def verify_chain(self) -> tuple[bool, ChainVerificationError | None]:
         """Verify the integrity of the entire audit chain.
-        
+
         Checks:
         1. Genesis event has null previous_hash
         2. Each event's hash is correctly computed
         3. Each event's previous_hash matches the prior event's hash
-        
+
         Returns:
             Tuple of (is_valid, error_or_none)
         """
         with self._lock:
             events = []
             if self._log_path.exists():
-                with open(self._log_path, "r") as f:
+                with open(self._log_path) as f:
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -785,27 +784,27 @@ class FileAuditBackend:
 
 class AuditLogger:
     """High-level audit logging service.
-    
+
     Provides convenient methods for logging common security events.
     Supports multiple backends (in-memory, file, or custom).
     """
-    
-    def __init__(self, backend: Optional[AuditBackend] = None):
+
+    def __init__(self, backend: AuditBackend | None = None):
         """Initialize with a storage backend.
-        
+
         Args:
             backend: Storage backend (defaults to in-memory)
         """
         self._backend = backend or InMemoryAuditBackend()
-    
+
     def log_event(self, event: AuditEvent) -> None:
         """Log an audit event.
-        
+
         Args:
             event: The AuditEvent to log
         """
         self._backend.write(event)
-    
+
     def log(
         self,
         event_type: AuditEventType,
@@ -813,11 +812,11 @@ class AuditLogger:
         resource: str,
         action: str,
         success: bool = True,
-        target_did: Optional[str] = None,
+        target_did: str | None = None,
         **metadata: Any,
     ) -> AuditEvent:
         """Log an event with the given parameters.
-        
+
         Convenience method that creates and logs an AuditEvent.
         Returns the created event.
         """
@@ -832,9 +831,9 @@ class AuditLogger:
         )
         self.log_event(event)
         return event
-    
+
     # Convenience methods for common event types
-    
+
     def log_share(
         self,
         actor_did: str,
@@ -853,7 +852,7 @@ class AuditLogger:
             success=success,
             **metadata,
         )
-    
+
     def log_receive(
         self,
         actor_did: str,
@@ -872,7 +871,7 @@ class AuditLogger:
             success=success,
             **metadata,
         )
-    
+
     def log_revoke(
         self,
         actor_did: str,
@@ -891,7 +890,7 @@ class AuditLogger:
             success=success,
             **metadata,
         )
-    
+
     def log_grant_trust(
         self,
         actor_did: str,
@@ -911,7 +910,7 @@ class AuditLogger:
             trust_level=trust_level,
             **metadata,
         )
-    
+
     def log_revoke_trust(
         self,
         actor_did: str,
@@ -929,7 +928,7 @@ class AuditLogger:
             success=success,
             **metadata,
         )
-    
+
     def log_access_denied(
         self,
         actor_did: str,
@@ -947,19 +946,19 @@ class AuditLogger:
             reason=reason,
             **metadata,
         )
-    
+
     # Query methods
-    
+
     def query(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        resource: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        target_did: str | None = None,
+        resource: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Query the audit log."""
         return self._backend.query(
             event_type=event_type,
@@ -970,12 +969,12 @@ class AuditLogger:
             end_time=end_time,
             limit=limit,
         )
-    
+
     def count(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        success: Optional[bool] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        success: bool | None = None,
     ) -> int:
         """Count events matching criteria."""
         return self._backend.count(
@@ -986,13 +985,13 @@ class AuditLogger:
 
 
 # Module-level singleton for convenience
-_default_logger: Optional[AuditLogger] = None
+_default_logger: AuditLogger | None = None
 _default_logger_lock = threading.Lock()
 
 
 def get_audit_logger() -> AuditLogger:
     """Get the default audit logger singleton.
-    
+
     Thread-safe initialization using double-checked locking pattern.
     """
     global _default_logger
@@ -1006,7 +1005,7 @@ def get_audit_logger() -> AuditLogger:
 
 def set_audit_logger(logger: AuditLogger) -> None:
     """Set the default audit logger singleton.
-    
+
     Thread-safe setter using lock.
     """
     global _default_logger
@@ -1018,20 +1017,20 @@ def set_audit_logger(logger: AuditLogger) -> None:
 AuditLog = AuditLogger
 
 
-def _verify_event_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainVerificationError]]:
+def _verify_event_chain(events: list[AuditEvent]) -> tuple[bool, ChainVerificationError | None]:
     """Internal helper to verify hash chain integrity.
-    
+
     Checks:
     1. Genesis event has null previous_hash
     2. Each event's hash is correctly computed
     3. Each event's previous_hash matches the prior event's hash
-    
+
     Returns:
         Tuple of (is_valid, error_or_none)
     """
     if not events:
         return True, None
-    
+
     for i, event in enumerate(events):
         # Check genesis event
         if i == 0:
@@ -1052,7 +1051,7 @@ def _verify_event_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainV
                     event.event_id,
                 )
                 return False, error
-        
+
         # Verify event's own hash
         if not event.verify_hash():
             error = ChainVerificationError(
@@ -1061,23 +1060,23 @@ def _verify_event_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainV
                 event.event_id,
             )
             return False, error
-    
+
     return True, None
 
 
-def verify_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainVerificationError]]:
+def verify_chain(events: list[AuditEvent]) -> tuple[bool, ChainVerificationError | None]:
     """Verify the integrity of an audit event hash chain.
-    
+
     Standalone function to verify events loaded from external sources.
-    
+
     Checks:
     1. Genesis event has null previous_hash
     2. Each event's hash is correctly computed (SHA-256)
     3. Each event's previous_hash matches the prior event's hash
-    
+
     Args:
         events: List of audit events to verify
-        
+
     Returns:
         Tuple of (is_valid, error_or_none)
     """
@@ -1091,34 +1090,34 @@ def verify_chain(events: List[AuditEvent]) -> Tuple[bool, Optional[ChainVerifica
 
 class KeyProvider(ABC):
     """Abstract base class for encryption key providers.
-    
+
     Supports key rotation by managing multiple keys identified by key_id.
     """
-    
+
     @abstractmethod
     def get_current_key_id(self) -> str:
         """Get the ID of the current active key for encryption."""
         ...
-    
+
     @abstractmethod
     def get_key(self, key_id: str) -> bytes:
         """Get the key bytes for a given key ID.
-        
+
         Args:
             key_id: The identifier for the key
-            
+
         Returns:
             32-byte key for AES-256
-            
+
         Raises:
             KeyError: If key_id is not found
         """
         ...
-    
+
     @abstractmethod
-    def get_current_key(self) -> Tuple[str, bytes]:
+    def get_current_key(self) -> tuple[str, bytes]:
         """Get the current key ID and bytes for encryption.
-        
+
         Returns:
             Tuple of (key_id, key_bytes)
         """
@@ -1127,14 +1126,14 @@ class KeyProvider(ABC):
 
 class StaticKeyProvider(KeyProvider):
     """Simple key provider with a single static key.
-    
+
     Useful for testing and simple deployments. For production,
     use a key management system (KMS) backed provider.
     """
-    
+
     def __init__(self, key: bytes, key_id: str = "default"):
         """Initialize with a static key.
-        
+
         Args:
             key: 32-byte key for AES-256
             key_id: Identifier for this key
@@ -1144,21 +1143,21 @@ class StaticKeyProvider(KeyProvider):
         self._key = key
         self._key_id = key_id
         self._keys = {key_id: key}
-    
+
     def get_current_key_id(self) -> str:
         return self._key_id
-    
+
     def get_key(self, key_id: str) -> bytes:
         if key_id not in self._keys:
             raise KeyError(f"Unknown key ID: {key_id}")
         return self._keys[key_id]
-    
-    def get_current_key(self) -> Tuple[str, bytes]:
+
+    def get_current_key(self) -> tuple[str, bytes]:
         return self._key_id, self._key
-    
+
     def add_key(self, key: bytes, key_id: str) -> None:
         """Add an additional key (for testing key rotation).
-        
+
         Args:
             key: 32-byte key for AES-256
             key_id: Identifier for this key
@@ -1166,10 +1165,10 @@ class StaticKeyProvider(KeyProvider):
         if len(key) != 32:
             raise ValueError("Key must be 32 bytes for AES-256")
         self._keys[key_id] = key
-    
+
     def rotate_to(self, key_id: str) -> None:
         """Rotate to a different key as the current key.
-        
+
         Args:
             key_id: The key ID to rotate to (must exist)
         """
@@ -1192,10 +1191,10 @@ class DecryptionError(Exception):
 @dataclass
 class EncryptedEnvelope:
     """Encrypted data envelope with metadata for decryption.
-    
+
     Uses envelope encryption: data is encrypted with a random DEK (Data Encryption Key),
     and the DEK is encrypted with the master key (KEK - Key Encryption Key).
-    
+
     Attributes:
         key_id: ID of the master key used to encrypt the DEK
         encrypted_dek: DEK encrypted with master key (base64)
@@ -1204,14 +1203,14 @@ class EncryptedEnvelope:
         data_nonce: Nonce used for data encryption (base64)
         tag: Authentication tag for data encryption (base64)
     """
-    
+
     key_id: str
     encrypted_dek: str  # base64
     dek_nonce: str  # base64
     ciphertext: str  # base64
     data_nonce: str  # base64
-    
-    def to_dict(self) -> Dict[str, str]:
+
+    def to_dict(self) -> dict[str, str]:
         """Serialize to dictionary."""
         return {
             "key_id": self.key_id,
@@ -1220,9 +1219,9 @@ class EncryptedEnvelope:
             "ciphertext": self.ciphertext,
             "data_nonce": self.data_nonce,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, str]) -> "EncryptedEnvelope":
+    def from_dict(cls, data: dict[str, str]) -> "EncryptedEnvelope":
         """Deserialize from dictionary."""
         return cls(
             key_id=data["key_id"],
@@ -1231,25 +1230,25 @@ class EncryptedEnvelope:
             ciphertext=data["ciphertext"],
             data_nonce=data["data_nonce"],
         )
-    
+
     def to_json(self) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict())
-    
+
     @classmethod
     def from_json(cls, json_str: str) -> "EncryptedEnvelope":
         """Deserialize from JSON string."""
         return cls.from_dict(json.loads(json_str))
 
 
-def _aes_gcm_encrypt(key: bytes, plaintext: bytes, nonce: Optional[bytes] = None) -> Tuple[bytes, bytes, bytes]:
+def _aes_gcm_encrypt(key: bytes, plaintext: bytes, nonce: bytes | None = None) -> tuple[bytes, bytes, bytes]:
     """Encrypt data using AES-256-GCM.
-    
+
     Args:
         key: 32-byte AES key
         plaintext: Data to encrypt
         nonce: 12-byte nonce (generated if not provided)
-        
+
     Returns:
         Tuple of (ciphertext_with_tag, nonce, tag)
         Note: ciphertext_with_tag includes the 16-byte auth tag appended
@@ -1258,31 +1257,31 @@ def _aes_gcm_encrypt(key: bytes, plaintext: bytes, nonce: Optional[bytes] = None
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:
         raise ImportError("cryptography package required for encryption. Install with: pip install cryptography")
-    
+
     if nonce is None:
         nonce = secrets.token_bytes(12)  # 96-bit nonce for GCM
-    
+
     aesgcm = AESGCM(key)
     # AESGCM.encrypt returns ciphertext + tag concatenated
     ciphertext_with_tag = aesgcm.encrypt(nonce, plaintext, None)
-    
+
     # Extract tag (last 16 bytes)
     tag = ciphertext_with_tag[-16:]
-    
+
     return ciphertext_with_tag, nonce, tag
 
 
 def _aes_gcm_decrypt(key: bytes, ciphertext_with_tag: bytes, nonce: bytes) -> bytes:
     """Decrypt data using AES-256-GCM.
-    
+
     Args:
         key: 32-byte AES key
         ciphertext_with_tag: Encrypted data with auth tag appended
         nonce: 12-byte nonce used during encryption
-        
+
     Returns:
         Decrypted plaintext
-        
+
     Raises:
         DecryptionError: If decryption fails (wrong key, tampered data, etc.)
     """
@@ -1290,7 +1289,7 @@ def _aes_gcm_decrypt(key: bytes, ciphertext_with_tag: bytes, nonce: bytes) -> by
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:
         raise ImportError("cryptography package required for encryption. Install with: pip install cryptography")
-    
+
     try:
         aesgcm = AESGCM(key)
         return aesgcm.decrypt(nonce, ciphertext_with_tag, None)
@@ -1300,31 +1299,31 @@ def _aes_gcm_decrypt(key: bytes, ciphertext_with_tag: bytes, nonce: bytes) -> by
 
 def encrypt_envelope(plaintext: bytes, key_provider: KeyProvider) -> EncryptedEnvelope:
     """Encrypt data using envelope encryption.
-    
+
     1. Generate a random DEK (Data Encryption Key)
     2. Encrypt the data with the DEK using AES-256-GCM
     3. Encrypt the DEK with the master key (KEK) using AES-256-GCM
     4. Return the envelope containing encrypted DEK and encrypted data
-    
+
     Args:
         plaintext: Data to encrypt
         key_provider: Provider for the master key
-        
+
     Returns:
         EncryptedEnvelope containing all data needed for decryption
     """
     # Get the current master key
     key_id, master_key = key_provider.get_current_key()
-    
+
     # Generate random DEK
     dek = secrets.token_bytes(32)  # 256-bit DEK
-    
+
     # Encrypt data with DEK
     data_ciphertext, data_nonce, _ = _aes_gcm_encrypt(dek, plaintext)
-    
+
     # Encrypt DEK with master key
     dek_ciphertext, dek_nonce, _ = _aes_gcm_encrypt(master_key, dek)
-    
+
     return EncryptedEnvelope(
         key_id=key_id,
         encrypted_dek=base64.b64encode(dek_ciphertext).decode("ascii"),
@@ -1336,18 +1335,18 @@ def encrypt_envelope(plaintext: bytes, key_provider: KeyProvider) -> EncryptedEn
 
 def decrypt_envelope(envelope: EncryptedEnvelope, key_provider: KeyProvider) -> bytes:
     """Decrypt data from an encrypted envelope.
-    
+
     1. Look up the master key by key_id
     2. Decrypt the DEK using the master key
     3. Decrypt the data using the DEK
-    
+
     Args:
         envelope: The encrypted envelope
         key_provider: Provider to look up keys
-        
+
     Returns:
         Decrypted plaintext
-        
+
     Raises:
         KeyError: If the key_id is not found
         DecryptionError: If decryption fails
@@ -1357,32 +1356,32 @@ def decrypt_envelope(envelope: EncryptedEnvelope, key_provider: KeyProvider) -> 
         master_key = key_provider.get_key(envelope.key_id)
     except KeyError:
         raise KeyError(f"Key not found: {envelope.key_id}")
-    
+
     # Decode base64 values
     encrypted_dek = base64.b64decode(envelope.encrypted_dek)
     dek_nonce = base64.b64decode(envelope.dek_nonce)
     ciphertext = base64.b64decode(envelope.ciphertext)
     data_nonce = base64.b64decode(envelope.data_nonce)
-    
+
     # Decrypt DEK
     dek = _aes_gcm_decrypt(master_key, encrypted_dek, dek_nonce)
-    
+
     # Decrypt data
     return _aes_gcm_decrypt(dek, ciphertext, data_nonce)
 
 
 class EncryptedAuditBackend:
     """Audit backend wrapper that encrypts events at rest.
-    
+
     Wraps any AuditBackend to provide transparent encryption/decryption.
     Uses envelope encryption with AES-256-GCM for authenticated encryption.
-    
+
     Features:
     - Encrypts events on write, decrypts on read
     - Envelope encryption: random DEK per event, DEK encrypted by master key
     - Key rotation support: key_id stored with each event
     - Works with any AuditBackend (InMemoryAuditBackend, FileAuditBackend, etc.)
-    
+
     Example:
         key = secrets.token_bytes(32)
         key_provider = StaticKeyProvider(key)
@@ -1390,13 +1389,13 @@ class EncryptedAuditBackend:
         encrypted_backend = EncryptedAuditBackend(inner_backend, key_provider)
         logger = AuditLogger(encrypted_backend)
     """
-    
+
     # Marker to identify encrypted events
     ENCRYPTED_MARKER = "__encrypted__"
-    
+
     def __init__(self, backend: AuditBackend, key_provider: KeyProvider):
         """Initialize with a backend and key provider.
-        
+
         Args:
             backend: The underlying backend for storage
             key_provider: Provider for encryption keys
@@ -1404,24 +1403,24 @@ class EncryptedAuditBackend:
         self._backend = backend
         self._key_provider = key_provider
         self._lock = threading.Lock()
-    
-    def _encrypt_event(self, event: AuditEvent, previous_hash: Optional[str] = None) -> AuditEvent:
+
+    def _encrypt_event(self, event: AuditEvent, previous_hash: str | None = None) -> AuditEvent:
         """Encrypt an event's sensitive data.
-        
+
         Creates a new event with the same ID but encrypted content.
         The event_type, event_id, timestamp are preserved for indexing.
         Hash chain is computed on the encrypted data for tamper detection.
-        
+
         Args:
             event: The original event to encrypt
             previous_hash: Hash of previous encrypted event (for chain)
         """
         # Serialize the full event
         event_json = event.to_json()
-        
+
         # Encrypt the serialized event
         envelope = encrypt_envelope(event_json.encode("utf-8"), self._key_provider)
-        
+
         # Create a wrapper event that stores the encrypted envelope
         # Hash will be computed fresh on encrypted content
         encrypted_event = AuditEvent(
@@ -1440,42 +1439,42 @@ class EncryptedAuditBackend:
             previous_hash=previous_hash,
             # event_hash will be auto-computed in __post_init__
         )
-        
+
         return encrypted_event
-    
+
     def _decrypt_event(self, encrypted_event: AuditEvent) -> AuditEvent:
         """Decrypt an encrypted event.
-        
+
         Returns the original event with all data restored.
         """
         # Check if this is actually encrypted
         if not self._is_encrypted(encrypted_event):
             return encrypted_event
-        
+
         # Extract envelope
         envelope_data = encrypted_event.metadata.get("envelope")
         if not envelope_data:
             raise DecryptionError("Missing envelope in encrypted event")
-        
+
         envelope = EncryptedEnvelope.from_dict(envelope_data)
-        
+
         # Decrypt
         plaintext = decrypt_envelope(envelope, self._key_provider)
-        
+
         # Deserialize
         return AuditEvent.from_json(plaintext.decode("utf-8"))
-    
+
     def _is_encrypted(self, event: AuditEvent) -> bool:
         """Check if an event is encrypted."""
         return event.metadata.get(self.ENCRYPTED_MARKER, False)
-    
+
     @property
-    def last_hash(self) -> Optional[str]:
+    def last_hash(self) -> str | None:
         """Get the hash of the last event, or None if empty."""
         if hasattr(self._backend, "last_hash"):
             return self._backend.last_hash
         return None
-    
+
     def write(self, event: AuditEvent) -> None:
         """Write an encrypted event to the backend."""
         with self._lock:
@@ -1483,10 +1482,10 @@ class EncryptedAuditBackend:
             previous_hash = None
             if hasattr(self._backend, "last_hash"):
                 previous_hash = self._backend.last_hash
-            
+
             # Encrypt with chain info (hash computed on encrypted content)
             encrypted_event = self._encrypt_event(event, previous_hash)
-            
+
             # Write to backend (skip its chain linking since we handled it)
             # We need to write directly to avoid double-chaining
             # Cast to Any for internal attribute access (hasattr guards ensure safety)
@@ -1506,19 +1505,19 @@ class EncryptedAuditBackend:
             else:
                 # Generic backend - just call write (may double-chain)
                 self._backend.write(encrypted_event)
-    
+
     def query(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        target_did: Optional[str] = None,
-        resource: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        target_did: str | None = None,
+        resource: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Query events from the backend, decrypting results.
-        
+
         Note: Filtering by actor_did, target_did, and resource is performed
         AFTER decryption since these fields are encrypted. This may be
         slower than unencrypted backends for large datasets.
@@ -1533,7 +1532,7 @@ class EncryptedAuditBackend:
             end_time=end_time,
             limit=limit * 10 if (actor_did or target_did or resource) else limit,
         )
-        
+
         # Decrypt and filter
         results = []
         for encrypted_event in encrypted_events:
@@ -1542,7 +1541,7 @@ class EncryptedAuditBackend:
             except (DecryptionError, KeyError):
                 # Skip events we can't decrypt (e.g., old keys removed)
                 continue
-            
+
             # Apply filters that couldn't be done on encrypted data
             if actor_did and event.actor_did != actor_did:
                 continue
@@ -1550,32 +1549,32 @@ class EncryptedAuditBackend:
                 continue
             if resource and event.resource != resource:
                 continue
-            
+
             results.append(event)
             if len(results) >= limit:
                 break
-        
+
         return results
-    
+
     def count(
         self,
-        event_type: Optional[AuditEventType] = None,
-        actor_did: Optional[str] = None,
-        success: Optional[bool] = None,
+        event_type: AuditEventType | None = None,
+        actor_did: str | None = None,
+        success: bool | None = None,
     ) -> int:
         """Count events matching criteria.
-        
+
         Note: Filtering by actor_did requires decryption and is slow.
         """
         if actor_did:
             # Need to decrypt to filter by actor
             events = self.query(event_type=event_type, limit=100000)
             return sum(1 for e in events if e.actor_did == actor_did and (success is None or e.success == success))
-        
+
         # Can use backend directly for other filters
         return self._backend.count(event_type=event_type, success=success)
-    
-    def all_events(self) -> List[AuditEvent]:
+
+    def all_events(self) -> list[AuditEvent]:
         """Get all events, decrypted."""
         if hasattr(self._backend, "all_events"):
             encrypted_events = self._backend.all_events()
@@ -1587,16 +1586,16 @@ class EncryptedAuditBackend:
                     continue
             return results
         return self.query(limit=100000)
-    
-    def verify_chain(self) -> Tuple[bool, Optional[ChainVerificationError]]:
+
+    def verify_chain(self) -> tuple[bool, ChainVerificationError | None]:
         """Verify the integrity of the audit chain.
-        
+
         Verifies the encrypted events' chain (which preserves hashes).
         """
         if hasattr(self._backend, "verify_chain"):
             return self._backend.verify_chain()
         return True, None
-    
+
     def clear(self) -> None:
         """Clear all events (for testing)."""
         if hasattr(self._backend, "clear"):

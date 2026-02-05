@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 
 # Default max size for LRU caches (configurable via VALENCE_CACHE_MAX_SIZE)
 DEFAULT_CACHE_MAX_SIZE = 1000
@@ -44,7 +44,7 @@ class LRUDict(dict[K, V]):
 
     def __init__(
         self,
-        max_size: Optional[int] = None,
+        max_size: int | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -98,12 +98,12 @@ class LRUDict(dict[K, V]):
             super().__delitem__(key)
             self._order.pop(key, None)
 
-    def get(self, key: K, default: Optional[V] = None) -> Optional[V]:  # type: ignore[override]
+    def get(self, key: K, default: V | None = None) -> V | None:  # type: ignore[override]
         """Get item without updating access order (peek)."""
         with self._lock:
             return super().get(key, default)
 
-    def peek(self, key: K, default: Optional[V] = None) -> Optional[V]:
+    def peek(self, key: K, default: V | None = None) -> V | None:
         """Get item without updating access order."""
         return self.get(key, default)
 
@@ -184,8 +184,8 @@ class BoundedList(list):
 
     def __init__(
         self,
-        max_size: Optional[int] = None,
-        initial: Optional[list] = None,
+        max_size: int | None = None,
+        initial: list | None = None,
     ) -> None:
         """
         Initialize bounded list.

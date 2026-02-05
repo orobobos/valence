@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from mcp.types import Tool
 
-from ..core.db import get_cursor
-from ..core.models import Session, Exchange, Pattern
 from ..core.confidence import DimensionalConfidence
+from ..core.db import get_cursor
+from ..core.models import Exchange, Pattern, Session
 from ..core.utils import escape_ilike
 
 logger = logging.getLogger(__name__)

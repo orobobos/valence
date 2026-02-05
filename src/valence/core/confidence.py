@@ -10,12 +10,12 @@ calculation as it better penalizes imbalanced vectors.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 
-class ConfidenceDimension(str, Enum):
+class ConfidenceDimension(StrEnum):
     """Dimensions of belief confidence."""
 
     OVERALL = "overall"
@@ -47,28 +47,28 @@ def _compute_overall(
     use_geometric: bool = True,
 ) -> float:
     """Compute overall confidence from dimension values.
-    
+
     Per spec (MATH.md):
     - Geometric mean: (∏v_i^{w_i})^{1/∑w_i} - penalizes imbalanced vectors
     - Arithmetic mean: ∑(w_i * v_i) / ∑w_i - traditional weighted average
-    
+
     Args:
         dims: Dictionary of dimension -> value
         weights: Dictionary of dimension -> weight
         use_geometric: If True, use weighted geometric mean (recommended per spec)
-    
+
     Returns:
         Overall confidence score in [0, 1]
     """
     if not dims:
         return 0.5  # Default when no dimensions present
-    
+
     if use_geometric:
         # Weighted geometric mean: (∏v_i^{w_i})^{1/∑w_i}
         # Use log-space for numerical stability: exp(∑(w_i * log(v_i)) / ∑w_i)
         log_sum = 0.0
         total_weight = 0.0
-        
+
         for dim, value in dims.items():
             w = weights.get(dim, 0.0)
             if w > 0:
@@ -76,7 +76,7 @@ def _compute_overall(
                 safe_value = max(EPSILON, value)
                 log_sum += w * math.log(safe_value)
                 total_weight += w
-        
+
         if total_weight > 0:
             overall = math.exp(log_sum / total_weight)
         else:
@@ -85,18 +85,18 @@ def _compute_overall(
         # Weighted arithmetic mean: ∑(w_i * v_i) / ∑w_i
         weighted_sum = 0.0
         total_weight = 0.0
-        
+
         for dim, value in dims.items():
             w = weights.get(dim, 0.0)
             if w > 0:
                 weighted_sum += w * value
                 total_weight += w
-        
+
         if total_weight > 0:
             overall = weighted_sum / total_weight
         else:
             overall = 0.5
-    
+
     return min(1.0, max(0.0, overall))
 
 
@@ -147,7 +147,7 @@ class DimensionalConfidence:
         use_geometric: bool = True,
     ) -> DimensionalConfidence:
         """Create full dimensional confidence with calculated overall.
-        
+
         Args:
             use_geometric: If True (default), use weighted geometric mean per spec.
                           This better penalizes imbalanced vectors.
@@ -178,7 +178,7 @@ class DimensionalConfidence:
         use_geometric: bool = True,
     ) -> DimensionalConfidence:
         """Recalculate overall from dimensions.
-        
+
         Args:
             weights: Custom weights for each dimension.
             use_geometric: If True (default), use weighted geometric mean per spec.
@@ -308,7 +308,7 @@ def aggregate_confidence(
     - weighted_average: Arithmetic average weighted by each confidence's overall score
     - minimum: Use the minimum of each dimension
     - maximum: Use the maximum of each dimension
-    
+
     Per spec (MATH.md), geometric mean is preferred as it better handles
     imbalanced vectors and propagates low confidence appropriately.
     """

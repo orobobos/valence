@@ -267,7 +267,7 @@ def create_access_token(
     """Create a JWT access token."""
     settings = get_settings()
     now = time.time()
-    
+
     # Ensure JWT secret is configured
     jwt_secret = settings.oauth_jwt_secret
     if jwt_secret is None:
@@ -293,7 +293,7 @@ def verify_access_token(token: str, expected_audience: str) -> dict[str, Any] | 
     Returns the payload if valid, None otherwise.
     """
     settings = get_settings()
-    
+
     # Ensure JWT secret is configured
     jwt_secret = settings.oauth_jwt_secret
     if jwt_secret is None:

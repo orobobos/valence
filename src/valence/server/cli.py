@@ -95,7 +95,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("=" * 60)
     print()
     print(f"Token file: {token_file}")
-    print(f"Permissions: 0600 (owner read/write only)")
+    print("Permissions: 0600 (owner read/write only)")
     print()
     print("To read your token:")
     print(f"  cat {token_file}")
@@ -159,7 +159,7 @@ def cmd_revoke(args: argparse.Namespace) -> int:
     # If hash provided, revoke directly
     if args.hash:
         if store.revoke(args.hash):
-            print(f"Token revoked.")
+            print("Token revoked.")
             return 0
         else:
             print(f"Token not found: {args.hash}")
@@ -169,10 +169,10 @@ def cmd_revoke(args: argparse.Namespace) -> int:
     if args.token:
         token_hash = hash_token(args.token)
         if store.revoke(token_hash):
-            print(f"Token revoked.")
+            print("Token revoked.")
             return 0
         else:
-            print(f"Token not found or invalid.")
+            print("Token not found or invalid.")
             return 1
 
     print("Must provide --client-id, --hash, or --token")
@@ -185,14 +185,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
     token = store.verify(args.token)
 
     if token:
-        print(f"Token is VALID")
+        print("Token is VALID")
         print(f"  Client ID: {token.client_id}")
         print(f"  Scopes: {', '.join(token.scopes)}")
         print(f"  Created: {datetime.fromtimestamp(token.created_at)}")
         if token.expires_at:
             print(f"  Expires: {datetime.fromtimestamp(token.expires_at)}")
         else:
-            print(f"  Expires: Never")
+            print("  Expires: Never")
         return 0
     else:
         print("Token is INVALID")

@@ -21,25 +21,24 @@ import asyncio
 import json
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, Resource, ResourceContents, TextResourceContents
+from mcp.types import Resource, TextContent, TextResourceContents, Tool
 from pydantic import AnyUrl
 
-from ..core.db import get_cursor, init_schema, DatabaseStats
-from ..core.models import Belief, Entity, Tension
 from ..core.confidence import (
-    DimensionalConfidence, 
-    ConfidenceDimension,
     DEFAULT_WEIGHTS,
+    ConfidenceDimension,
+    DimensionalConfidence,
     confidence_label,
 )
-from ..core.health import startup_checks, cli_health_check
+from ..core.db import DatabaseStats, get_cursor, init_schema
 from ..core.exceptions import DatabaseException, ValidationException
+from ..core.health import cli_health_check, startup_checks
+from ..core.models import Belief, Entity, Tension
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -433,14 +432,14 @@ def get_recent_beliefs(limit: int = 20) -> dict[str, Any]:
             (limit,)
         )
         rows = cur.fetchall()
-        
+
         beliefs = []
         for row in rows:
             belief = Belief.from_row(dict(row))
             belief_dict = belief.to_dict()
             belief_dict["entity_names"] = row.get("entity_names") or []
             beliefs.append(belief_dict)
-        
+
         return {
             "beliefs": beliefs,
             "count": len(beliefs),
@@ -455,7 +454,7 @@ def get_trust_graph() -> dict[str, Any]:
         "federation_nodes": [],
         "as_of": datetime.now().isoformat(),
     }
-    
+
     with get_cursor() as cur:
         # Get entities with belief counts (as proxy for trust/authority)
         cur.execute(
@@ -480,7 +479,7 @@ def get_trust_graph() -> dict[str, Any]:
                 "belief_count": row["belief_count"],
                 "avg_confidence": float(row["avg_confidence"]) if row["avg_confidence"] else None,
             })
-        
+
         # Get federation nodes with trust scores
         try:
             cur.execute(
@@ -509,14 +508,14 @@ def get_trust_graph() -> dict[str, Any]:
                 result["federation_nodes"].append(node_data)
         except Exception as e:
             logger.debug(f"Federation tables may not exist: {e}")
-    
+
     return result
 
 
 def get_stats() -> dict[str, Any]:
     """Get database statistics for the resource."""
     stats = DatabaseStats.collect()
-    
+
     with get_cursor() as cur:
         # Get domain distribution
         cur.execute(
@@ -530,12 +529,12 @@ def get_stats() -> dict[str, Any]:
             """
         )
         domains = {row["domain"]: row["count"] for row in cur.fetchall()}
-        
+
         # Get confidence distribution
         cur.execute(
             """
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN (confidence->>'overall')::numeric >= 0.9 THEN 'very_high'
                     WHEN (confidence->>'overall')::numeric >= 0.75 THEN 'high'
                     WHEN (confidence->>'overall')::numeric >= 0.5 THEN 'moderate'
@@ -550,7 +549,7 @@ def get_stats() -> dict[str, Any]:
             """
         )
         confidence_dist = {row["confidence_level"]: row["count"] for row in cur.fetchall()}
-        
+
         # Get entity type distribution
         cur.execute(
             """
@@ -562,7 +561,7 @@ def get_stats() -> dict[str, Any]:
             """
         )
         entity_types = {row["type"]: row["count"] for row in cur.fetchall()}
-    
+
     return {
         "totals": stats.to_dict(),
         "domains": domains,
@@ -634,12 +633,12 @@ def belief_search(
     """Semantic search for beliefs using embeddings."""
     try:
         from ..embeddings.service import generate_embedding, vector_to_pgvector
-    except ImportError as e:
+    except ImportError:
         return {
             "success": False,
             "error": "Embeddings service not available. Install openai package.",
         }
-    
+
     try:
         # Generate query embedding
         query_vector = generate_embedding(query)
@@ -649,7 +648,7 @@ def belief_search(
             "success": False,
             "error": f"Failed to generate embedding: {str(e)}",
         }
-    
+
     with get_cursor() as cur:
         # Build query with similarity filter
         sql = """
@@ -660,28 +659,28 @@ def belief_search(
             AND 1 - (b.embedding <=> %s::vector) >= %s
         """
         params: list[Any] = [query_str, query_str, min_similarity]
-        
+
         if min_confidence is not None:
             sql += " AND (b.confidence->>'overall')::numeric >= %s"
             params.append(min_confidence)
-        
+
         if domain_filter:
             sql += " AND b.domain_path && %s"
             params.append(domain_filter)
-        
+
         sql += " ORDER BY b.embedding <=> %s::vector LIMIT %s"
         params.extend([query_str, limit])
-        
+
         cur.execute(sql, params)
         rows = cur.fetchall()
-        
+
         beliefs = []
         for row in rows:
             belief = Belief.from_row(dict(row))
             belief_dict = belief.to_dict()
             belief_dict["similarity"] = float(row["similarity"])
             beliefs.append(belief_dict)
-        
+
         return {
             "success": True,
             "beliefs": beliefs,
@@ -1105,7 +1104,7 @@ def trust_check(
         "trusted_entities": [],
         "trusted_nodes": [],
     }
-    
+
     with get_cursor() as cur:
         # Find entities that have high-confidence beliefs in this domain
         entity_sql = """
@@ -1123,11 +1122,11 @@ def trust_check(
             )
         """
         params: list[Any] = [topic, f"%{topic}%"]
-        
+
         if entity_name:
             entity_sql += " AND e.name ILIKE %s"
             params.append(f"%{entity_name}%")
-        
+
         entity_sql += """
             GROUP BY e.id
             HAVING AVG((b.confidence->>'overall')::numeric) >= %s
@@ -1135,7 +1134,7 @@ def trust_check(
             LIMIT %s
         """
         params.extend([min_trust, limit])
-        
+
         cur.execute(entity_sql, params)
         for row in cur.fetchall():
             result["trusted_entities"].append({
@@ -1147,7 +1146,7 @@ def trust_check(
                 "max_confidence": float(row["max_confidence"]) if row["max_confidence"] else None,
                 "trust_reason": f"Has {row['belief_count']} beliefs about {topic} with avg confidence {float(row['avg_confidence']):.2f}",
             })
-        
+
         # Check federated node trust if enabled
         if include_federated:
             try:
@@ -1177,7 +1176,7 @@ def trust_check(
                     })
             except Exception as e:
                 logger.debug(f"Federation tables may not exist: {e}")
-    
+
     return result
 
 
@@ -1188,10 +1187,10 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
         row = cur.fetchone()
         if not row:
             return {"success": False, "error": f"Belief not found: {belief_id}"}
-        
+
         belief = Belief.from_row(dict(row))
         conf = belief.confidence
-        
+
         # Build explanation
         dimensions_dict: dict[str, Any] = {}
         weights_used: dict[str, float] = {}
@@ -1205,7 +1204,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
             "computation_method": "weighted_geometric_mean",
             "weights_used": weights_used,
         }
-        
+
         # Document each dimension
         dimension_explanations = {
             "source_reliability": "How trustworthy is the information source? Higher for verified sources, lower for hearsay.",
@@ -1215,11 +1214,11 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
             "corroboration": "Is this supported by multiple independent sources? Higher with more confirmation.",
             "domain_applicability": "How relevant is this to the current context/domain? Higher if directly applicable.",
         }
-        
+
         for dim in ConfidenceDimension:
             if dim == ConfidenceDimension.OVERALL:
                 continue
-            
+
             value = getattr(conf, dim.value, None)
             if value is not None:
                 weight = DEFAULT_WEIGHTS.get(dim, 0)
@@ -1230,7 +1229,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
                     "explanation": dimension_explanations.get(dim.value, ""),
                 }
                 weights_used[dim.value] = weight
-        
+
         # Add recommendations
         recommendations = []
         if conf.source_reliability is not None and conf.source_reliability < 0.5:
@@ -1241,12 +1240,12 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
             recommendations.append("This information may be outdated - consider refreshing")
         if conf.internal_consistency is not None and conf.internal_consistency < 0.5:
             recommendations.append("This belief may conflict with other knowledge - review tensions")
-        
+
         if recommendations:
             explanation["recommendations"] = recommendations
         else:
             explanation["recommendations"] = ["Confidence dimensions are balanced - no immediate concerns"]
-        
+
         # Check for trust annotations
         try:
             cur.execute(
@@ -1271,7 +1270,7 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
                 ]
         except Exception as e:
             logger.debug(f"Trust annotations table may not exist: {e}")
-        
+
         return explanation
 
 

@@ -12,15 +12,16 @@ import json
 import logging
 import sys
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from .db import init_schema
 from .exceptions import DatabaseException, ValidationException
-from .health import startup_checks, cli_health_check
+from .health import cli_health_check, startup_checks
 
 logger = logging.getLogger(__name__)
 

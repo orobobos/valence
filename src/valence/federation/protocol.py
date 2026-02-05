@@ -9,33 +9,20 @@ Implements the Valence Federation Protocol (VFP) message handling:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from ..core.confidence import DimensionalConfidence, ConfidenceDimension
+from ..core.confidence import ConfidenceDimension, DimensionalConfidence
 from ..core.db import get_cursor
 from .identity import (
-    parse_did,
-    verify_belief_signature,
-    canonical_json,
     sign_belief_content,
-)
-from .models import (
-    FederationNode,
-    FederatedBelief,
-    BeliefProvenance,
-    NodeTrust,
-    Visibility,
-    ShareLevel,
-    NodeStatus,
-    TrustPhase,
+    verify_belief_signature,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +33,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-class MessageType(str, Enum):
+class MessageType(StrEnum):
     """Federation protocol message types."""
     # Authentication
     AUTH_CHALLENGE = "AUTH_CHALLENGE"
@@ -74,7 +61,7 @@ class MessageType(str, Enum):
     ERROR = "ERROR"
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Federation protocol error codes."""
     AUTH_FAILED = "AUTH_FAILED"
     TRUST_INSUFFICIENT = "TRUST_INSUFFICIENT"
@@ -433,8 +420,9 @@ def verify_auth_challenge(
 
     # Verify signature
     try:
-        from .identity import verify_signature
         import base64
+
+        from .identity import verify_signature
 
         challenge_bytes = challenge.encode("utf-8")
         signature_bytes = base64.b64decode(signature)
@@ -797,7 +785,7 @@ def _belief_row_to_federated(
     result = {
         "id": str(row["id"]),
         "federation_id": str(row.get("federation_id") or row["id"]),
-        "origin_node_did": settings.federation_node_did or f"did:vkb:web:localhost",
+        "origin_node_did": settings.federation_node_did or "did:vkb:web:localhost",
         "content": row["content"],
         "confidence": row["confidence"],
         "domain_path": row.get("domain_path", []),
@@ -1194,8 +1182,8 @@ def _handle_trust_attestation(
         # Process endorsement if attestation type is endorsement
         attestation_type = attestation.get("attestation_type", "endorsement")
         if attestation_type == "endorsement":
-            from .trust import get_trust_manager
             from .models import TrustAttestation
+            from .trust import get_trust_manager
 
             trust_attestation = TrustAttestation(
                 issuer_did=attestation.get("issuer_did", ""),

@@ -14,18 +14,17 @@ import hashlib
 import json
 import math
 import secrets
-from abc import ABC, abstractmethod
-
-# Use cryptographically secure RNG for privacy-sensitive decisions
-_secure_random = secrets.SystemRandom()
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 import numpy as np
+
+# Use cryptographically secure RNG for privacy-sensitive decisions
+_secure_random = secrets.SystemRandom()
 
 # =============================================================================
 # CONSTANTS
@@ -119,7 +118,7 @@ SENSITIVE_DOMAINS: frozenset[str] = frozenset(
 # =============================================================================
 
 
-class PrivacyLevel(str, Enum):
+class PrivacyLevel(StrEnum):
     """Pre-defined privacy levels with recommended parameters."""
 
     MAXIMUM = "maximum"  # ε=0.1, δ=10⁻⁸ - Medical, financial, legal
@@ -128,14 +127,14 @@ class PrivacyLevel(str, Enum):
     RELAXED = "relaxed"  # ε=2.0, δ=10⁻⁵ - Low-sensitivity
 
 
-class NoiseMechanism(str, Enum):
+class NoiseMechanism(StrEnum):
     """Noise mechanism for differential privacy."""
 
     LAPLACE = "laplace"  # Pure DP (δ=0)
     GAUSSIAN = "gaussian"  # Approximate DP (δ>0), better for composition
 
 
-class BudgetCheckResult(str, Enum):
+class BudgetCheckResult(StrEnum):
     """Result of privacy budget check."""
 
     OK = "ok"
@@ -490,7 +489,7 @@ class DatabaseBudgetStore:
         self._sync_mode = False
 
     @classmethod
-    def from_sync_connection(cls, conn: Any) -> "DatabaseBudgetStore":
+    def from_sync_connection(cls, conn: Any) -> DatabaseBudgetStore:
         """Create store from a synchronous connection (psycopg2 or similar).
 
         Args:
@@ -631,7 +630,7 @@ class DatabaseBudgetStore:
             return self._load_sync(federation_id)
         else:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # Can't await here, return None and rely on async usage
                 return None
             except RuntimeError:
@@ -718,7 +717,8 @@ class DatabaseBudgetStore:
         if hasattr(row, "get"):
             get = row.get
         else:
-            get = lambda k, d=None: getattr(row, k, d)
+            def get(k, d=None):
+                return getattr(row, k, d)
 
         # Parse JSONB fields
         topic_budgets = get("topic_budgets", {})
@@ -761,7 +761,7 @@ class DatabaseBudgetStore:
             return self._delete_sync(federation_id)
         else:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 return False  # Can't determine in non-async context
             except RuntimeError:
                 return asyncio.run(self.delete_async(federation_id))
@@ -801,7 +801,7 @@ class DatabaseBudgetStore:
             return self._list_federations_sync()
         else:
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 return []  # Can't determine in non-async context
             except RuntimeError:
                 return asyncio.run(self.list_federations_async())

@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 from ..core.db import get_cursor
-from .models import NodeTrust, ThreatLevel
+from .models import ThreatLevel
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ THREAT_THRESHOLDS = {
 
 class ThreatDetector:
     """Analyzes node behavior and assesses threat levels.
-    
+
     Responsible for:
     - Processing behavioral signals
     - Computing threat scores
@@ -41,7 +41,7 @@ class ThreatDetector:
 
     def __init__(self, registry: Any) -> None:
         """Initialize ThreatDetector.
-        
+
         Args:
             registry: TrustRegistry instance for data access
         """

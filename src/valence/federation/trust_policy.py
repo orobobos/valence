@@ -17,11 +17,11 @@ from uuid import UUID
 from ..core.db import get_cursor
 from .models import (
     NodeTrust,
+    TrustConcentrationReport,
+    TrustConcentrationWarning,
     TrustPhase,
     TrustPreference,
     WarningSeverity,
-    TrustConcentrationWarning,
-    TrustConcentrationReport,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ CONCENTRATION_THRESHOLDS = {
 
 class TrustPolicy:
     """Manages trust phase transitions and decay.
-    
+
     Responsible for:
     - Computing effective trust with user overrides
     - Applying time-based trust decay
@@ -93,7 +93,7 @@ class TrustPolicy:
         decay_min_threshold: float = DECAY_MIN_THRESHOLD,
     ) -> None:
         """Initialize TrustPolicy.
-        
+
         Args:
             registry: TrustRegistry instance for data access
             decay_half_life_days: Days for trust to decay by half
@@ -317,7 +317,7 @@ class TrustPolicy:
                 logger.info(f"Node {node_id} transitioned to phase {new_phase.value}: {reason}")
                 return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error transitioning node {node_id} to phase {new_phase.value}")
             return False
 
@@ -360,29 +360,29 @@ class TrustPolicy:
         thresholds: dict[str, float] | None = None,
     ) -> TrustConcentrationReport:
         """Check for trust concentration issues in the network.
-        
+
         Detects when trust is too concentrated in few nodes, which could
         indicate vulnerability to manipulation or single points of failure.
-        
+
         Args:
             thresholds: Optional custom thresholds (uses CONCENTRATION_THRESHOLDS by default)
-            
+
         Returns:
             TrustConcentrationReport with warnings and metrics
         """
         thresholds = thresholds or CONCENTRATION_THRESHOLDS
         warnings: list[TrustConcentrationWarning] = []
-        
+
         # Get all node trust data
         node_trusts: list[tuple[UUID, str | None, float]] = []  # (node_id, name, trust)
         total_nodes = 0
         active_nodes = 0
-        
+
         try:
             with get_cursor() as cur:
                 # Get all nodes with their trust data
                 cur.execute("""
-                    SELECT 
+                    SELECT
                         fn.id,
                         fn.name,
                         fn.status,
@@ -392,7 +392,7 @@ class TrustPolicy:
                     ORDER BY trust_score DESC
                 """)
                 rows = cur.fetchall()
-                
+
                 for row in rows:
                     total_nodes += 1
                     if row.get("status") != "unreachable":
@@ -402,7 +402,7 @@ class TrustPolicy:
                         row.get("name"),
                         float(row.get("trust_score", 0.1)),
                     ))
-                    
+
         except Exception as e:
             logger.warning(f"Error fetching trust data: {e}")
             # Return empty report on error
@@ -414,7 +414,7 @@ class TrustPolicy:
                 )],
                 analyzed_at=datetime.now(),
             )
-        
+
         # If no nodes, return empty report
         if not node_trusts:
             return TrustConcentrationReport(
@@ -422,31 +422,31 @@ class TrustPolicy:
                 active_nodes=0,
                 analyzed_at=datetime.now(),
             )
-        
+
         # Calculate total trust
         total_trust = sum(t for _, _, t in node_trusts)
-        
+
         # Sort by trust descending
         node_trusts.sort(key=lambda x: x[2], reverse=True)
-        
+
         # Calculate metrics
         top_node_id, top_node_name, top_node_trust = node_trusts[0]
         top_node_share = top_node_trust / total_trust if total_trust > 0 else 0.0
-        
+
         top_3_trust = sum(t for _, _, t in node_trusts[:3])
         top_3_share = top_3_trust / total_trust if total_trust > 0 else 0.0
-        
+
         # Count trusted sources (nodes with trust above threshold)
         min_trust_threshold = thresholds.get("min_trust_to_count", 0.1)
         trusted_sources = sum(1 for _, _, t in node_trusts if t >= min_trust_threshold)
-        
+
         # Calculate Gini coefficient for trust inequality
         gini = self._calculate_gini([t for _, _, t in node_trusts])
-        
+
         # Check for single node dominance
         single_warning = thresholds.get("single_node_warning", 0.30)
         single_critical = thresholds.get("single_node_critical", 0.50)
-        
+
         if top_node_share > single_critical:
             warnings.append(TrustConcentrationWarning(
                 warning_type="single_node_dominant",
@@ -477,11 +477,11 @@ class TrustPolicy:
                     "threshold": single_warning,
                 },
             ))
-        
+
         # Check for top 3 nodes dominance
         top_3_warning = thresholds.get("top_3_warning", 0.50)
         top_3_critical = thresholds.get("top_3_critical", 0.70)
-        
+
         if len(node_trusts) >= 3:
             if top_3_share > top_3_critical:
                 warnings.append(TrustConcentrationWarning(
@@ -515,10 +515,10 @@ class TrustPolicy:
                         "threshold": top_3_warning,
                     },
                 ))
-        
+
         # Check for too few trusted sources
         min_sources = int(thresholds.get("min_trusted_sources", 3))
-        
+
         if trusted_sources < min_sources:
             severity = WarningSeverity.CRITICAL if trusted_sources < 2 else WarningSeverity.WARNING
             warnings.append(TrustConcentrationWarning(
@@ -534,7 +534,7 @@ class TrustPolicy:
                     "min_recommended": min_sources,
                 },
             ))
-        
+
         return TrustConcentrationReport(
             warnings=warnings,
             total_nodes=total_nodes,
@@ -546,27 +546,27 @@ class TrustPolicy:
             gini_coefficient=gini,
             analyzed_at=datetime.now(),
         )
-    
+
     def _calculate_gini(self, values: list[float]) -> float | None:
         """Calculate Gini coefficient for a list of values.
-        
+
         Returns a value between 0 (perfect equality) and 1 (maximum inequality).
         Returns None if there are fewer than 2 values.
         """
         if len(values) < 2:
             return None
-        
+
         # Sort values
         sorted_values = sorted(values)
         n = len(sorted_values)
-        
+
         # Calculate Gini coefficient
         # G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n + 1) / n
         total = sum(sorted_values)
         if total == 0:
             return 0.0
-        
+
         weighted_sum = sum((i + 1) * x for i, x in enumerate(sorted_values))
         gini = (2 * weighted_sum) / (n * total) - (n + 1) / n
-        
+
         return max(0.0, min(1.0, gini))

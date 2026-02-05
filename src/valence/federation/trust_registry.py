@@ -16,12 +16,12 @@ from uuid import UUID
 
 from ..core.db import get_cursor
 from .models import (
-    FederationNode,
-    NodeTrust,
-    UserNodeTrust,
-    TrustPreference,
     AnnotationType,
     BeliefTrustAnnotation,
+    FederationNode,
+    NodeTrust,
+    TrustPreference,
+    UserNodeTrust,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class TrustRegistry:
     """Basic CRUD operations for trust data.
-    
+
     Responsible for:
     - Retrieving node trust records
     - Persisting trust updates
@@ -120,7 +120,7 @@ class TrustRegistry:
                     return NodeTrust.from_row(row)
                 return None
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error saving node trust for {node_trust.node_id}")
             return None
 
@@ -192,7 +192,7 @@ class TrustRegistry:
                     return UserNodeTrust.from_row(row)
                 return None
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error setting user preference for node {node_id}")
             return None
 
@@ -242,7 +242,7 @@ class TrustRegistry:
                     return BeliefTrustAnnotation.from_row(row)
                 return None
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error annotating belief {belief_id}")
             return None
 

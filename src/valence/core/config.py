@@ -6,7 +6,7 @@ This provides a single source of truth and consistent defaults.
 Usage:
     from valence.core.config import get_config
     config = get_config()
-    
+
     # Access settings
     db_host = config.db_host
     log_level = config.log_level
@@ -14,9 +14,7 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pydantic import Field

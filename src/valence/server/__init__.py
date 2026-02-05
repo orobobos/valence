@@ -16,8 +16,8 @@ Usage:
     valence-token revoke --client-id "my-client"
 """
 
+from .auth import TokenStore, get_token_store, verify_token
 from .config import ServerSettings, get_settings
-from .auth import TokenStore, verify_token, get_token_store
 
 __all__ = [
     "ServerSettings",

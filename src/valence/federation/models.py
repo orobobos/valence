@@ -6,21 +6,20 @@ trust relationships, and aggregation results.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from ..core.confidence import DimensionalConfidence
-
 
 # =============================================================================
 # ENUMS
 # =============================================================================
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     """Status of a federation node."""
     DISCOVERED = "discovered"    # Found but not yet connected
     CONNECTING = "connecting"    # Connection in progress
@@ -29,7 +28,7 @@ class NodeStatus(str, Enum):
     UNREACHABLE = "unreachable"  # Cannot connect
 
 
-class TrustPhase(str, Enum):
+class TrustPhase(StrEnum):
     """Trust establishment phase for a node."""
     OBSERVER = "observer"        # Days 1-7: Read-only
     CONTRIBUTOR = "contributor"  # Days 7-30: Limited contribution
@@ -37,7 +36,7 @@ class TrustPhase(str, Enum):
     ANCHOR = "anchor"            # Earned: Can vouch for others
 
 
-class Visibility(str, Enum):
+class Visibility(StrEnum):
     """Visibility level for beliefs."""
     PRIVATE = "private"          # Never shared
     TRUSTED = "trusted"          # Shared with explicit trust
@@ -45,14 +44,14 @@ class Visibility(str, Enum):
     PUBLIC = "public"            # Discoverable by anyone
 
 
-class ShareLevel(str, Enum):
+class ShareLevel(StrEnum):
     """What information is shared with a belief."""
     BELIEF_ONLY = "belief_only"          # Content + confidence only
     WITH_PROVENANCE = "with_provenance"  # + source information
     FULL = "full"                        # + user attribution, metadata
 
 
-class SyncStatus(str, Enum):
+class SyncStatus(StrEnum):
     """Status of sync with a peer node."""
     IDLE = "idle"
     SYNCING = "syncing"
@@ -60,7 +59,7 @@ class SyncStatus(str, Enum):
     PAUSED = "paused"
 
 
-class ThreatLevel(str, Enum):
+class ThreatLevel(StrEnum):
     """Threat level for a node's behavior."""
     NONE = "none"
     LOW = "low"           # Increased scrutiny
@@ -69,7 +68,7 @@ class ThreatLevel(str, Enum):
     CRITICAL = "critical"  # Functional isolation
 
 
-class ResolutionProposal(str, Enum):
+class ResolutionProposal(StrEnum):
     """Proposed resolution for a tension."""
     SUPERSEDE_A = "supersede_a"
     SUPERSEDE_B = "supersede_b"
@@ -78,7 +77,7 @@ class ResolutionProposal(str, Enum):
     REFER_TO_AUTHORITY = "refer_to_authority"
 
 
-class ResolutionStatus(str, Enum):
+class ResolutionStatus(StrEnum):
     """Status of a tension resolution."""
     PROPOSED = "proposed"
     VOTING = "voting"
@@ -87,7 +86,7 @@ class ResolutionStatus(str, Enum):
     IMPLEMENTED = "implemented"
 
 
-class ConsensusMethod(str, Enum):
+class ConsensusMethod(StrEnum):
     """Method for reaching consensus on resolutions."""
     TRUST_WEIGHTED = "trust_weighted"
     UNANIMOUS = "unanimous"
@@ -95,21 +94,21 @@ class ConsensusMethod(str, Enum):
     AUTHORITY = "authority"
 
 
-class Vote(str, Enum):
+class Vote(StrEnum):
     """Vote on a resolution."""
     SUPPORT = "support"
     OPPOSE = "oppose"
     ABSTAIN = "abstain"
 
 
-class WarningSeverity(str, Enum):
+class WarningSeverity(StrEnum):
     """Severity level for trust concentration warnings."""
     INFO = "info"           # Informational, no action needed
     WARNING = "warning"     # Should be addressed
     CRITICAL = "critical"   # Urgent, requires attention
 
 
-class TrustPreference(str, Enum):
+class TrustPreference(StrEnum):
     """User preference for node trust."""
     BLOCKED = "blocked"
     REDUCED = "reduced"
@@ -118,7 +117,7 @@ class TrustPreference(str, Enum):
     ANCHOR = "anchor"
 
 
-class AnnotationType(str, Enum):
+class AnnotationType(StrEnum):
     """Type of belief trust annotation."""
     CORROBORATION = "corroboration"
     DISPUTE = "dispute"
@@ -1082,7 +1081,7 @@ class AggregationResult:
 @dataclass
 class TrustConcentrationWarning:
     """Warning about trust concentration in the network.
-    
+
     Detects when trust is too concentrated in few nodes, which could
     indicate vulnerability to manipulation or single points of failure.
     """
@@ -1091,15 +1090,15 @@ class TrustConcentrationWarning:
     severity: WarningSeverity
     message: str
     details: dict[str, Any] = field(default_factory=dict)
-    
+
     # Context
     node_id: UUID | None = None  # Node ID if warning is about specific node
     node_name: str | None = None  # Human-readable node name
     trust_share: float | None = None  # Trust share percentage (0-1)
-    
+
     # Recommendations
     recommendation: str | None = None
-    
+
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1130,23 +1129,23 @@ class TrustConcentrationWarning:
 @dataclass
 class TrustConcentrationReport:
     """Full report of trust concentration analysis.
-    
+
     Includes all warnings and network health metrics.
     """
 
     warnings: list[TrustConcentrationWarning] = field(default_factory=list)
-    
+
     # Network metrics
     total_nodes: int = 0
     active_nodes: int = 0
     total_trust: float = 0.0
-    
+
     # Concentration metrics
     top_node_share: float = 0.0  # Trust share of top node
     top_3_share: float = 0.0  # Trust share of top 3 nodes
     trusted_sources: int = 0  # Number of nodes with trust > 0.1
     gini_coefficient: float | None = None  # Inequality measure (0 = equal, 1 = max inequality)
-    
+
     # Analysis timestamp
     analyzed_at: datetime = field(default_factory=datetime.now)
 

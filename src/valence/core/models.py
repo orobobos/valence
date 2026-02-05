@@ -6,16 +6,16 @@ They use dataclasses for simplicity and can be serialized to/from JSON.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from .confidence import DimensionalConfidence
 
 
-class BeliefStatus(str, Enum):
+class BeliefStatus(StrEnum):
     """Status of a belief."""
     ACTIVE = "active"
     SUPERSEDED = "superseded"
@@ -23,7 +23,7 @@ class BeliefStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     """Types of entities."""
     PERSON = "person"
     ORGANIZATION = "organization"
@@ -34,7 +34,7 @@ class EntityType(str, Enum):
     SERVICE = "service"
 
 
-class EntityRole(str, Enum):
+class EntityRole(StrEnum):
     """Role of an entity in a belief."""
     SUBJECT = "subject"
     OBJECT = "object"
@@ -42,14 +42,14 @@ class EntityRole(str, Enum):
     SOURCE = "source"
 
 
-class SessionStatus(str, Enum):
+class SessionStatus(StrEnum):
     """Status of a session."""
     ACTIVE = "active"
     COMPLETED = "completed"
     ABANDONED = "abandoned"
 
 
-class Platform(str, Enum):
+class Platform(StrEnum):
     """Supported platforms."""
     CLAUDE_CODE = "claude-code"
     MATRIX = "matrix"
@@ -57,14 +57,14 @@ class Platform(str, Enum):
     SLACK = "slack"
 
 
-class ExchangeRole(str, Enum):
+class ExchangeRole(StrEnum):
     """Role in a conversation exchange."""
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
 
 
-class PatternStatus(str, Enum):
+class PatternStatus(StrEnum):
     """Status of a behavioral pattern."""
     EMERGING = "emerging"
     ESTABLISHED = "established"
@@ -72,7 +72,7 @@ class PatternStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class TensionType(str, Enum):
+class TensionType(StrEnum):
     """Types of tensions between beliefs."""
     CONTRADICTION = "contradiction"
     TEMPORAL_CONFLICT = "temporal_conflict"
@@ -80,7 +80,7 @@ class TensionType(str, Enum):
     PARTIAL_OVERLAP = "partial_overlap"
 
 
-class TensionSeverity(str, Enum):
+class TensionSeverity(StrEnum):
     """Severity of a tension."""
     LOW = "low"
     MEDIUM = "medium"
@@ -88,7 +88,7 @@ class TensionSeverity(str, Enum):
     CRITICAL = "critical"
 
 
-class TensionStatus(str, Enum):
+class TensionStatus(StrEnum):
     """Status of a tension."""
     DETECTED = "detected"
     INVESTIGATING = "investigating"
