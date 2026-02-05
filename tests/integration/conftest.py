@@ -220,17 +220,17 @@ def seed_entities(db_conn_committed) -> list[dict]:
     entities_data = [
         {
             "name": "Python",
-            "entity_type": "programming_language",
+            "type": "programming_language",
             "aliases": ["python3", "py"],
         },
         {
             "name": "PostgreSQL",
-            "entity_type": "database",
+            "type": "database",
             "aliases": ["postgres", "pg"],
         },
         {
             "name": "Claude",
-            "entity_type": "ai_assistant",
+            "type": "ai_assistant",
             "aliases": ["claude-3", "anthropic-claude"],
         },
     ]
@@ -240,13 +240,13 @@ def seed_entities(db_conn_committed) -> list[dict]:
         for entity in entities_data:
             cur.execute(
                 """
-                INSERT INTO entities (name, entity_type, aliases)
+                INSERT INTO entities (name, type, aliases)
                 VALUES (%s, %s, %s)
-                RETURNING id, name, entity_type, aliases, created_at
+                RETURNING id, name, type, aliases, created_at
             """,
                 (
                     entity["name"],
-                    entity["entity_type"],
+                    entity["type"],
                     entity["aliases"],
                 ),
             )

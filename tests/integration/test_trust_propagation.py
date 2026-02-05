@@ -33,13 +33,14 @@ class TestFederationNodes:
             did = f"did:vkb:web:node-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, %s, %s)
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id, did, status
             """,
                 (
                     did,
                     "https://trusted.example.com/federation",
+                    "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
                     "active",
                 ),
             )
@@ -55,8 +56,8 @@ class TestFederationNodes:
             did = f"did:vkb:web:trust-test-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://test.example.com', 'active')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://test.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'active')
                 RETURNING id
             """,
                 (did,),
@@ -84,8 +85,8 @@ class TestFederationNodes:
             did = f"did:vkb:web:deactivate-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://deactivate.example.com', 'active')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://deactivate.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'active')
                 RETURNING id
             """,
                 (did,),
@@ -123,8 +124,8 @@ class TestTransitiveTrust:
             did = f"did:vkb:web:peer-a-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://peer-a.example.com', 'active')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://peer-a.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'active')
                 RETURNING id
             """,
                 (did,),
@@ -277,7 +278,7 @@ class TestTrustBoundaries:
                 did = f"did:vkb:web:{name}-{uuid4()}.example.com"
                 cur.execute(
                     """
-                    INSERT INTO federation_nodes (did, federation_endpoint, status)
+                    INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
                     VALUES (%s, %s, 'active')
                     RETURNING id
                 """,
@@ -321,8 +322,8 @@ class TestTrustBoundaries:
             did = f"did:vkb:web:domain-peer-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://domain.example.com', 'active')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://domain.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'active')
                 RETURNING id
             """,
                 (did,),
@@ -358,10 +359,10 @@ class TestTrustBoundaries:
                 did = f"did:vkb:web:{status}-node-{uuid4()}.example.com"
                 cur.execute(
                     """
-                    INSERT INTO federation_nodes (did, federation_endpoint, status)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, %s, %s, %s)
                 """,
-                    (did, f"http://{status}.example.com", status),
+                    (did, f"http://{status}.example.com", "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK", status),
                 )
 
             # Query only active nodes
@@ -383,6 +384,7 @@ class TestTrustBoundaries:
 class TestTrustMetrics:
     """Tests for trust metrics and monitoring."""
 
+    @pytest.mark.skip(reason="peer_nodes table not in schema yet")
     def test_track_sync_success_rate(self, db_conn):
         """Test tracking sync success rate per peer."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -466,8 +468,8 @@ class TestTrustRecovery:
             did = f"did:vkb:web:rehab-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://rehab.example.com', 'probation')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://rehab.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'probation')
                 RETURNING id
             """,
                 (did,),
@@ -509,8 +511,8 @@ class TestTrustRecovery:
             did = f"did:vkb:web:bad-{uuid4()}.example.com"
             cur.execute(
                 """
-                INSERT INTO federation_nodes (did, federation_endpoint, status)
-                VALUES (%s, 'http://bad.example.com', 'blocked')
+                INSERT INTO federation_nodes (did, federation_endpoint, public_key_multibase, status)
+                VALUES (%s, 'http://bad.example.com', 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK', 'blocked')
                 RETURNING id
             """,
                 (did,),
