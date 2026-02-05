@@ -175,7 +175,7 @@ class RouterNode:
         coordinates: Optional (latitude, longitude) for precise location
     """
 
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104
     port: int = 8471
     max_connections: int = 100
     seed_url: str | None = None

@@ -778,7 +778,9 @@ async def async_count_rows(table_name: str) -> int:
         # asyncpg doesn't have psycopg2's sql.Identifier, so we use double-quoted
         # identifiers. The allowlist validation above ensures no injection is possible.
         safe_table = table_name.replace('"', '""')  # Escape any quotes (defensive)
-        count = await conn.fetchval(f'SELECT COUNT(*) FROM "{safe_table}"')
+        count = await conn.fetchval(
+            f'SELECT COUNT(*) FROM "{safe_table}"'
+        )  # nosec B608
         return count or 0
 
 

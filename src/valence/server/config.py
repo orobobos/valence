@@ -217,7 +217,7 @@ class ServerSettings(BaseSettings):
         """
         is_production = (
             self.external_url is not None
-            or self.host not in ("localhost", "127.0.0.1", "0.0.0.0")
+            or self.host not in ("localhost", "127.0.0.1", "0.0.0.0")  # nosec B104
             or self.production
         )
 

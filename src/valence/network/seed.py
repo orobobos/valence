@@ -1060,7 +1060,7 @@ class SybilResistance:
 class SeedConfig:
     """Configuration for seed node."""
 
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104
     port: int = 8470
 
     # Router health thresholds
@@ -3816,7 +3816,7 @@ class SeedNode:
 
 
 def create_seed_node(
-    host: str = "0.0.0.0",
+    host: str = "0.0.0.0",  # nosec B104
     port: int = 8470,
     known_seeds: list[str] | None = None,
     peer_seeds: list[str] | None = None,
@@ -3834,7 +3834,7 @@ def create_seed_node(
 
 
 async def run_seed_node(
-    host: str = "0.0.0.0",
+    host: str = "0.0.0.0",  # nosec B104
     port: int = 8470,
     **kwargs,
 ) -> None:

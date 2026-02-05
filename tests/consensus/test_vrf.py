@@ -18,8 +18,8 @@ import pytest
 # Check if cryptography is available
 try:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-        Ed25519PrivateKey,
-    )  # noqa: F401
+        Ed25519PrivateKey,  # noqa: F401
+    )
 
     CRYPTO_AVAILABLE = True
 except ImportError:

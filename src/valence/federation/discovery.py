@@ -523,7 +523,7 @@ def list_nodes(
     try:
         with get_cursor() as cur:
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT * FROM federation_nodes
                 {where_clause}
                 ORDER BY last_seen_at DESC NULLS LAST

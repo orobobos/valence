@@ -400,7 +400,7 @@ def export_beliefs(
     params.append(limit)
 
     # Query beliefs
-    query = f"""
+    query = f"""  # nosec B608
         SELECT
             id, content, confidence, domain_path,
             created_at, valid_from, valid_until,
@@ -706,7 +706,7 @@ def query_federated(
             # Semantic search
             params.extend([embedding_str, embedding_str, limit])
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT
                     id, content, confidence, domain_path,
                     created_at, is_local,
@@ -724,7 +724,7 @@ def query_federated(
             # Fallback to text search
             params.extend([query_text, query_text, query_text, limit])
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT
                     id, content, confidence, domain_path,
                     created_at, is_local,

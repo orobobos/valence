@@ -195,7 +195,7 @@ Environment Variables:
     )
     start_parser.add_argument(
         "--host",
-        default="0.0.0.0",
+        default="0.0.0.0",  # nosec B104
         help="Bind address (default: 0.0.0.0)",
     )
     start_parser.add_argument(

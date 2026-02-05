@@ -325,6 +325,9 @@ from .sync import (
     update_sync_state,
     update_vector_clock,
 )
+from .threat_detector import (
+    THREAT_THRESHOLDS,
+)
 from .tools import (
     FEDERATION_TOOL_HANDLERS,
     FEDERATION_TOOLS,
@@ -346,9 +349,6 @@ from .trust_policy import (
     CONCENTRATION_THRESHOLDS,
     PHASE_TRANSITION,
     PREFERENCE_MULTIPLIERS,
-)
-from .threat_detector import (
-    THREAT_THRESHOLDS,
 )
 from .trust_propagation import (
     DEFAULT_APPLY_RING_COEFFICIENT,

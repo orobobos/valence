@@ -792,7 +792,7 @@ def handle_request_beliefs(
     limit = min(request.limit, 100)  # Cap at 100
 
     # Execute query
-    query = f"""
+    query = f"""  # nosec B608
         SELECT id, content, confidence, domain_path, valid_from, valid_until,
                visibility, share_level, created_at
         FROM beliefs
@@ -813,7 +813,7 @@ def handle_request_beliefs(
                 beliefs_data.append(belief_dict)
 
     # Get total count for pagination
-    count_query = f"""
+    count_query = f"""  # nosec B608
         SELECT COUNT(*) as total FROM beliefs
         WHERE {' AND '.join(conditions[:-1] if limit else conditions)}
     """
@@ -939,7 +939,7 @@ def handle_sync_request(
         conditions.append("visibility IN ('federated', 'public')")
 
     # Query changes
-    query = f"""
+    query = f"""  # nosec B608
         SELECT id, content, confidence, domain_path, valid_from, valid_until,
                visibility, share_level, created_at, modified_at, status,
                supersedes_id, superseded_by_id

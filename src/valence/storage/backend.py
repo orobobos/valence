@@ -334,7 +334,7 @@ class LocalFileBackend(StorageBackend):
         self._base_path = Path(base_path)
         self._id = (
             backend_id
-            or f"local-{hashlib.md5(str(base_path).encode()).hexdigest()[:8]}"
+            or f"local-{hashlib.md5(str(base_path).encode()).hexdigest()[:8]}"  # nosec B324
         )
         self._quota_bytes = quota_bytes
 

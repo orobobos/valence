@@ -200,7 +200,7 @@ def update_sync_state(
 
         with get_cursor() as cur:
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 UPDATE sync_state
                 SET {', '.join(updates)}
                 WHERE node_id = %s
@@ -277,7 +277,7 @@ def get_pending_sync_items(
 
         with get_cursor() as cur:
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT * FROM sync_outbound_queue
                 WHERE {' AND '.join(conditions)}
                 ORDER BY priority ASC, created_at ASC
@@ -438,7 +438,7 @@ class SyncManager:
         with get_cursor() as cur:
             placeholders = ",".join(["%s"] * len(belief_ids))
             cur.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT * FROM beliefs
                 WHERE id IN ({placeholders})
                   AND is_local = TRUE

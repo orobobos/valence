@@ -304,7 +304,8 @@ def get_most_corroborated_beliefs(
         params.append(limit)
 
         with get_cursor() as cur:
-            cur.execute(
+            # Query is safe: conditions built from validated column names
+            cur.execute(  # nosec B608
                 f"""
                 SELECT
                     id,
