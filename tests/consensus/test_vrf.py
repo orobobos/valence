@@ -679,10 +679,7 @@ class TestValidatorSelectionSimulation:
 
         # Compute and sort tickets
         def get_ordering():
-            tickets = [
-                (vrf.prove(epoch_seed).ticket_as_int(), i)
-                for i, vrf in enumerate(validators)
-            ]
+            tickets = [(vrf.prove(epoch_seed).ticket_as_int(), i) for i, vrf in enumerate(validators)]
             tickets.sort()
             return [idx for _, idx in tickets]
 
