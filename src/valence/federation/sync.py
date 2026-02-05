@@ -542,7 +542,7 @@ class SyncManager:
         # Send to node
         try:
             url = f"{federation_endpoint}/beliefs"
-            request_body = {
+            request_body: dict[str, Any] = {
                 "type": "SHARE_BELIEF",
                 "request_id": str(uuid4()),
                 "beliefs": beliefs_data,
@@ -726,7 +726,7 @@ class SyncManager:
             url = f"{federation_endpoint}/sync"
             since = last_sync or (datetime.now() - timedelta(days=7))
 
-            request_body = {
+            request_body: dict[str, Any] = {
                 "type": "SYNC_REQUEST",
                 "request_id": str(uuid4()),
                 "since": since.isoformat(),
