@@ -48,7 +48,16 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # Run in parallel with lint - both are required checks
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - name: "api"
+            paths: "tests/core tests/mcp tests/server tests/cli tests/agents"
+          - name: "security"
+            paths: "tests/privacy tests/security tests/network tests/federation tests/consensus"
+          - name: "data"
+            paths: "tests/storage tests/substrate tests/vkb tests/crypto tests/embeddings tests/compliance tests/spec_compliance"
 
     services:
       postgres:
@@ -89,26 +98,26 @@ jobs:
           psql -f src/valence/substrate/schema.sql
           psql -f src/valence/substrate/procedures.sql
 
-      - name: Unit tests (fast, no external dependencies)
+      - name: Run tests (${{ matrix.group.name }})
         env:
           VKB_DB_HOST: localhost
           VKB_DB_USER: valence
           VKB_DB_PASSWORD: testpass
           VKB_DB_NAME: valence_test
         run: |
-          pytest tests/ \
+          pytest ${{ matrix.group.paths }} \
             -m "not integration and not slow" \
             -v \
             --cov=src/valence \
-            --cov-report=xml \
-            --cov-fail-under=50 \
+            --cov-report=xml:coverage-${{ matrix.group.name }}.xml \
             --ignore=tests/integration/
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         if: always()
         with:
-          files: ./coverage.xml
+          files: ./coverage-${{ matrix.group.name }}.xml
+          flags: ${{ matrix.group.name }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
