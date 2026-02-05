@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.requests import Request
-
 from valence.server.federation_endpoints import (
     require_did_signature,
     verify_did_signature,
@@ -121,7 +120,7 @@ class TestDIDSignatureVerification:
 
         # Mock the DID resolution
         mock_did_doc = MagicMock()
-        mock_did_doc.get_public_key.return_value = keypair.public_key_multibase
+        mock_did_doc.public_key_multibase = keypair.public_key_multibase
 
         with patch("valence.federation.identity.parse_did"):
             with patch("valence.federation.identity.resolve_did_sync") as mock_resolve:
@@ -156,7 +155,10 @@ class TestRequireDIDSignatureDecorator:
 
             assert response.status_code == 401
             body = json.loads(response.body)
-            assert "DID signature verification failed" in body["error"]
+            # Response format: {"error": {"code": ..., "message": ...}, "success": false}
+            error_info = body.get("error", body)
+            error_msg = error_info.get("message", "") if isinstance(error_info, dict) else str(error_info)
+            assert "DID signature verification failed" in error_msg
 
     @pytest.mark.asyncio
     async def test_decorator_allows_valid_requests(self):
@@ -194,15 +196,13 @@ class TestRequireDIDSignatureDecorator:
         mock_request.state = MagicMock()
 
         mock_did_doc = MagicMock()
-        mock_did_doc.get_public_key.return_value = keypair.public_key_multibase
+        mock_did_doc.public_key_multibase = keypair.public_key_multibase
 
         with patch("valence.server.federation_endpoints.get_settings") as mock_settings:
             mock_settings.return_value.federation_enabled = True
 
             with patch("valence.federation.identity.parse_did"):
-                with patch(
-                    "valence.federation.identity.resolve_did_sync"
-                ) as mock_resolve:
+                with patch("valence.federation.identity.resolve_did_sync") as mock_resolve:
                     mock_resolve.return_value = mock_did_doc
 
                     response = await test_handler(mock_request)
@@ -227,7 +227,10 @@ class TestRequireDIDSignatureDecorator:
 
             assert response.status_code == 404
             body = json.loads(response.body)
-            assert "Federation not enabled" in body["error"]
+            # Response format: {"error": {"code": ..., "message": ...}, "success": false}
+            error_info = body.get("error", body)
+            error_msg = error_info.get("message", "") if isinstance(error_info, dict) else str(error_info)
+            assert "Federation not enabled" in error_msg
 
 
 class TestFederationEndpointSecurity:
@@ -245,10 +248,7 @@ class TestFederationEndpointSecurity:
 
         # The actual test is that these functions don't check for DID signature
         # We can verify by checking they don't have the wrapper's behavior
-        assert (
-            not hasattr(vfp_node_metadata, "__wrapped__")
-            or vfp_node_metadata.__name__ == "vfp_node_metadata"
-        )
+        assert not hasattr(vfp_node_metadata, "__wrapped__") or vfp_node_metadata.__name__ == "vfp_node_metadata"
 
     def test_protocol_endpoint_requires_auth(self):
         """Protocol endpoint should require DID signature."""
@@ -283,9 +283,7 @@ class TestFederationEndpointSecurity:
         ]
 
         for handler in post_handlers:
-            assert hasattr(
-                handler, "__wrapped__"
-            ), f"{handler.__name__} should be decorated with @require_did_signature"
+            assert hasattr(handler, "__wrapped__"), f"{handler.__name__} should be decorated with @require_did_signature"
 
 
 class TestReplayProtection:

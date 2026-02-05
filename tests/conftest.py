@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from valence.core.config import clear_config_cache
 
 # ============================================================================
 # Environment Fixtures
@@ -25,6 +26,9 @@ def clean_env(monkeypatch):
     for key in list(os.environ.keys()):
         if any(key.startswith(prefix) for prefix in env_prefixes):
             monkeypatch.delenv(key, raising=False)
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
@@ -35,6 +39,9 @@ def env_with_db_vars(monkeypatch):
     monkeypatch.setenv("VKB_DB_NAME", "valence_test")
     monkeypatch.setenv("VKB_DB_USER", "valence")
     monkeypatch.setenv("VKB_DB_PASSWORD", "testpass")
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
@@ -42,12 +49,18 @@ def env_without_db_vars(monkeypatch):
     """Remove database environment variables."""
     for var in ["VKB_DB_HOST", "VKB_DB_NAME", "VKB_DB_USER", "VKB_DB_PASSWORD"]:
         monkeypatch.delenv(var, raising=False)
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 @pytest.fixture
 def env_with_openai_key(monkeypatch):
     """Set up OpenAI API key."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-api-key-12345")
+    clear_config_cache()
+    yield
+    clear_config_cache()
 
 
 # ============================================================================
@@ -149,9 +162,7 @@ def mock_psycopg2_pool():
     mock_pool.putconn = MagicMock()
     mock_pool.closeall = MagicMock()
 
-    with patch(
-        "valence.core.db.psycopg2_pool.ThreadedConnectionPool"
-    ) as mock_pool_class:
+    with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
         mock_pool_class.return_value = mock_pool
         yield {
             "pool_class": mock_pool_class,
@@ -366,9 +377,7 @@ def tension_row_factory():
 def source_row_factory():
     """Factory for creating source database rows."""
 
-    def factory(
-        id: UUID | None = None, type: str = "conversation", **kwargs
-    ) -> dict[str, Any]:
+    def factory(id: UUID | None = None, type: str = "conversation", **kwargs) -> dict[str, Any]:
         return {
             "id": id or uuid4(),
             "type": type,
@@ -397,9 +406,7 @@ def mock_openai():
 
         # Mock embedding response
         mock_embedding = MagicMock()
-        mock_embedding.embedding = [
-            0.1
-        ] * 1536  # Default dimension for text-embedding-3-small
+        mock_embedding.embedding = [0.1] * 1536  # Default dimension for text-embedding-3-small
         mock_response = MagicMock()
         mock_response.data = [mock_embedding]
         mock_client.embeddings.create.return_value = mock_response
@@ -442,9 +449,7 @@ def mock_mcp_server():
 def mock_stdio_server():
     """Mock MCP stdio server."""
     with patch("mcp.server.stdio.stdio_server") as mock_stdio:
-        mock_stdio.return_value.__aenter__ = AsyncMock(
-            return_value=(MagicMock(), MagicMock())
-        )
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
         mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
         yield mock_stdio
 
