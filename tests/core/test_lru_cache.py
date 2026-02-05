@@ -327,16 +327,17 @@ class TestIntegration:
         assert "router_0" not in cache
         assert "router_9" in cache
 
-        # Accessing router_5 should keep it alive
+        # Accessing router_5 makes it most recent
         _ = cache["router_5"]
 
-        # Add more routers
-        for i in range(10, 15):
+        # Add 4 more routers (not 5 - that would evict router_5)
+        for i in range(10, 14):
             router_id = f"router_{i}"
             cache[router_id] = {"id": router_id}
 
-        # router_5 should still be there (was accessed)
+        # router_5 should still be there (was accessed, only 4 new items added)
         assert "router_5" in cache
+        assert len(cache) == 5
 
     def test_failure_events_pattern(self):
         """Test pattern used by _failure_events in node.py."""
