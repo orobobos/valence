@@ -12,7 +12,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
+from valence.core.config import clear_config_cache
 from valence.embeddings.service import (
     EmbeddingProvider,
     generate_embedding,
@@ -41,34 +41,54 @@ class TestGetEmbeddingProvider:
         with patch.dict(os.environ, {}, clear=True):
             # Remove VALENCE_EMBEDDING_PROVIDER if set
             os.environ.pop("VALENCE_EMBEDDING_PROVIDER", None)
-            provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.LOCAL
+            clear_config_cache()
+            try:
+                provider = get_embedding_provider()
+                assert provider == EmbeddingProvider.LOCAL
+            finally:
+                clear_config_cache()
 
     def test_openai_from_env(self):
         """Should detect OpenAI from env."""
         with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": "openai"}):
-            provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.OPENAI
+            clear_config_cache()
+            try:
+                provider = get_embedding_provider()
+                assert provider == EmbeddingProvider.OPENAI
+            finally:
+                clear_config_cache()
 
     def test_local_from_env(self):
         """Should detect local from env."""
         with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": "local"}):
-            provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.LOCAL
+            clear_config_cache()
+            try:
+                provider = get_embedding_provider()
+                assert provider == EmbeddingProvider.LOCAL
+            finally:
+                clear_config_cache()
 
     def test_case_insensitive(self):
         """Should handle case variations."""
         test_cases = ["LOCAL", "Local", "LOCAL"]
         for value in test_cases:
             with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": value}):
-                provider = get_embedding_provider()
-                assert provider == EmbeddingProvider.LOCAL
+                clear_config_cache()
+                try:
+                    provider = get_embedding_provider()
+                    assert provider == EmbeddingProvider.LOCAL
+                finally:
+                    clear_config_cache()
 
     def test_unknown_defaults_to_local(self):
         """Unknown provider should default to LOCAL with warning."""
         with patch.dict(os.environ, {"VALENCE_EMBEDDING_PROVIDER": "unknown-provider"}):
-            provider = get_embedding_provider()
-            assert provider == EmbeddingProvider.LOCAL
+            clear_config_cache()
+            try:
+                provider = get_embedding_provider()
+                assert provider == EmbeddingProvider.LOCAL
+            finally:
+                clear_config_cache()
 
 
 class TestLocalEmbedding:
@@ -78,7 +98,6 @@ class TestLocalEmbedding:
     def mock_local_model(self):
         """Mock the local model to avoid loading it in tests."""
         import numpy as np
-
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()
@@ -126,7 +145,6 @@ class TestGenerateEmbedding:
     def mock_local_model(self):
         """Mock local model."""
         import numpy as np
-
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()
@@ -194,9 +212,7 @@ class TestBeliefOptOut:
         """Tool schema should include opt_out_federation."""
         from valence.substrate.tools import SUBSTRATE_TOOLS
 
-        belief_create_tool = next(
-            t for t in SUBSTRATE_TOOLS if t.name == "belief_create"
-        )
+        belief_create_tool = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_create")
 
         schema = belief_create_tool.inputSchema
         assert "opt_out_federation" in schema["properties"]
