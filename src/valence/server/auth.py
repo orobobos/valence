@@ -166,7 +166,7 @@ class TokenStore:
         token = self._tokens.get(token_hash)
 
         if token is None:
-            logger.debug("Token not found")
+            logger.warning("Token not found")
             return None
 
         if token.is_expired():

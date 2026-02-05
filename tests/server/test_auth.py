@@ -217,6 +217,21 @@ class TestTokenStore:
         
         assert token is None
 
+    def test_verify_invalid_token_logs_warning(self, temp_token_file, caplog):
+        """Test that invalid token verification logs a warning."""
+        import logging
+        store = TokenStore(temp_token_file)
+        
+        with caplog.at_level(logging.WARNING, logger="valence.server.auth"):
+            store.verify("invalid-token")
+        
+        assert "Token not found" in caplog.text
+        # Verify it's at WARNING level, not DEBUG
+        assert any(
+            record.levelno == logging.WARNING and "Token not found" in record.message
+            for record in caplog.records
+        )
+
     def test_verify_with_bearer_prefix(self, temp_token_file):
         """Test verifying token with Bearer prefix."""
         store = TokenStore(temp_token_file)

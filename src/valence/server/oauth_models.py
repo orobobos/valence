@@ -299,7 +299,7 @@ def verify_access_token(token: str, expected_audience: str) -> dict[str, Any] | 
         )
         return payload
     except jwt.ExpiredSignatureError:
-        logger.debug("Token expired")
+        logger.warning("Token expired")
         return None
     except jwt.InvalidAudienceError:
         logger.debug("Invalid audience")

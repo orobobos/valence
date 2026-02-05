@@ -490,6 +490,35 @@ class TestAccessToken:
         
         assert payload is None
 
+    def test_verify_expired_token_logs_warning(self, monkeypatch, caplog):
+        """Test that expired token verification logs a warning."""
+        import logging
+        
+        # Create a token that's already expired
+        monkeypatch.setenv("VALENCE_OAUTH_JWT_SECRET", "test-secret-for-jwt-testing-must-be-at-least-32-chars")
+        monkeypatch.setenv("VALENCE_EXTERNAL_URL", "http://localhost:8420")
+        monkeypatch.setenv("VALENCE_OAUTH_ACCESS_TOKEN_EXPIRY", "-10")
+        
+        import valence.server.config as config_module
+        config_module._settings = None
+        
+        token = create_access_token(
+            client_id="client-id",
+            user_id="admin",
+            scope="mcp:tools",
+            audience="http://localhost:8420/mcp",
+        )
+        
+        with caplog.at_level(logging.WARNING, logger="valence.server.oauth_models"):
+            verify_access_token(token, "http://localhost:8420/mcp")
+        
+        assert "Token expired" in caplog.text
+        # Verify it's at WARNING level, not DEBUG
+        assert any(
+            record.levelno == logging.WARNING and "Token expired" in record.message
+            for record in caplog.records
+        )
+
     def test_verify_wrong_audience(self):
         """Test rejecting token with wrong audience."""
         token = create_access_token(
