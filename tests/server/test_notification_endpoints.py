@@ -220,7 +220,7 @@ class TestAcknowledgeNotificationEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "recipient_did" in data.get("message", data.get("error", ""))
+        assert "recipient_did" in data.get("error", {}).get("message", data.get("message", ""))
 
     def test_acknowledge_invalid_json(self, client, mock_sharing_service):
         """Invalid JSON returns 400."""
@@ -232,7 +232,7 @@ class TestAcknowledgeNotificationEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "JSON" in data.get("message", data.get("error", ""))
+        assert "JSON" in data.get("error", {}).get("message", data.get("message", ""))
 
     def test_acknowledge_permission_denied(self, client, mock_sharing_service):
         """Permission denied returns 403."""
