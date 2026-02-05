@@ -1,5 +1,19 @@
 """Valence Core - Shared primitives for the knowledge substrate."""
 
+from .lru_cache import (
+    LRUDict,
+    BoundedList,
+    get_cache_max_size,
+    DEFAULT_CACHE_MAX_SIZE,
+)
+from .config import (
+    FederationConfig,
+    FederationConfigProtocol,
+    get_federation_config,
+    get_federation_config_or_none,
+    set_federation_config,
+    clear_federation_config,
+)
 from .models import (
     Belief,
     Entity,
@@ -100,6 +114,18 @@ from .external_sources import (
 )
 
 __all__ = [
+    # LRU Cache (Issue #147)
+    "LRUDict",
+    "BoundedList",
+    "get_cache_max_size",
+    "DEFAULT_CACHE_MAX_SIZE",
+    # Config (Issue #135)
+    "FederationConfig",
+    "FederationConfigProtocol",
+    "get_federation_config",
+    "get_federation_config_or_none",
+    "set_federation_config",
+    "clear_federation_config",
     # Models
     "Belief",
     "Entity",
