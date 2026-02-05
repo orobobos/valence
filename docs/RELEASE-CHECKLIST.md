@@ -31,6 +31,49 @@ All releases MUST complete the following audits:
 - [ ] Zero mypy errors: `mypy src/`
 - [ ] No critical linting issues: `ruff check src/`
 - [ ] Integration tests passing: `pytest tests/integration/ --live-nodes`
+- [ ] Dead code cleanup (see below)
+
+### 5. Dead Code & Test Cleanup
+
+Before each release, identify and remove:
+
+**Dead Code Detection:**
+```bash
+# Find unused imports
+ruff check src/ --select F401
+
+# Find unused variables
+ruff check src/ --select F841
+
+# Find unreachable code
+ruff check src/ --select F811,F821
+
+# Optional: deeper analysis with vulture
+pip install vulture && vulture src/ --min-confidence 80
+```
+
+**Obsolete Test Detection:**
+```bash
+# Find tests referencing moved/deleted code (will fail on import)
+pytest --collect-only 2>&1 | grep -i "error\|import"
+
+# Find tests for deprecated features
+grep -r "@pytest.mark.skip\|@pytest.mark.xfail" tests/ 
+
+# Check test coverage gaps after refactors
+pytest --cov=src/valence --cov-report=term-missing
+```
+
+**Cleanup Criteria:**
+- Tests for methods that no longer exist → **DELETE** (if covered elsewhere)
+- Tests marked xfail for >1 release → **DELETE or FIX**
+- Code with no test coverage and no callers → **DELETE**
+- Commented-out code blocks → **DELETE**
+
+**After major refactors (god class splits, module moves):**
+1. Verify new location has equivalent test coverage
+2. Delete tests pointing at old locations
+3. Update imports in remaining tests
 
 ## Issue Resolution Gate
 
