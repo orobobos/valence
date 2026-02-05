@@ -108,8 +108,10 @@ jobs:
           pytest ${{ matrix.group.paths }} \
             -m "not integration and not slow" \
             -v \
+            --tb=short \
             --cov=src/valence \
             --cov-report=xml:coverage-${{ matrix.group.name }}.xml \
+            --cov-fail-under=30 \
             --ignore=tests/integration/
 
       - name: Upload coverage
