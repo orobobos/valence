@@ -324,6 +324,51 @@ from .verification import (
     get_verification_cache_stats,
 )
 
+from .domain_verification import (
+    # Enums (Issue #87 - Domain Verification)
+    DomainVerificationMethod,
+    ChallengeStatus as DomainChallengeStatus,
+    AttestationType,
+    # Data classes
+    VerificationEvidence,
+    DomainVerificationResult,
+    DomainChallenge,
+    DomainAttestation,
+    # Stores
+    ChallengeStore,
+    AttestationStore,
+    get_challenge_store,
+    get_attestation_store,
+    # External authority
+    ExternalAuthorityClient,
+    DefaultExternalAuthorityClient,
+    get_external_client,
+    set_external_client,
+    # Main functions
+    create_challenge,
+    check_challenge,
+    verify_domain,
+    # Attestation functions
+    create_attestation,
+    revoke_attestation,
+    # Batch operations
+    verify_multiple_domains as verify_domains_batch,
+    # Sync wrappers
+    create_challenge_sync,
+    check_challenge_sync,
+    verify_domain_sync,
+    # Utilities
+    cleanup_expired_challenges,
+    get_challenge_stats,
+    get_attestation_stats,
+    # Constants
+    CHALLENGE_TOKEN_LENGTH,
+    CHALLENGE_TTL_HOURS,
+    DNS_CHALLENGE_SUBDOMAIN,
+    CHALLENGE_PREFIX,
+    MIN_ATTESTATION_TRUST,
+)
+
 from .consent import (
     # Enums (Issue #89)
     CrossFederationPolicy,
@@ -574,6 +619,39 @@ __all__ = [
     "get_verification_cache",
     "invalidate_domain_cache",
     "get_verification_cache_stats",
+    # Domain Verification (Issue #87 - Enhanced domain verification)
+    "DomainVerificationMethod",
+    "DomainChallengeStatus",
+    "AttestationType",
+    "VerificationEvidence",
+    "DomainVerificationResult",
+    "DomainChallenge",
+    "DomainAttestation",
+    "ChallengeStore",
+    "AttestationStore",
+    "get_challenge_store",
+    "get_attestation_store",
+    "ExternalAuthorityClient",
+    "DefaultExternalAuthorityClient",
+    "get_external_client",
+    "set_external_client",
+    "create_challenge",
+    "check_challenge",
+    "verify_domain",
+    "create_attestation",
+    "revoke_attestation",
+    "verify_domains_batch",
+    "create_challenge_sync",
+    "check_challenge_sync",
+    "verify_domain_sync",
+    "cleanup_expired_challenges",
+    "get_challenge_stats",
+    "get_attestation_stats",
+    "CHALLENGE_TOKEN_LENGTH",
+    "CHALLENGE_TTL_HOURS",
+    "DNS_CHALLENGE_SUBDOMAIN",
+    "CHALLENGE_PREFIX",
+    "MIN_ATTESTATION_TRUST",
     # Cross-Federation Consent (Issue #89)
     "CrossFederationPolicy",
     "ConsentValidationResult",
