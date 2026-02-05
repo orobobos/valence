@@ -49,6 +49,7 @@ dev = [
     "mypy>=1.0",
     "black>=24.0",
     "types-PyYAML>=6.0",
+    "requests>=2.31",
 ]
 
 [project.scripts]
