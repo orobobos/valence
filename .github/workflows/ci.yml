@@ -109,6 +109,9 @@ jobs:
             -m "not integration and not slow" \
             -v \
             --tb=short \
+            --cov=src/valence \
+            --cov-report=term-missing \
+            --cov-fail-under=13 \
             --ignore=tests/integration/
 
   integration:
