@@ -13,6 +13,7 @@ import argparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.cli.seed import (
     async_main,
     cmd_discover,

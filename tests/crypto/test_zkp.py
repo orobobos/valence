@@ -7,6 +7,7 @@ for compliance verification use cases.
 from datetime import datetime, timedelta
 
 import pytest
+
 from valence.crypto.zkp import (
     ComplianceProof,
     # Types

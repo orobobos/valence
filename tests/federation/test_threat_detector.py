@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.models import NodeTrust, ThreatLevel
 from valence.federation.threat_detector import (
     THREAT_THRESHOLDS,

@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.vkb.tools import (
     VKB_HANDLERS,
     VKB_TOOLS,

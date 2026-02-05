@@ -6,6 +6,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+
 from valence.server.auth import (
     TOKEN_PREFIX,
     Token,

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.cli.main import (
     app,
     cmd_add,

@@ -11,8 +11,6 @@ These tests verify:
 
 from __future__ import annotations
 
-import asyncio
-import time
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,7 +22,6 @@ from valence.network.messages import AckMessage, AckRequest, DeliverPayload
 from valence.network.node import (
     NodeClient,
     PendingAck,
-    RouterConnection,
 )
 
 # =============================================================================

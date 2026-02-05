@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.core.confidence import DimensionalConfidence
 from valence.federation.aggregation import (
     MIN_FEDERATIONS_FOR_AGGREGATE,

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from starlette.requests import Request
+
 from valence.compliance.deletion import (
     DeletionReason,
     DeletionResult,

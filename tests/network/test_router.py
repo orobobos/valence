@@ -15,6 +15,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.router import Connection, QueuedMessage, RouterNode
 
 # =============================================================================

@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.substrate.tools import (
     SUBSTRATE_HANDLERS,
     SUBSTRATE_TOOLS,

@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.ring_coefficient import (
     MAX_NORMAL_VELOCITY,
     MIN_RING_COEFFICIENT,

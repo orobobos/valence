@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+
 from valence.server.config import ServerSettings
 
 

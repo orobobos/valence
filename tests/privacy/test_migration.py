@@ -4,6 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.privacy.migration import (
     get_share_policy_json,
     migrate_all_beliefs,

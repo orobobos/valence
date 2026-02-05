@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from valence.network.router import RouterNode
 from valence.network.seed import RouterRecord, SeedConfig, SeedNode
 

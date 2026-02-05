@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.challenges import (
     DEFAULT_REVIEWER_CONFIG,
     # Appeals

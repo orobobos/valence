@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 
 import pytest
+
 from valence.privacy.encryption import EncryptionEnvelope, generate_keypair
 from valence.privacy.sharing import (
     ConsentChainEntry,

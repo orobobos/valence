@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.models import (
     AnnotationType,
     TrustPreference,

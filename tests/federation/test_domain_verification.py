@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.federation.domain_verification import (
     CHALLENGE_PREFIX,
     # Constants

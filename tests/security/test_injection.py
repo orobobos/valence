@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.core.db import VALID_TABLES, count_rows, table_exists
 
 

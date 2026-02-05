@@ -16,6 +16,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.discovery import (
     DiscoveryClient,
     RouterInfo,

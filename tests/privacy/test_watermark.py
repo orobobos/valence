@@ -4,6 +4,7 @@ import hashlib
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.watermark import (
     HOMOGLYPH_MAP,
     REVERSE_HOMOGLYPH_MAP,

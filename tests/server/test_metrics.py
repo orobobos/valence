@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.server.metrics import (
     LATENCY_BUCKETS,
     HistogramData,

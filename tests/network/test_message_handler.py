@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from valence.network.config import (
     BatchingConfig,
     TimingJitterConfig,

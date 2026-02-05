@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 
 import pytest
+
 from valence.network.seed import (
     CorrelationDetector,
     RateLimiter,

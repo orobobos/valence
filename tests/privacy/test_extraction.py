@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+
 from valence.privacy.extraction import (
     ExtractedInsight,
     ExtractionAlreadyReviewedError,

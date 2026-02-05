@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
+
 from valence.federation.identity import (
     DIDMethod,
     create_key_did,

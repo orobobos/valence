@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.server.unified_server import (
     SERVER_NAME,
     SERVER_VERSION,

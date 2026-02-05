@@ -6,6 +6,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
+
 from valence.core.exceptions import DatabaseException
 
 # ============================================================================
@@ -157,6 +158,7 @@ class TestAsyncConnectionPool:
     async def test_ensure_pool_handles_postgres_error(self, env_with_db_vars):
         """_ensure_pool should raise DatabaseException on PostgresError."""
         import asyncpg
+
         from valence.core.db import AsyncConnectionPool
 
         with patch(
@@ -192,6 +194,7 @@ class TestAsyncConnectionPool:
     async def test_get_connection_raises_on_error(self, env_with_db_vars, mock_asyncpg_pool):
         """get_connection should raise DatabaseException on PostgresError."""
         import asyncpg
+
         from valence.core.db import AsyncConnectionPool
 
         mock_asyncpg_pool["pool"].acquire.side_effect = asyncpg.PostgresError("Pool exhausted")
@@ -389,6 +392,7 @@ class TestAsyncCursor:
     async def test_async_cursor_handles_unique_violation(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert UniqueViolationError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_cursor
 
         mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.UniqueViolationError("Duplicate key")
@@ -401,6 +405,7 @@ class TestAsyncCursor:
     async def test_async_cursor_handles_syntax_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert PostgresSyntaxError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_cursor
 
         mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresSyntaxError("Syntax error")
@@ -413,6 +418,7 @@ class TestAsyncCursor:
     async def test_async_cursor_handles_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_cursor should convert PostgresError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_cursor
 
         mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError("Some error")
@@ -474,6 +480,7 @@ class TestAsyncConnectionContext:
     async def test_async_connection_context_handles_unique_violation(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert UniqueViolationError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="Integrity constraint violation"):
@@ -484,6 +491,7 @@ class TestAsyncConnectionContext:
     async def test_async_connection_context_handles_syntax_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert PostgresSyntaxError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="SQL error"):
@@ -494,6 +502,7 @@ class TestAsyncConnectionContext:
     async def test_async_connection_context_handles_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_connection_context should convert PostgresError to DatabaseException."""
         import asyncpg
+
         from valence.core.db import async_connection_context
 
         with pytest.raises(DatabaseException, match="Database error"):
@@ -534,6 +543,7 @@ class TestAsyncCheckConnection:
     async def test_async_check_connection_returns_false_on_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_check_connection should return False on database error."""
         import asyncpg
+
         from valence.core.db import async_check_connection
 
         mock_asyncpg_pool["transaction"].__aenter__.side_effect = asyncpg.PostgresError("Connection failed")
@@ -631,6 +641,7 @@ class TestAsyncInitSchema:
     async def test_async_init_schema_raises_on_postgres_error(self, env_with_db_vars, mock_asyncpg_pool):
         """async_init_schema should raise DatabaseException on PostgresError."""
         import asyncpg
+
         from valence.core.db import async_init_schema
 
         with patch("valence.core.db.Path") as mock_path:

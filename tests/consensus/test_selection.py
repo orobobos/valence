@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.consensus.models import (
     AttestationType,
     IdentityAttestation,

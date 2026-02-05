@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.corroboration import (
     # Constants
     DEFAULT_CORROBORATION_THRESHOLD,

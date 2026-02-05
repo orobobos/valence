@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
 from valence.core.config import clear_config_cache
 
 # ============================================================================

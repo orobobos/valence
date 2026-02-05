@@ -12,6 +12,7 @@ import os
 from uuid import uuid4
 
 import pytest
+
 from valence.storage.erasure import (
     ErasureCodec,
     InsufficientShardsError,

@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
 from valence.storage.backend import (
     BackendRegistry,
     LocalFileBackend,

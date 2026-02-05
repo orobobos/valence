@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.testclient import TestClient
+
 from valence.federation.server import (
     FederationNode,
     LocalBelief,

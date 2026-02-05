@@ -12,6 +12,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.core.config import clear_config_cache
 from valence.embeddings.service import (
     EmbeddingProvider,
@@ -98,6 +99,7 @@ class TestLocalEmbedding:
     def mock_local_model(self):
         """Mock the local model to avoid loading it in tests."""
         import numpy as np
+
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()
@@ -145,6 +147,7 @@ class TestGenerateEmbedding:
     def mock_local_model(self):
         """Mock local model."""
         import numpy as np
+
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()

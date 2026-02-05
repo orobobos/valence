@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.canary import (
     ZERO_WIDTH_JOINER,
     ZERO_WIDTH_NON_JOINER,

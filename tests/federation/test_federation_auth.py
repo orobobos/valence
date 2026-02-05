@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.requests import Request
+
 from valence.server.federation_endpoints import (
     require_did_signature,
     verify_did_signature,

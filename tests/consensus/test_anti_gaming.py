@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.consensus.anti_gaming import (
     MAX_CONSECUTIVE_EPOCHS_BEFORE_PENALTY,
     TENURE_PENALTY_FACTOR,

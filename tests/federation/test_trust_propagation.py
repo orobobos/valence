@@ -13,6 +13,7 @@ import time
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.trust_propagation import (
     TransitiveTrustResult,
     TrustCache,

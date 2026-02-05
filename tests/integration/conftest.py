@@ -243,7 +243,7 @@ def seed_entities(db_conn_committed) -> list[dict]:
                 """
                 INSERT INTO entities (name, type, aliases)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (name, type) WHERE canonical_id IS NULL 
+                ON CONFLICT (name, type) WHERE canonical_id IS NULL
                 DO UPDATE SET aliases = EXCLUDED.aliases
                 RETURNING id, name, type, aliases, created_at
             """,

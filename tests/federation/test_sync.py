@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.models import SyncStatus
 from valence.federation.sync import (
     SyncManager,

@@ -4,6 +4,7 @@ import hashlib
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.domains import (
     AdminSignatureVerifier,
     DNSTxtVerifier,

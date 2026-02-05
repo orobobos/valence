@@ -112,6 +112,7 @@ class TestCheckDatabaseConnection:
     def test_operational_error(self, env_with_db_vars):
         """Should return False on OperationalError."""
         import psycopg2
+
         from valence.core.health import check_database_connection
 
         with patch("psycopg2.connect") as mock_connect:
@@ -123,6 +124,7 @@ class TestCheckDatabaseConnection:
     def test_generic_error(self, env_with_db_vars):
         """Should return False on generic Error."""
         import psycopg2
+
         from valence.core.health import check_database_connection
 
         with patch("psycopg2.connect") as mock_connect:
@@ -175,6 +177,7 @@ class TestCheckPgvector:
     def test_database_error(self, env_with_db_vars):
         """Should return False on database error."""
         import psycopg2
+
         from valence.core.health import check_pgvector
 
         with patch("psycopg2.connect") as mock_connect:

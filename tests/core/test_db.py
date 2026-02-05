@@ -6,6 +6,7 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+
 from valence.core.exceptions import DatabaseException
 
 # ============================================================================
@@ -234,6 +235,7 @@ class TestGetConnection:
     def test_raises_on_pool_creation_error(self, env_with_db_vars):
         """Should raise DatabaseException on pool creation error."""
         import psycopg2
+
         from valence.core.db import get_connection
 
         with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
@@ -307,6 +309,7 @@ class TestGetCursor:
     def test_dict_cursor_by_default(self, mock_psycopg2_pool, env_with_db_vars):
         """Should use RealDictCursor by default."""
         from psycopg2.extras import RealDictCursor
+
         from valence.core.db import get_cursor
 
         with get_cursor():
@@ -504,6 +507,7 @@ class TestGetConnectionContext:
     def test_rollback_on_error(self, mock_psycopg2_pool, env_with_db_vars):
         """Should rollback on error."""
         import psycopg2
+
         from valence.core.db import get_connection_context
 
         # Make cursor raise an error inside the context

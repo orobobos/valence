@@ -6,6 +6,7 @@ import json
 
 import pytest
 from cryptography.exceptions import InvalidSignature
+
 from valence.network.crypto import (
     decrypt_message,
     encrypt_message,

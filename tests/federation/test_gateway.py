@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.gateway import (
     DEFAULT_RATE_LIMIT_MAX_BELIEFS,
     DEFAULT_RATE_LIMIT_MAX_REQUESTS,
