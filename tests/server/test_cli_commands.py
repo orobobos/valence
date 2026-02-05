@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from valence.server.auth import TokenStore, hash_token
 from valence.server.cli import (
     cmd_create,
@@ -531,11 +532,11 @@ class TestMain:
         # This tests that the default path is used when not specified
         with patch("sys.argv", ["valence-token", "list"]):
             # Mock the TokenStore to avoid file system issues
-            with patch("valence.server.cli.TokenStore") as MockStore:
+            with patch("valence.server.cli.TokenStore") as MockStore:  # noqa: N806
                 mock_instance = MockStore.return_value
                 mock_instance.list_tokens.return_value = []
 
-                result = main()
+                main()
 
         # Should use default path
         MockStore.assert_called_once()

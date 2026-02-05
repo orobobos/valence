@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.core.external_sources import (
     ContentMatchResult,
     DOIPrefix,
@@ -76,9 +77,18 @@ class TestSourceCategory:
 
     def test_base_reliability_ordering(self):
         """Academic sources should be more reliable than personal blogs."""
-        assert SourceCategory.ACADEMIC_JOURNAL.base_reliability > SourceCategory.PERSONAL_BLOG.base_reliability
-        assert SourceCategory.GOVERNMENT.base_reliability > SourceCategory.UNKNOWN.base_reliability
-        assert SourceCategory.TECHNICAL_DOCS.base_reliability > SourceCategory.CORPORATE.base_reliability
+        assert (
+            SourceCategory.ACADEMIC_JOURNAL.base_reliability
+            > SourceCategory.PERSONAL_BLOG.base_reliability
+        )
+        assert (
+            SourceCategory.GOVERNMENT.base_reliability
+            > SourceCategory.UNKNOWN.base_reliability
+        )
+        assert (
+            SourceCategory.TECHNICAL_DOCS.base_reliability
+            > SourceCategory.CORPORATE.base_reliability
+        )
 
     def test_all_categories_have_reliability(self):
         """Every category should have a base reliability score."""
@@ -89,7 +99,10 @@ class TestSourceCategory:
         """Academic journals should have highest reliability."""
         assert SourceCategory.ACADEMIC_JOURNAL.base_reliability == 0.90
         for category in SourceCategory:
-            assert category.base_reliability <= SourceCategory.ACADEMIC_JOURNAL.base_reliability
+            assert (
+                category.base_reliability
+                <= SourceCategory.ACADEMIC_JOURNAL.base_reliability
+            )
 
 
 class TestSourceVerificationStatus:
@@ -110,7 +123,9 @@ class TestSourceVerificationStatus:
 
     def test_failure_statuses(self):
         """Verify failure statuses have consistent naming."""
-        failure_statuses = [s for s in SourceVerificationStatus if s.value.startswith("failed")]
+        failure_statuses = [
+            s for s in SourceVerificationStatus if s.value.startswith("failed")
+        ]
         assert len(failure_statuses) == 3
 
 
@@ -140,14 +155,18 @@ class TestTrustedDomain:
 
     def test_matches_exact_url(self):
         """URL matching for exact domain."""
-        domain = TrustedDomain(domain="nature.com", category=SourceCategory.ACADEMIC_JOURNAL)
+        domain = TrustedDomain(
+            domain="nature.com", category=SourceCategory.ACADEMIC_JOURNAL
+        )
         assert domain.matches_url("https://nature.com/articles/123")
         assert domain.matches_url("https://www.nature.com/articles/123")
         assert not domain.matches_url("https://fakenature.com/articles")
 
     def test_https_requirement(self):
         """HTTPS requirement should block HTTP URLs."""
-        domain = TrustedDomain(domain="secure.com", category=SourceCategory.GOVERNMENT, require_https=True)
+        domain = TrustedDomain(
+            domain="secure.com", category=SourceCategory.GOVERNMENT, require_https=True
+        )
         assert domain.matches_url("https://secure.com/page")
         assert not domain.matches_url("http://secure.com/page")
 
@@ -221,7 +240,9 @@ class TestTrustedSourceRegistry:
         """Default trusted domains should be loaded."""
         # Check some expected defaults
         assert registry.get_domain_info("https://arxiv.org/abs/1234") is not None
-        assert registry.get_domain_info("https://pubmed.ncbi.nlm.nih.gov/123") is not None
+        assert (
+            registry.get_domain_info("https://pubmed.ncbi.nlm.nih.gov/123") is not None
+        )
 
     def test_default_doi_prefixes_loaded(self, registry):
         """Default DOI prefixes should be loaded."""
@@ -230,14 +251,18 @@ class TestTrustedSourceRegistry:
 
     def test_register_custom_domain(self, registry):
         """Register a custom trusted domain."""
-        registry.register_domain(TrustedDomain(domain="custom.org", category=SourceCategory.TECHNICAL_DOCS))
+        registry.register_domain(
+            TrustedDomain(domain="custom.org", category=SourceCategory.TECHNICAL_DOCS)
+        )
         info = registry.get_domain_info("https://custom.org/spec")
         assert info is not None
         assert info.category == SourceCategory.TECHNICAL_DOCS
 
     def test_unregister_domain(self, registry):
         """Remove a domain from registry."""
-        registry.register_domain(TrustedDomain(domain="temp.com", category=SourceCategory.UNKNOWN))
+        registry.register_domain(
+            TrustedDomain(domain="temp.com", category=SourceCategory.UNKNOWN)
+        )
         assert registry.get_domain_info("https://temp.com/page") is not None
 
         assert registry.unregister_domain("temp.com")
@@ -261,14 +286,29 @@ class TestTrustedSourceRegistry:
 
     def test_classify_source_by_url(self, registry):
         """Source classification from URL."""
-        assert registry.classify_source(url="https://arxiv.org/abs/1234") == SourceCategory.ACADEMIC_PREPRINT
-        assert registry.classify_source(url="https://whitehouse.gov/news") == SourceCategory.GOVERNMENT
-        assert registry.classify_source(url="https://random-blog.com/post") == SourceCategory.UNKNOWN
+        assert (
+            registry.classify_source(url="https://arxiv.org/abs/1234")
+            == SourceCategory.ACADEMIC_PREPRINT
+        )
+        assert (
+            registry.classify_source(url="https://whitehouse.gov/news")
+            == SourceCategory.GOVERNMENT
+        )
+        assert (
+            registry.classify_source(url="https://random-blog.com/post")
+            == SourceCategory.UNKNOWN
+        )
 
     def test_classify_source_by_doi(self, registry):
         """Source classification from DOI."""
-        assert registry.classify_source(doi="10.1038/nature12345") == SourceCategory.ACADEMIC_JOURNAL
-        assert registry.classify_source(doi="10.48550/arxiv.1234") == SourceCategory.ACADEMIC_PREPRINT
+        assert (
+            registry.classify_source(doi="10.1038/nature12345")
+            == SourceCategory.ACADEMIC_JOURNAL
+        )
+        assert (
+            registry.classify_source(doi="10.48550/arxiv.1234")
+            == SourceCategory.ACADEMIC_PREPRINT
+        )
 
     def test_get_source_reliability(self, registry):
         """Get reliability score for sources."""
@@ -319,7 +359,9 @@ class TestLivenessCheckResult:
         assert not result.is_live
 
     def test_timeout(self):
-        result = LivenessCheckResult(status=SourceLivenessStatus.TIMEOUT, error_message="Connection timed out")
+        result = LivenessCheckResult(
+            status=SourceLivenessStatus.TIMEOUT, error_message="Connection timed out"
+        )
         assert not result.is_live
 
     def test_to_dict(self):
@@ -360,10 +402,14 @@ class TestContentMatchResult:
 
     def test_boundary_conditions(self):
         """Test exact boundary values."""
-        at_threshold = ContentMatchResult(similarity_score=ExternalSourceConstants.MIN_CONTENT_SIMILARITY)
+        at_threshold = ContentMatchResult(
+            similarity_score=ExternalSourceConstants.MIN_CONTENT_SIMILARITY
+        )
         assert at_threshold.meets_threshold
 
-        just_below = ContentMatchResult(similarity_score=ExternalSourceConstants.MIN_CONTENT_SIMILARITY - 0.01)
+        just_below = ContentMatchResult(
+            similarity_score=ExternalSourceConstants.MIN_CONTENT_SIMILARITY - 0.01
+        )
         assert not just_below.meets_threshold
 
 
@@ -395,7 +441,9 @@ class TestDOIVerificationResult:
         assert not result.is_valid
 
     def test_invalid_doi(self):
-        result = DOIVerificationResult(doi="10.0000/nonexistent", status=DOIStatus.INVALID)
+        result = DOIVerificationResult(
+            doi="10.0000/nonexistent", status=DOIStatus.INVALID
+        )
         assert not result.is_valid
 
 
@@ -450,13 +498,17 @@ class TestExternalSourceVerification:
     """Tests for ExternalSourceVerification model."""
 
     def test_create_url_verification(self):
-        v = ExternalSourceVerification(id=uuid4(), belief_id=uuid4(), url="https://example.com/article")
+        v = ExternalSourceVerification(
+            id=uuid4(), belief_id=uuid4(), url="https://example.com/article"
+        )
         assert v.source_identifier == "https://example.com/article"
         assert v.status == SourceVerificationStatus.PENDING
         assert not v.is_verified
 
     def test_create_doi_verification(self):
-        v = ExternalSourceVerification(id=uuid4(), belief_id=uuid4(), doi="10.1038/nature12345")
+        v = ExternalSourceVerification(
+            id=uuid4(), belief_id=uuid4(), doi="10.1038/nature12345"
+        )
         assert v.source_identifier == "doi:10.1038/nature12345"
 
     def test_verified_status(self):
@@ -492,7 +544,9 @@ class TestL4SourceRequirements:
     """Tests for L4SourceRequirements."""
 
     def test_no_sources(self):
-        req = L4SourceRequirements(belief_id=uuid4(), has_external_sources=False, total_sources=0)
+        req = L4SourceRequirements(
+            belief_id=uuid4(), has_external_sources=False, total_sources=0
+        )
         assert not req.all_requirements_met
         assert not req.has_external_sources
 
@@ -543,7 +597,9 @@ class TestExternalSourceVerificationService:
 
     def test_create_verification(self, service, belief_id):
         """Create a new verification."""
-        v = service.create_verification(belief_id=belief_id, url="https://nature.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://nature.com/article"
+        )
         assert v.belief_id == belief_id
         assert v.url == "https://nature.com/article"
         assert v.status == SourceVerificationStatus.PENDING
@@ -556,19 +612,25 @@ class TestExternalSourceVerificationService:
     def test_create_verification_blocklisted(self, service, belief_id):
         """Blocklisted sources should be marked as blocked."""
         service.registry.add_to_blocklist("spam.com")
-        v = service.create_verification(belief_id=belief_id, url="https://spam.com/fake")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://spam.com/fake"
+        )
         assert v.status == SourceVerificationStatus.BLOCKED
 
     def test_check_liveness(self, service, belief_id):
         """Liveness check should populate result."""
-        v = service.create_verification(belief_id=belief_id, url="https://example.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://example.com/article"
+        )
         result = service.check_liveness(v.id)
         assert result.is_live  # Simulated as live
         assert v.liveness is not None
 
     def test_check_liveness_caching(self, service, belief_id):
         """Liveness results should be cached."""
-        v = service.create_verification(belief_id=belief_id, url="https://example.com/cached")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://example.com/cached"
+        )
         result1 = service.check_liveness(v.id)
         result2 = service.check_liveness(v.id, use_cache=True)
         assert result1.checked_at == result2.checked_at
@@ -583,14 +645,18 @@ class TestExternalSourceVerificationService:
 
     def test_check_content_match(self, service, belief_id):
         """Content matching should compute similarity."""
-        v = service.create_verification(belief_id=belief_id, url="https://example.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://example.com/article"
+        )
         result = service.check_content_match(v.id, belief_content="The sky is blue")
         assert result.similarity_score > 0
         assert v.content_match is not None
 
     def test_compute_reliability(self, service, belief_id):
         """Reliability computation should combine factors."""
-        v = service.create_verification(belief_id=belief_id, url="https://nature.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://nature.com/article"
+        )
         service.check_liveness(v.id)
         service.check_content_match(v.id, "Test belief content")
 
@@ -600,8 +666,12 @@ class TestExternalSourceVerificationService:
 
     def test_verify_source_full_workflow(self, service, belief_id):
         """Full verification workflow."""
-        v = service.create_verification(belief_id=belief_id, url="https://nature.com/relevant-article")
-        result = service.verify_source(v.id, belief_content="Scientific research on relevant topic")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://nature.com/relevant-article"
+        )
+        result = service.verify_source(
+            v.id, belief_content="Scientific research on relevant topic"
+        )
 
         assert result.status == SourceVerificationStatus.VERIFIED
         assert result.is_verified
@@ -613,7 +683,9 @@ class TestExternalSourceVerificationService:
     def test_verify_source_blocked(self, service, belief_id):
         """Blocked sources should not verify."""
         service.registry.add_to_blocklist("blocked.com")
-        v = service.create_verification(belief_id=belief_id, url="https://blocked.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://blocked.com/article"
+        )
         result = service.verify_source(v.id, "Some content")
         assert result.status == SourceVerificationStatus.BLOCKED
 
@@ -627,7 +699,9 @@ class TestExternalSourceVerificationService:
     def test_check_l4_requirements_with_verified_source(self, service, belief_id):
         """L4 check with verified source should pass."""
         # Create and verify a source
-        v = service.create_verification(belief_id=belief_id, url="https://nature.com/article")
+        v = service.create_verification(
+            belief_id=belief_id, url="https://nature.com/article"
+        )
         service.verify_source(v.id, "Relevant scientific content")
 
         req = service.check_l4_requirements(belief_id, "Relevant scientific content")
@@ -657,7 +731,7 @@ class TestExternalSourceVerificationService:
     def test_get_verified_sources_for_belief(self, service, belief_id):
         """Get only verified sources."""
         v1 = service.create_verification(belief_id=belief_id, url="https://one.com")
-        v2 = service.create_verification(belief_id=belief_id, url="https://two.com")
+        service.create_verification(belief_id=belief_id, url="https://two.com")
 
         service.verify_source(v1.id, "Content")
         # v2 not verified
@@ -758,7 +832,9 @@ class TestEdgeCases:
 
     def test_stale_source_penalty(self, service):
         """Old sources should receive staleness penalty."""
-        v = service.create_verification(belief_id=uuid4(), url="https://example.com/old-article")
+        v = service.create_verification(
+            belief_id=uuid4(), url="https://example.com/old-article"
+        )
         service.check_liveness(v.id)
         service.check_content_match(v.id, "Test content")
 
@@ -771,7 +847,9 @@ class TestEdgeCases:
 
     def test_recent_source_bonus(self, service):
         """Recent sources should receive freshness bonus."""
-        v = service.create_verification(belief_id=uuid4(), url="https://example.com/new-article")
+        v = service.create_verification(
+            belief_id=uuid4(), url="https://example.com/new-article"
+        )
         service.check_liveness(v.id)
         service.check_content_match(v.id, "Test content")
 
@@ -830,8 +908,14 @@ class TestConsensusIntegration:
         assert req.all_requirements_met
         assert req.total_sources == 3
         assert req.verified_sources >= 1
-        assert req.best_reliability_score >= ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY
-        assert req.best_content_match_score >= ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE
+        assert (
+            req.best_reliability_score
+            >= ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY
+        )
+        assert (
+            req.best_content_match_score
+            >= ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE
+        )
 
     def test_l4_elevation_fails_without_sources(self, service):
         """L4 elevation should fail without external sources."""
@@ -848,7 +932,9 @@ class TestConsensusIntegration:
 
         # Add a blocklisted source
         service.registry.add_to_blocklist("fake-science.com")
-        v = service.create_verification(belief_id=belief_id, url="https://fake-science.com/article")
+        service.create_verification(
+            belief_id=belief_id, url="https://fake-science.com/article"
+        )
 
         req = service.check_l4_requirements(belief_id, "Content")
 

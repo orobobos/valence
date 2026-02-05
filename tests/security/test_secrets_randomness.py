@@ -27,31 +27,41 @@ class TestSecretsModuleUsage:
         """TimingJitterConfig should use secrets.SystemRandom."""
         from valence.network.config import _secure_random
 
-        assert isinstance(_secure_random, secrets.SystemRandom), "config._secure_random must be secrets.SystemRandom"
+        assert isinstance(
+            _secure_random, secrets.SystemRandom
+        ), "config._secure_random must be secrets.SystemRandom"
 
     def test_messages_uses_secure_random(self):
         """Messages module should use secrets.SystemRandom."""
         from valence.network.messages import _secure_random
 
-        assert isinstance(_secure_random, secrets.SystemRandom), "messages._secure_random must be secrets.SystemRandom"
+        assert isinstance(
+            _secure_random, secrets.SystemRandom
+        ), "messages._secure_random must be secrets.SystemRandom"
 
     def test_router_client_uses_secure_random(self):
         """RouterClient should use secrets.SystemRandom."""
         from valence.network.router_client import _secure_random
 
-        assert isinstance(_secure_random, secrets.SystemRandom), "router_client._secure_random must be secrets.SystemRandom"
+        assert isinstance(
+            _secure_random, secrets.SystemRandom
+        ), "router_client._secure_random must be secrets.SystemRandom"
 
     def test_seed_uses_secure_random(self):
         """Seed module should use secrets.SystemRandom."""
         from valence.network.seed import _secure_random
 
-        assert isinstance(_secure_random, secrets.SystemRandom), "seed._secure_random must be secrets.SystemRandom"
+        assert isinstance(
+            _secure_random, secrets.SystemRandom
+        ), "seed._secure_random must be secrets.SystemRandom"
 
     def test_privacy_uses_secure_random(self):
         """Privacy module should use secrets.SystemRandom."""
         from valence.federation.privacy import _secure_random
 
-        assert isinstance(_secure_random, secrets.SystemRandom), "privacy._secure_random must be secrets.SystemRandom"
+        assert isinstance(
+            _secure_random, secrets.SystemRandom
+        ), "privacy._secure_random must be secrets.SystemRandom"
 
 
 class TestJitterRandomness:
@@ -61,7 +71,9 @@ class TestJitterRandomness:
         """Uniform jitter should produce values in expected range."""
         from valence.network.config import TimingJitterConfig
 
-        config = TimingJitterConfig(enabled=True, min_delay_ms=100, max_delay_ms=500, distribution="uniform")
+        config = TimingJitterConfig(
+            enabled=True, min_delay_ms=100, max_delay_ms=500, distribution="uniform"
+        )
 
         # Generate multiple samples
         delays = [config.get_jitter_delay() for _ in range(100)]
@@ -77,7 +89,9 @@ class TestJitterRandomness:
         """Exponential jitter should produce values in expected range."""
         from valence.network.config import TimingJitterConfig
 
-        config = TimingJitterConfig(enabled=True, min_delay_ms=100, max_delay_ms=500, distribution="exponential")
+        config = TimingJitterConfig(
+            enabled=True, min_delay_ms=100, max_delay_ms=500, distribution="exponential"
+        )
 
         # Generate multiple samples
         delays = [config.get_jitter_delay() for _ in range(100)]
@@ -140,7 +154,10 @@ class TestRouterSelectionRandomness:
         weights = [0.1, 0.1, 0.8]  # router_c heavily weighted
 
         # Select many times
-        selections = [_secure_random.choices(candidates, weights=weights, k=1)[0] for _ in range(100)]
+        selections = [
+            _secure_random.choices(candidates, weights=weights, k=1)[0]
+            for _ in range(100)
+        ]
 
         # Should have variety (not deterministic)
         assert len(set(selections)) > 1, "Selection should vary"
@@ -213,7 +230,9 @@ class TestNoStandardRandomInSecurityCode:
         assert "import secrets" in source, "Should import secrets module"
 
         # The old inline import should be removed
-        assert source.count("import random") == 0, "Should not have 'import random' in security-sensitive code"
+        assert (
+            source.count("import random") == 0
+        ), "Should not have 'import random' in security-sensitive code"
 
     def test_router_client_no_standard_random(self):
         """router_client.py should use secrets, not standard random."""
@@ -226,4 +245,6 @@ class TestNoStandardRandomInSecurityCode:
         assert "import secrets" in source
         assert "_secure_random" in source
         # Standard random should not be imported
-        assert "import random" not in source.replace("_secure_random", ""), "Should not import standard random module"
+        assert "import random" not in source.replace(
+            "_secure_random", ""
+        ), "Should not import standard random module"

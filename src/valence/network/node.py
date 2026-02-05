@@ -163,7 +163,9 @@ class PendingAck:
         return {
             "message_id": self.message_id,
             "recipient_id": self.recipient_id,
-            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
+            "content": (
+                self.content.hex() if isinstance(self.content, bytes) else self.content
+            ),
             "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
             "sent_at": self.sent_at,
             "router_id": self.router_id,
@@ -279,7 +281,9 @@ class PendingMessage:
         return {
             "message_id": self.message_id,
             "recipient_id": self.recipient_id,
-            "content": (self.content.hex() if isinstance(self.content, bytes) else self.content),
+            "content": (
+                self.content.hex() if isinstance(self.content, bytes) else self.content
+            ),
             "recipient_public_key_hex": self.recipient_public_key.public_bytes_raw().hex(),
             "queued_at": self.queued_at,
             "retries": self.retries,
@@ -333,7 +337,10 @@ class FailoverState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FailoverState:
-        queued = [PendingMessage.from_dict(msg_data) for msg_data in data.get("queued_messages", [])]
+        queued = [
+            PendingMessage.from_dict(msg_data)
+            for msg_data in data.get("queued_messages", [])
+        ]
         return cls(
             router_id=data["router_id"],
             failed_at=data["failed_at"],
@@ -360,11 +367,15 @@ class CoverTrafficConfig:
         if not self.enabled:
             return float("inf")
 
-        base_interval = 60.0 / self.rate_per_minute if self.rate_per_minute > 0 else 60.0
+        base_interval = (
+            60.0 / self.rate_per_minute if self.rate_per_minute > 0 else 60.0
+        )
 
         if self.randomize_timing:
             interval = random.expovariate(1.0 / base_interval)
-            interval = max(self.min_interval_seconds, min(self.max_interval_seconds, interval))
+            interval = max(
+                self.min_interval_seconds, min(self.max_interval_seconds, interval)
+            )
         else:
             interval = base_interval
 
@@ -472,7 +483,9 @@ class NodeClient:
     cover_traffic: CoverTrafficConfig = field(default_factory=CoverTrafficConfig)
 
     # Traffic analysis mitigation (Issue #120)
-    traffic_analysis_mitigation: TrafficAnalysisMitigationConfig = field(default_factory=TrafficAnalysisMitigationConfig)
+    traffic_analysis_mitigation: TrafficAnalysisMitigationConfig = field(
+        default_factory=TrafficAnalysisMitigationConfig
+    )
 
     # Callbacks
     on_message: Callable[[str, bytes], None | Awaitable[None]] | None = None
@@ -692,7 +705,9 @@ class NodeClient:
         assert self._health_monitor is not None, "Components not initialized"
         return self._health_monitor
 
-    def _on_connection_established(self, router_id: str, conn: RouterConnection) -> None:
+    def _on_connection_established(
+        self, router_id: str, conn: RouterConnection
+    ) -> None:
         """Callback when a connection is established."""
         self.connections[router_id] = conn
         self._stats["connections_established"] += 1
@@ -731,7 +746,10 @@ class NodeClient:
             try:
                 recovered = await self._recover_state()
                 if recovered:
-                    logger.info(f"Recovered state: {len(self.pending_acks)} pending ACKs, " f"{len(self.message_queue)} queued messages")
+                    logger.info(
+                        f"Recovered state: {len(self.pending_acks)} pending ACKs, "
+                        f"{len(self.message_queue)} queued messages"
+                    )
             except (StaleStateError, StateConflictError) as e:
                 logger.warning(f"State recovery skipped: {e}")
             except Exception as e:
@@ -847,7 +865,9 @@ class NodeClient:
             "queued_messages": len(self.message_queue),
             "pending_acks": len(self.pending_acks),
             "seen_messages_cached": len(self.seen_messages),
-            "direct_mode": (self._router_client.direct_mode if self._router_client else False),
+            "direct_mode": (
+                self._router_client.direct_mode if self._router_client else False
+            ),
         }
 
     def get_connections(self) -> list[dict[str, Any]]:
@@ -855,7 +875,9 @@ class NodeClient:
         return [
             {
                 "router_id": router_id[:16] + "...",
-                "endpoint": (conn.router.endpoints[0] if conn.router.endpoints else "unknown"),
+                "endpoint": (
+                    conn.router.endpoints[0] if conn.router.endpoints else "unknown"
+                ),
                 "connected_at": conn.connected_at,
                 "last_seen": conn.last_seen,
                 "health_score": round(conn.health_score, 3),
@@ -964,7 +986,9 @@ class NodeClient:
                     elif msg_type == "gossip":
                         await self._handle_gossip_message(data, conn)
                     elif msg_type == "error":
-                        logger.warning(f"Router error: {data.get('message', 'unknown')}")
+                        logger.warning(
+                            f"Router error: {data.get('message', 'unknown')}"
+                        )
 
                     conn.last_seen = time.time()
 
@@ -980,7 +1004,9 @@ class NodeClient:
             if router_id in self.connections:
                 await self._handle_router_failure(router_id)
 
-    async def _handle_deliver(self, data: dict[str, Any], conn: RouterConnection) -> None:
+    async def _handle_deliver(
+        self, data: dict[str, Any], conn: RouterConnection
+    ) -> None:
         """Handle an incoming message delivery."""
         relay_message_id = data.get("message_id")
         payload = data.get("payload")
@@ -1000,9 +1026,13 @@ class NodeClient:
                 Ed25519PublicKey,
             )
 
-            sender_public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(sender_public_hex))
+            sender_public = Ed25519PublicKey.from_public_bytes(
+                bytes.fromhex(sender_public_hex)
+            )
 
-            plaintext = decrypt_message(payload, self.encryption_private_key, sender_public)
+            plaintext = decrypt_message(
+                payload, self.encryption_private_key, sender_public
+            )
 
             try:
                 inner_payload = json.loads(plaintext.decode())
@@ -1026,7 +1056,9 @@ class NodeClient:
                     pass
 
             # Idempotent delivery
-            if inner_message_id and self.message_handler.is_duplicate_message(inner_message_id):
+            if inner_message_id and self.message_handler.is_duplicate_message(
+                inner_message_id
+            ):
                 self._stats["messages_deduplicated"] += 1
                 return
 
@@ -1035,7 +1067,9 @@ class NodeClient:
                 if isinstance(content, str):
                     content_bytes = content.encode()
                 else:
-                    content_bytes = content if isinstance(content, bytes) else str(content).encode()
+                    content_bytes = (
+                        content if isinstance(content, bytes) else str(content).encode()
+                    )
                 result = self.on_message(sender_id, content_bytes)
                 if result is not None:
                     await result
@@ -1070,7 +1104,9 @@ class NodeClient:
         if message_id is not None:
             self.message_handler.handle_ack(message_id, success)
 
-    def _handle_back_pressure(self, data: dict[str, Any], conn: RouterConnection) -> None:
+    def _handle_back_pressure(
+        self, data: dict[str, Any], conn: RouterConnection
+    ) -> None:
         """Handle back-pressure signal from router."""
         self.router_client.handle_back_pressure(
             conn=conn,
@@ -1080,7 +1116,9 @@ class NodeClient:
             reason=data.get("reason", ""),
         )
 
-    async def _handle_gossip_message(self, data: dict[str, Any], conn: RouterConnection) -> None:
+    async def _handle_gossip_message(
+        self, data: dict[str, Any], conn: RouterConnection
+    ) -> None:
         """Handle incoming health gossip."""
         payload = data.get("payload", {})
         try:
@@ -1095,7 +1133,11 @@ class NodeClient:
         self.health_monitor.record_failure_event(router_id, "connection")
 
         async def retry_messages():
-            pending_for_router = [pending for msg_id, pending in self.pending_acks.items() if pending.router_id == router_id]
+            pending_for_router = [
+                pending
+                for msg_id, pending in self.pending_acks.items()
+                if pending.router_id == router_id
+            ]
             for pending in pending_for_router:
                 try:
                     await self.message_handler._retry_message(
@@ -1133,7 +1175,9 @@ class NodeClient:
                     try:
                         sent_at = time.time()
                         await asyncio.wait_for(
-                            conn.websocket.send_json({"type": "ping", "sent_at": sent_at}),
+                            conn.websocket.send_json(
+                                {"type": "ping", "sent_at": sent_at}
+                            ),
                             timeout=self.ping_timeout,
                         )
                         self.health_monitor.track_ping_response(router_id, True)
@@ -1141,7 +1185,9 @@ class NodeClient:
                         if self.health_monitor.track_ping_response(router_id, False):
                             await self._handle_router_failure(router_id)
                     except Exception as e:
-                        logger.warning(f"Ping error for router {router_id[:16]}...: {e}")
+                        logger.warning(
+                            f"Ping error for router {router_id[:16]}...: {e}"
+                        )
                         await self._handle_router_failure(router_id)
 
             except asyncio.CancelledError:
@@ -1171,7 +1217,9 @@ class NodeClient:
                 if self._router_client:
                     router_to_rotate = await self.router_client.check_rotation_needed()
                     if router_to_rotate:
-                        await self.router_client.rotate_router(router_to_rotate, "periodic")
+                        await self.router_client.rotate_router(
+                            router_to_rotate, "periodic"
+                        )
                         self._stats["routers_rotated"] += 1
 
             except asyncio.CancelledError:
@@ -1231,7 +1279,9 @@ class NodeClient:
                 continue
 
             try:
-                await conn.websocket.send_json({"type": "gossip", "payload": gossip_data})
+                await conn.websocket.send_json(
+                    {"type": "gossip", "payload": gossip_data}
+                )
                 self._stats["gossip_sent"] += 1
             except Exception as e:
                 logger.debug(f"Failed to send gossip via {router_id[:16]}...: {e}")
@@ -1240,7 +1290,9 @@ class NodeClient:
         """Background task to flush message batches."""
         while self._running:
             try:
-                batch_interval = self.traffic_analysis_mitigation.batching.get_effective_interval()
+                batch_interval = (
+                    self.traffic_analysis_mitigation.batching.get_effective_interval()
+                )
 
                 try:
                     await asyncio.wait_for(
@@ -1286,7 +1338,9 @@ class NodeClient:
                         await self.message_handler._send_message_direct(
                             message_id=message_to_send["message_id"],
                             recipient_id=message_to_send["recipient_id"],
-                            recipient_public_key=message_to_send["recipient_public_key"],
+                            recipient_public_key=message_to_send[
+                                "recipient_public_key"
+                            ],
                             content=message_to_send["content"],
                             require_ack=message_to_send["require_ack"],
                             timeout_ms=message_to_send["timeout_ms"],
@@ -1347,7 +1401,10 @@ class NodeClient:
             pending_acks=[ack.to_dict() for ack in self.pending_acks.values()],
             message_queue=[msg.to_dict() for msg in self.message_queue],
             seen_messages=list(self.seen_messages)[-self.max_seen_messages :],
-            failover_states={router_id: state.to_dict() for router_id, state in self.failover_states.items()},
+            failover_states={
+                router_id: state.to_dict()
+                for router_id, state in self.failover_states.items()
+            },
             stats=dict(self._stats),
         )
 
@@ -1535,10 +1592,14 @@ class NodeClient:
     def set_privacy_level(self, level: PrivacyLevel) -> None:
         """Set the traffic analysis mitigation privacy level."""
         old_level = self.traffic_analysis_mitigation.privacy_level
-        self.traffic_analysis_mitigation = TrafficAnalysisMitigationConfig.from_privacy_level(level)
+        self.traffic_analysis_mitigation = (
+            TrafficAnalysisMitigationConfig.from_privacy_level(level)
+        )
 
         if self._message_handler:
-            self._message_handler.traffic_mitigation_config = self.traffic_analysis_mitigation
+            self._message_handler.traffic_mitigation_config = (
+                self.traffic_analysis_mitigation
+            )
 
         logger.info(f"Privacy level changed: {old_level.value} -> {level.value}")
 
@@ -1557,7 +1618,11 @@ class NodeClient:
             "constant_rate": {
                 "enabled": tam.constant_rate.enabled,
             },
-            "stats": {k: v for k, v in self._stats.items() if k.startswith(("batched", "batch_", "jitter", "constant_rate"))},
+            "stats": {
+                k: v
+                for k, v in self._stats.items()
+                if k.startswith(("batched", "batch_", "jitter", "constant_rate"))
+            },
         }
 
 

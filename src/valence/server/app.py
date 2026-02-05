@@ -187,7 +187,9 @@ async def mcp_endpoint(request: Request) -> Response:
 
     if client is None:
         # Return 401 with WWW-Authenticate header per RFC 9728
-        resource_metadata_url = f"{settings.base_url}/.well-known/oauth-protected-resource"
+        resource_metadata_url = (
+            f"{settings.base_url}/.well-known/oauth-protected-resource"
+        )
         www_auth = f'Bearer realm="mcp", resource_metadata="{resource_metadata_url}"'
 
         return JSONResponse(
@@ -416,7 +418,9 @@ async def _dispatch_method(method: str, params: dict[str, Any]) -> Any:
 
         # Return in MCP format
         return {
-            "content": [{"type": "text", "text": json.dumps(result, indent=2, default=str)}],
+            "content": [
+                {"type": "text", "text": json.dumps(result, indent=2, default=str)}
+            ],
             "isError": not result.get("success", True),
         }
 
@@ -824,10 +828,14 @@ async def lifespan(app: Starlette):
         get_client_store()
         get_code_store()
         get_refresh_store()
-        logger.info(f"OAuth stores initialized (clients file: {settings.oauth_clients_file})")
+        logger.info(
+            f"OAuth stores initialized (clients file: {settings.oauth_clients_file})"
+        )
 
         if not settings.oauth_password:
-            logger.warning("OAuth password not configured! Set VALENCE_OAUTH_PASSWORD environment variable.")
+            logger.warning(
+                "OAuth password not configured! Set VALENCE_OAUTH_PASSWORD environment variable."
+            )
 
     yield
 
@@ -882,7 +890,9 @@ def create_app() -> Starlette:
             methods=["GET"],
         ),
         # Compliance endpoints (Issue #25: GDPR deletion)
-        Route(f"{API_V1}/users/{{id}}/data", delete_user_data_endpoint, methods=["DELETE"]),
+        Route(
+            f"{API_V1}/users/{{id}}/data", delete_user_data_endpoint, methods=["DELETE"]
+        ),
         Route(
             f"{API_V1}/tombstones/{{id}}/verification",
             get_deletion_verification_endpoint,
@@ -892,7 +902,9 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/share", share_belief_endpoint, methods=["POST"]),
         Route(f"{API_V1}/shares", list_shares_endpoint, methods=["GET"]),
         Route(f"{API_V1}/shares/{{id}}", get_share_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/shares/{{id}}/revoke", revoke_share_endpoint, methods=["POST"]),
+        Route(
+            f"{API_V1}/shares/{{id}}/revoke", revoke_share_endpoint, methods=["POST"]
+        ),
         # Notification endpoints (Issue #55: revocation propagation)
         Route(f"{API_V1}/notifications", list_notifications_endpoint, methods=["GET"]),
         Route(

@@ -17,7 +17,9 @@ import pytest
 
 # Check if cryptography is available
 try:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )  # noqa: F401
 
     CRYPTO_AVAILABLE = True
 except ImportError:
@@ -258,15 +260,23 @@ class TestEpochSeed:
 class TestSelectionTicket:
     """Tests for selection ticket computation."""
 
-    def test_compute_selection_ticket_returns_output(self, vrf_instance, sample_seed, sample_fingerprint):
+    def test_compute_selection_ticket_returns_output(
+        self, vrf_instance, sample_seed, sample_fingerprint
+    ):
         """compute_selection_ticket should return VRFOutput."""
         output = compute_selection_ticket(vrf_instance, sample_seed, sample_fingerprint)
         assert isinstance(output, VRFOutput)
 
-    def test_selection_ticket_is_deterministic(self, vrf_instance, sample_seed, sample_fingerprint):
+    def test_selection_ticket_is_deterministic(
+        self, vrf_instance, sample_seed, sample_fingerprint
+    ):
         """Same inputs should produce same ticket."""
-        output1 = compute_selection_ticket(vrf_instance, sample_seed, sample_fingerprint)
-        output2 = compute_selection_ticket(vrf_instance, sample_seed, sample_fingerprint)
+        output1 = compute_selection_ticket(
+            vrf_instance, sample_seed, sample_fingerprint
+        )
+        output2 = compute_selection_ticket(
+            vrf_instance, sample_seed, sample_fingerprint
+        )
         assert output1.ticket == output2.ticket
 
     def test_selection_ticket_different_seeds(self, vrf_instance, sample_fingerprint):
@@ -408,6 +418,8 @@ class TestVRFUnpredictability:
         tickets = [o.ticket_as_int() for o in outputs]
 
         # Check that consecutive tickets aren't consistently increasing or decreasing
-        increasing = sum(1 for i in range(len(tickets) - 1) if tickets[i + 1] > tickets[i])
+        increasing = sum(
+            1 for i in range(len(tickets) - 1) if tickets[i + 1] > tickets[i]
+        )
         # Should be roughly 50% increasing (4-6 out of 9)
         assert 2 <= increasing <= 7, f"Pattern detected: {increasing}/9 increasing"

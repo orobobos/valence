@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+
 from valence.server.config import get_package_version
 
 
@@ -116,7 +117,10 @@ class TestServerSettings:
 
         settings = ServerSettings()
 
-        assert settings.database_url == "postgresql://myuser:secret@db.example.com:5432/mydb"
+        assert (
+            settings.database_url
+            == "postgresql://myuser:secret@db.example.com:5432/mydb"
+        )
 
     def test_oauth_jwt_secret_auto_generated(self, clean_env):
         """Test JWT secret auto-generation."""

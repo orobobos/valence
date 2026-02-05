@@ -32,7 +32,9 @@ class TestErrorMessageExposure:
         from starlette.responses import JSONResponse
 
         # Simulate an internal error
-        internal_error = Exception("PostgreSQL connection failed: host=db.internal port=5432 user=valence")
+        Exception(
+            "PostgreSQL connection failed: host=db.internal port=5432 user=valence"
+        )
 
         # The error response should be generic
         safe_response = JSONResponse(
@@ -55,12 +57,6 @@ class TestErrorMessageExposure:
         # - Column names
         # - Constraint names
         # - SQL queries
-
-        raw_error = """
-        psycopg2.errors.UniqueViolation: duplicate key value violates
-        unique constraint "beliefs_federation_id_key"
-        DETAIL: Key (federation_id)=(abc123) already exists.
-        """
 
         # None of this should reach the client
         safe_message = "duplicate_entry"
@@ -189,7 +185,9 @@ class TestLoggingSecurityControls:
         logger.setLevel(logging.DEBUG)
 
         # Simulate logging around token operations
-        fake_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.signature"
+        fake_token = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0In0.signature"
+        )
         logger.debug("Processing authentication request")
         logger.info("Token validated successfully")
         logger.debug("Client authenticated: client_id=test-client")

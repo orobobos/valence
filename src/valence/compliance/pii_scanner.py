@@ -111,13 +111,19 @@ class PIIScanner:
     # Compiled regex patterns
     PATTERNS: dict[PIIType, re.Pattern[str]] = {
         # Email: standard format
-        PIIType.EMAIL: re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", re.IGNORECASE),
+        PIIType.EMAIL: re.compile(
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", re.IGNORECASE
+        ),
         # US Phone: (xxx) xxx-xxxx, xxx-xxx-xxxx, xxx.xxx.xxxx, etc.
-        PIIType.PHONE_US: re.compile(r"\b(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"),
+        PIIType.PHONE_US: re.compile(
+            r"\b(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b"
+        ),
         # International phone: +XX format with various separators
         PIIType.PHONE_INTL: re.compile(r"\b\+(?!1\s)(?:[0-9][-.\s]?){7,14}[0-9]\b"),
         # SSN: xxx-xx-xxxx format (US Social Security Number)
-        PIIType.SSN: re.compile(r"\b(?!000|666|9\d{2})\d{3}[-\s]?(?!00)\d{2}[-\s]?(?!0000)\d{4}\b"),
+        PIIType.SSN: re.compile(
+            r"\b(?!000|666|9\d{2})\d{3}[-\s]?(?!00)\d{2}[-\s]?(?!0000)\d{4}\b"
+        ),
         # Credit card: 13-19 digits with optional separators
         # Covers Visa, MasterCard, Amex, Discover, etc.
         PIIType.CREDIT_CARD: re.compile(
@@ -128,7 +134,10 @@ class PIIScanner:
             r"(?:2131|1800|35\d{3})\d{11})\b"  # JCB
         ),
         # IPv4 address
-        PIIType.IP_ADDRESS: re.compile(r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}" r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"),
+        PIIType.IP_ADDRESS: re.compile(
+            r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+            r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
+        ),
     }
 
     def __init__(self, enabled_types: set[PIIType] | None = None):
@@ -158,7 +167,9 @@ class PIIScanner:
                 continue
 
             for match in pattern.finditer(text):
-                classification = PII_CLASSIFICATION.get(pii_type, ClassificationLevel.L2_SENSITIVE)
+                classification = PII_CLASSIFICATION.get(
+                    pii_type, ClassificationLevel.L2_SENSITIVE
+                )
 
                 pii_match = PIIMatch(
                     pii_type=pii_type,
@@ -240,7 +251,11 @@ class PIIScanner:
 
         redacted = text
         for match in sorted_matches:
-            redacted = redacted[: match.start] + (match.redacted_value or "[REDACTED]") + redacted[match.end :]
+            redacted = (
+                redacted[: match.start]
+                + (match.redacted_value or "[REDACTED]")
+                + redacted[match.end :]
+            )
 
         return redacted
 
@@ -298,15 +313,24 @@ def check_federation_allowed(
 
     # L4 is always blocked
     if result.hard_blocked:
-        logger.warning(f"Federation HARD BLOCKED: L4 content detected " f"({len(result.matches)} PII matches)")
+        logger.warning(
+            f"Federation HARD BLOCKED: L4 content detected "
+            f"({len(result.matches)} PII matches)"
+        )
         return False, result
 
     # L3 requires force flag
     if result.max_classification >= ClassificationLevel.L3_PERSONAL:
         if not force:
-            logger.info("Federation SOFT BLOCKED: L3 content detected " "(use --force to override)")
+            logger.info(
+                "Federation SOFT BLOCKED: L3 content detected "
+                "(use --force to override)"
+            )
             return False, result
         else:
-            logger.warning(f"Federation forced for L3 content " f"({len(result.matches)} PII matches)")
+            logger.warning(
+                f"Federation forced for L3 content "
+                f"({len(result.matches)} PII matches)"
+            )
 
     return True, result

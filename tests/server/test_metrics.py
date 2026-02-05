@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.server.metrics import (
     LATENCY_BUCKETS,
     HistogramData,
@@ -200,7 +201,9 @@ class TestDatabaseMetrics:
         collector = MetricsCollector()
 
         # Mock the import to raise an exception
-        with patch("valence.core.db.DatabaseStats.collect", side_effect=Exception("DB error")):
+        with patch(
+            "valence.core.db.DatabaseStats.collect", side_effect=Exception("DB error")
+        ):
             lines = collector._collect_database_metrics()
 
         # Should return something (either metrics or error comment)
@@ -233,7 +236,9 @@ class TestFederationMetrics:
         assert any("valence_federation_peers_total 2" in line for line in lines)
         assert any('level="high"' in line and "1" in line for line in lines)
         assert any('level="medium"' in line and "1" in line for line in lines)
-        assert any("valence_federation_beliefs_received_total 30" in line for line in lines)
+        assert any(
+            "valence_federation_beliefs_received_total 30" in line for line in lines
+        )
         assert any("valence_federation_beliefs_sent_total 20" in line for line in lines)
 
     @patch("valence.federation.peer_sync.get_trust_registry")

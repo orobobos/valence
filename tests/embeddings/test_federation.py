@@ -327,7 +327,9 @@ class TestPrepareBeliefForFederation:
     @patch("valence.core.db.get_cursor")
     @patch("valence.server.config.get_settings")
     @patch("valence.embeddings.providers.local.generate_embedding")
-    async def test_prepare_generates_embedding(self, mock_generate, mock_settings, mock_cursor, mock_db_row):
+    async def test_prepare_generates_embedding(
+        self, mock_generate, mock_settings, mock_cursor, mock_db_row
+    ):
         """Test that preparation generates embedding when needed."""
         from valence.embeddings.federation import prepare_belief_for_federation
 
@@ -343,7 +345,9 @@ class TestPrepareBeliefForFederation:
         mock_generate.return_value = mock_embedding
 
         # Execute
-        result = await prepare_belief_for_federation("550e8400-e29b-41d4-a716-446655440000")
+        result = await prepare_belief_for_federation(
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
 
         # Verify
         assert result["belief_id"] == "550e8400-e29b-41d4-a716-446655440000"
@@ -357,7 +361,9 @@ class TestPrepareBeliefForFederation:
     @pytest.mark.asyncio
     @patch("valence.core.db.get_cursor")
     @patch("valence.server.config.get_settings")
-    async def test_prepare_uses_existing_compatible_embedding(self, mock_settings, mock_cursor, mock_db_row):
+    async def test_prepare_uses_existing_compatible_embedding(
+        self, mock_settings, mock_cursor, mock_db_row
+    ):
         """Test that preparation uses existing compatible embedding."""
         from valence.embeddings.federation import prepare_belief_for_federation
 
@@ -374,7 +380,9 @@ class TestPrepareBeliefForFederation:
         mock_cursor.return_value.__enter__.return_value = mock_cur
 
         # Execute
-        result = await prepare_belief_for_federation("550e8400-e29b-41d4-a716-446655440000")
+        result = await prepare_belief_for_federation(
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
 
         # Verify existing embedding was used
         assert result["embedding"] == [0.05] * 384

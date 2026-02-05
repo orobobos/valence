@@ -113,7 +113,11 @@ def generate_pkce_pair() -> tuple[str, str]:
     import secrets
 
     verifier = secrets.token_urlsafe(32)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
 
     return verifier, challenge
 
@@ -240,7 +244,9 @@ class TestE2ETokenIssuance:
             follow_redirects=False,
         )
 
-        code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_response.headers["location"]).query)["code"][0]
+        code = urllib.parse.parse_qs(
+            urllib.parse.urlparse(auth_response.headers["location"]).query
+        )["code"][0]
 
         token_response = client.post(
             f"{API_V1}/oauth/token",
@@ -287,7 +293,9 @@ class TestTokenRefresh:
             follow_redirects=False,
         )
 
-        code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_response.headers["location"]).query)["code"][0]
+        code = urllib.parse.parse_qs(
+            urllib.parse.urlparse(auth_response.headers["location"]).query
+        )["code"][0]
 
         token_response = client.post(
             f"{API_V1}/oauth/token",
@@ -483,7 +491,11 @@ class TestPKCEVerification:
 
         # RFC 7636 example values
         verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+            .rstrip(b"=")
+            .decode("ascii")
+        )
 
         assert verify_pkce(verifier, challenge, "S256") is True
 
@@ -492,7 +504,11 @@ class TestPKCEVerification:
         from valence.server.oauth_models import verify_pkce
 
         verifier = "correct-verifier"
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+            .rstrip(b"=")
+            .decode("ascii")
+        )
 
         assert verify_pkce("wrong-verifier", challenge, "S256") is False
 
@@ -529,7 +545,11 @@ class TestPKCEVerification:
 
         assert response.status_code == 302
         location = response.headers.get("location", "")
-        assert "error" in location or "PKCE" in location.lower() or "code_challenge" in location.lower()
+        assert (
+            "error" in location
+            or "PKCE" in location.lower()
+            or "code_challenge" in location.lower()
+        )
 
 
 # ============================================================================
@@ -583,7 +603,9 @@ class TestErrorCases:
             follow_redirects=False,
         )
 
-        code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_response.headers["location"]).query)["code"][0]
+        code = urllib.parse.parse_qs(
+            urllib.parse.urlparse(auth_response.headers["location"]).query
+        )["code"][0]
 
         # Manually expire the code
         code_store = get_code_store()
@@ -628,7 +650,9 @@ class TestErrorCases:
             follow_redirects=False,
         )
 
-        code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_response.headers["location"]).query)["code"][0]
+        code = urllib.parse.parse_qs(
+            urllib.parse.urlparse(auth_response.headers["location"]).query
+        )["code"][0]
 
         # Try to exchange with different redirect_uri
         token_response = client.post(
@@ -676,7 +700,9 @@ class TestErrorCases:
             follow_redirects=False,
         )
 
-        code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_response.headers["location"]).query)["code"][0]
+        code = urllib.parse.parse_qs(
+            urllib.parse.urlparse(auth_response.headers["location"]).query
+        )["code"][0]
 
         # Try to exchange with client2's ID
         token_response = client.post(

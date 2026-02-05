@@ -385,7 +385,9 @@ class TestExtractionRateLimiting:
 
         # Third should fail
         with pytest.raises(RateLimitExceededError) as exc_info:
-            service.extract("content 3", ExtractionLevel.THEMES, "src_3", "did:test:alice")
+            service.extract(
+                "content 3", ExtractionLevel.THEMES, "src_3", "did:test:alice"
+            )
 
         assert exc_info.value.did == "did:test:alice"
         assert exc_info.value.limit == 2
@@ -410,7 +412,9 @@ class TestExtractionRateLimiting:
 
         # Alice is blocked
         with pytest.raises(RateLimitExceededError):
-            service.extract("content 3", ExtractionLevel.THEMES, "src_3", "did:test:alice")
+            service.extract(
+                "content 3", ExtractionLevel.THEMES, "src_3", "did:test:alice"
+            )
 
     def test_rate_limit_status_reporting(self):
         """Rate limit status is correctly reported."""

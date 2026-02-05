@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.models import (
     AnnotationType,
     NodeTrust,
@@ -82,7 +83,9 @@ def sample_node_trust():
         trust.aggregation_participations = kwargs.get("aggregation_participations", 3)
         trust.endorsements_received = kwargs.get("endorsements_received", 0)
         trust.manual_trust_adjustment = kwargs.get("manual_trust_adjustment", 0.0)
-        trust.relationship_started_at = kwargs.get("relationship_started_at", datetime.now() - timedelta(days=30))
+        trust.relationship_started_at = kwargs.get(
+            "relationship_started_at", datetime.now() - timedelta(days=30)
+        )
         trust.last_interaction_at = kwargs.get("last_interaction_at", datetime.now())
         return trust
 
@@ -198,9 +201,13 @@ class TestTrustManagerInit:
     def test_trust_manager_init_default(self):
         """Test TrustManager with default parameters."""
         with (
-            patch("valence.federation.trust.TrustRegistry") as MockRegistry,
-            patch("valence.federation.trust.ThreatDetector") as MockDetector,
-            patch("valence.federation.trust.TrustPolicy") as MockPolicy,
+            patch(
+                "valence.federation.trust.TrustRegistry"
+            ) as MockRegistry,  # noqa: N806
+            patch(
+                "valence.federation.trust.ThreatDetector"
+            ) as MockDetector,  # noqa: N806
+            patch("valence.federation.trust.TrustPolicy") as MockPolicy,  # noqa: N806
         ):
             manager = TrustManager()
 
@@ -275,7 +282,9 @@ class TestTrustManagerDelegation:
             manager = TrustManager()
             result = manager.get_effective_trust(node_id, domain="science")
 
-            mock_policy.get_effective_trust.assert_called_once_with(node_id, "science", True)
+            mock_policy.get_effective_trust.assert_called_once_with(
+                node_id, "science", True
+            )
             assert result == 0.75
 
     def test_assess_threat_level_delegates(self, mock_threat_detector):
@@ -314,7 +323,9 @@ class TestTrustManagerDelegation:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            result = manager.apply_threat_response(node_id, ThreatLevel.MEDIUM, {"threat_score": 0.45})
+            result = manager.apply_threat_response(
+                node_id, ThreatLevel.MEDIUM, {"threat_score": 0.45}
+            )
 
             mock_threat_detector.apply_threat_response.assert_called_once()
             assert result is True
@@ -347,7 +358,9 @@ class TestProcessSignal:
     def test_process_corroboration_signal(self, mock_registry, sample_node_trust):
         """Test processing a corroboration signal."""
         node_id = uuid4()
-        trust = sample_node_trust(node_id=node_id, beliefs_corroborated=5, belief_accuracy=0.5)
+        trust = sample_node_trust(
+            node_id=node_id, beliefs_corroborated=5, belief_accuracy=0.5
+        )
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
@@ -367,7 +380,9 @@ class TestProcessSignal:
     def test_process_dispute_signal(self, mock_registry, sample_node_trust):
         """Test processing a dispute signal."""
         node_id = uuid4()
-        trust = sample_node_trust(node_id=node_id, beliefs_disputed=1, belief_accuracy=0.8)
+        trust = sample_node_trust(
+            node_id=node_id, beliefs_disputed=1, belief_accuracy=0.8
+        )
         mock_registry.get_node_trust.return_value = trust
         mock_registry.save_node_trust.return_value = trust
 
@@ -450,7 +465,9 @@ class TestProcessSignal:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            signal = TrustSignal(node_id=node_id, signal_type="corroboration", domain="science")
+            signal = TrustSignal(
+                node_id=node_id, signal_type="corroboration", domain="science"
+            )
             result = manager.process_signal(signal)
 
             assert result is not None
@@ -538,7 +555,9 @@ class TestProcessDispute:
 class TestProcessEndorsement:
     """Tests for TrustManager.process_endorsement."""
 
-    def test_process_endorsement_basic(self, mock_registry, mock_policy, sample_node_trust):
+    def test_process_endorsement_basic(
+        self, mock_registry, mock_policy, sample_node_trust
+    ):
         """Test basic endorsement processing."""
         subject_id = uuid4()
         endorser_id = uuid4()
@@ -578,7 +597,9 @@ class TestUserPreferences:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            result = manager.set_user_preference(node_id, TrustPreference.ELEVATED, reason="Trusted source")
+            result = manager.set_user_preference(
+                node_id, TrustPreference.ELEVATED, reason="Trusted source"
+            )
 
             mock_registry.set_user_preference.assert_called_once()
             assert result == mock_pref
@@ -595,7 +616,7 @@ class TestUserPreferences:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            result = manager.block_node(node_id, reason="Suspicious")
+            manager.block_node(node_id, reason="Suspicious")
 
             # Should call set_user_preference with BLOCKED
             call_args = mock_registry.set_user_preference.call_args
@@ -613,7 +634,7 @@ class TestUserPreferences:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            result = manager.unblock_node(node_id)
+            manager.unblock_node(node_id)
 
             call_args = mock_registry.set_user_preference.call_args
             assert call_args[1]["preference"] == TrustPreference.AUTOMATIC
@@ -639,7 +660,9 @@ class TestBeliefAnnotations:
             patch("valence.federation.trust.TrustPolicy"),
         ):
             manager = TrustManager()
-            result = manager.annotate_belief(belief_id, AnnotationType.CORROBORATION, confidence_delta=0.05)
+            result = manager.annotate_belief(
+                belief_id, AnnotationType.CORROBORATION, confidence_delta=0.05
+            )
 
             mock_registry.annotate_belief.assert_called_once()
             assert result == mock_annotation

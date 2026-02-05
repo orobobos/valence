@@ -149,7 +149,9 @@ def mock_psycopg2_pool():
     mock_pool.putconn = MagicMock()
     mock_pool.closeall = MagicMock()
 
-    with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
+    with patch(
+        "valence.core.db.psycopg2_pool.ThreadedConnectionPool"
+    ) as mock_pool_class:
         mock_pool_class.return_value = mock_pool
         yield {
             "pool_class": mock_pool_class,
@@ -364,7 +366,9 @@ def tension_row_factory():
 def source_row_factory():
     """Factory for creating source database rows."""
 
-    def factory(id: UUID | None = None, type: str = "conversation", **kwargs) -> dict[str, Any]:
+    def factory(
+        id: UUID | None = None, type: str = "conversation", **kwargs
+    ) -> dict[str, Any]:
         return {
             "id": id or uuid4(),
             "type": type,
@@ -393,7 +397,9 @@ def mock_openai():
 
         # Mock embedding response
         mock_embedding = MagicMock()
-        mock_embedding.embedding = [0.1] * 1536  # Default dimension for text-embedding-3-small
+        mock_embedding.embedding = [
+            0.1
+        ] * 1536  # Default dimension for text-embedding-3-small
         mock_response = MagicMock()
         mock_response.data = [mock_embedding]
         mock_client.embeddings.create.return_value = mock_response
@@ -436,7 +442,9 @@ def mock_mcp_server():
 def mock_stdio_server():
     """Mock MCP stdio server."""
     with patch("mcp.server.stdio.stdio_server") as mock_stdio:
-        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aenter__ = AsyncMock(
+            return_value=(MagicMock(), MagicMock())
+        )
         mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
         yield mock_stdio
 

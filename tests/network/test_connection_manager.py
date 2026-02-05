@@ -15,6 +15,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.network.connection_manager import (
     ConnectionManager,
     ConnectionManagerConfig,
@@ -165,7 +166,9 @@ class TestIPDiversity:
         # No endpoints means we can't check IP, so allow it
         assert connection_manager.check_ip_diversity(router) is False
 
-    def test_check_ip_diversity_first_connection(self, connection_manager, mock_router_info):
+    def test_check_ip_diversity_first_connection(
+        self, connection_manager, mock_router_info
+    ):
         """Test IP diversity check for first connection (should pass)."""
         assert connection_manager.check_ip_diversity(mock_router_info) is True
 
@@ -178,7 +181,9 @@ class TestIPDiversity:
         assert connection_manager.check_ip_diversity(mock_router_info) is False
         assert connection_manager._stats["diversity_rejections"] == 1
 
-    def test_check_ip_diversity_different_subnet(self, connection_manager, mock_router_info):
+    def test_check_ip_diversity_different_subnet(
+        self, connection_manager, mock_router_info
+    ):
         """Test IP diversity check for router in different subnet."""
         # Simulate connection to a different subnet
         connection_manager._connected_subnets.add("10.0.0.0/16")
@@ -204,7 +209,9 @@ class TestIPDiversity:
         # First IPv6 should pass
         assert connection_manager.check_ip_diversity(mock_router_info_ipv6) is True
 
-    def test_check_ip_diversity_ipv6_same_block(self, connection_manager, mock_router_info_ipv6):
+    def test_check_ip_diversity_ipv6_same_block(
+        self, connection_manager, mock_router_info_ipv6
+    ):
         """Test IP diversity check for IPv6 in same /48."""
         # Simulate that we already have a connection to this /48
         connection_manager._connected_subnets.add("2001:db8::/48")
@@ -324,7 +331,9 @@ class TestDiversityRequirements:
         # With no connections, requirements should pass (vacuously true)
         assert connection_manager.check_diversity_requirements() is True
 
-    def test_check_diversity_requirements_insufficient_subnets(self, connection_manager):
+    def test_check_diversity_requirements_insufficient_subnets(
+        self, connection_manager
+    ):
         """Test diversity requirements with insufficient subnet diversity."""
         # Simulate 3 connections but only 1 subnet
         connection_manager.connections = {
@@ -393,7 +402,9 @@ class TestConnectionManagerIntegration:
     """Integration tests for ConnectionManager."""
 
     @pytest.mark.asyncio
-    async def test_ensure_connections_no_routers(self, connection_manager, mock_discovery):
+    async def test_ensure_connections_no_routers(
+        self, connection_manager, mock_discovery
+    ):
         """Test ensuring connections when no routers are discovered."""
         mock_discovery.discover_routers = AsyncMock(return_value=[])
 
@@ -402,12 +413,16 @@ class TestConnectionManagerIntegration:
         assert connection_manager.connection_count == 0
 
     @pytest.mark.asyncio
-    async def test_ensure_connections_with_routers(self, connection_manager, mock_discovery, mock_router_info):
+    async def test_ensure_connections_with_routers(
+        self, connection_manager, mock_discovery, mock_router_info
+    ):
         """Test ensuring connections with available routers."""
         mock_discovery.discover_routers = AsyncMock(return_value=[mock_router_info])
 
         # Mock the connect_to_router method to avoid actual network calls
-        with patch.object(connection_manager, "connect_to_router", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            connection_manager, "connect_to_router", new_callable=AsyncMock
+        ) as mock_connect:
             mock_connect.side_effect = Exception("Connection failed")
 
             await connection_manager.ensure_connections()
@@ -416,7 +431,9 @@ class TestConnectionManagerIntegration:
             mock_connect.assert_called()
 
     @pytest.mark.asyncio
-    async def test_close_connection_with_callback(self, connection_manager, mock_router_info):
+    async def test_close_connection_with_callback(
+        self, connection_manager, mock_router_info
+    ):
         """Test closing connection triggers callback."""
         callback_called = []
 

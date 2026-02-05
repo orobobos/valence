@@ -15,6 +15,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.router import Connection, QueuedMessage, RouterNode
 
 # =============================================================================
@@ -188,7 +189,9 @@ class TestRouterNodeHandlers:
 
         assert result is None
         # Should have sent error
-        new_ws.send_json.assert_called_with({"type": "error", "message": "Node already connected"})
+        new_ws.send_json.assert_called_with(
+            {"type": "error", "message": "Node already connected"}
+        )
 
     @pytest.mark.asyncio
     async def test_handle_relay_direct_delivery(self, router):

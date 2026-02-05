@@ -1,7 +1,5 @@
 """Tests for core utilities."""
 
-import pytest
-
 from valence.core.utils import escape_ilike
 
 

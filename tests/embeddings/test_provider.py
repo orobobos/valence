@@ -12,6 +12,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.embeddings.service import (
     EmbeddingProvider,
     generate_embedding,
@@ -77,6 +78,7 @@ class TestLocalEmbedding:
     def mock_local_model(self):
         """Mock the local model to avoid loading it in tests."""
         import numpy as np
+
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()
@@ -124,6 +126,7 @@ class TestGenerateEmbedding:
     def mock_local_model(self):
         """Mock local model."""
         import numpy as np
+
         from valence.embeddings.providers import local
 
         mock_model = MagicMock()
@@ -191,7 +194,9 @@ class TestBeliefOptOut:
         """Tool schema should include opt_out_federation."""
         from valence.substrate.tools import SUBSTRATE_TOOLS
 
-        belief_create_tool = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_create")
+        belief_create_tool = next(
+            t for t in SUBSTRATE_TOOLS if t.name == "belief_create"
+        )
 
         schema = belief_create_tool.inputSchema
         assert "opt_out_federation" in schema["properties"]

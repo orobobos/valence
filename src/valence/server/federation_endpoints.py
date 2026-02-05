@@ -321,8 +321,7 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
         from ..core.db import get_cursor
 
         with get_cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT
                     fn.did,
                     fn.trust_phase,
@@ -338,8 +337,7 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
                   OR unt.trust_preference = 'anchor'
                 ORDER BY COALESCE((nt.trust->>'overall')::numeric, 0) DESC
                 LIMIT 100
-            """
-            )
+            """)
 
             rows = cur.fetchall()
 
@@ -348,8 +346,14 @@ def _get_trust_anchors() -> list[dict[str, Any]]:
                     "did": row["did"],
                     "trust_level": row["trust_phase"],
                     "domains": row["domains"] or [],
-                    "trust_score": (float(row["trust_overall"]) if row["trust_overall"] else None),
-                    "relationship_started_at": (row["relationship_started_at"].isoformat() if row["relationship_started_at"] else None),
+                    "trust_score": (
+                        float(row["trust_overall"]) if row["trust_overall"] else None
+                    ),
+                    "relationship_started_at": (
+                        row["relationship_started_at"].isoformat()
+                        if row["relationship_started_at"]
+                        else None
+                    ),
                 }
                 for row in rows
             ]
@@ -414,38 +418,32 @@ def _get_federation_stats() -> dict[str, Any]:
 
         with get_cursor() as cur:
             # Get node counts by status
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT status, COUNT(*) as count
                 FROM federation_nodes
                 GROUP BY status
-            """
-            )
+            """)
             nodes_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
 
             # Get sync statistics
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT
                     COUNT(*) as total_syncing,
                     SUM(beliefs_sent) as total_beliefs_sent,
                     SUM(beliefs_received) as total_beliefs_received
                 FROM sync_state
                 WHERE status IN ('idle', 'syncing')
-            """
-            )
+            """)
             sync_row = cur.fetchone()
 
             # Get belief counts
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT
                     COUNT(*) FILTER (WHERE is_local = TRUE) as local_beliefs,
                     COUNT(*) FILTER (WHERE is_local = FALSE) as federated_beliefs
                 FROM beliefs
                 WHERE status = 'active'
-            """
-            )
+            """)
             belief_row = cur.fetchone()
 
             return {
@@ -456,7 +454,9 @@ def _get_federation_stats() -> dict[str, Any]:
                 "sync": {
                     "active_peers": sync_row["total_syncing"] if sync_row else 0,
                     "beliefs_sent": sync_row["total_beliefs_sent"] if sync_row else 0,
-                    "beliefs_received": (sync_row["total_beliefs_received"] if sync_row else 0),
+                    "beliefs_received": (
+                        sync_row["total_beliefs_received"] if sync_row else 0
+                    ),
                 },
                 "beliefs": {
                     "local": belief_row["local_beliefs"] if belief_row else 0,
@@ -516,7 +516,9 @@ async def federation_protocol(request: Request) -> JSONResponse:
         # Handle the message
         response = await handle_message(message)
 
-        return JSONResponse(response.to_dict() if hasattr(response, "to_dict") else response)
+        return JSONResponse(
+            response.to_dict() if hasattr(response, "to_dict") else response
+        )
 
     except json.JSONDecodeError:
         return invalid_json_error()

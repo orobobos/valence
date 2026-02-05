@@ -79,9 +79,19 @@ class Tombstone:
             "reason": self.reason.value,
             "legal_basis": self.legal_basis,
             "encryption_key_revoked": self.encryption_key_revoked,
-            "key_revocation_timestamp": (self.key_revocation_timestamp.isoformat() if self.key_revocation_timestamp else None),
-            "propagation_started": (self.propagation_started.isoformat() if self.propagation_started else None),
-            "acknowledged_by": {k: v.isoformat() for k, v in self.acknowledged_by.items()},
+            "key_revocation_timestamp": (
+                self.key_revocation_timestamp.isoformat()
+                if self.key_revocation_timestamp
+                else None
+            ),
+            "propagation_started": (
+                self.propagation_started.isoformat()
+                if self.propagation_started
+                else None
+            ),
+            "acknowledged_by": {
+                k: v.isoformat() for k, v in self.acknowledged_by.items()
+            },
             "signature": self.signature.hex() if self.signature else None,
         }
 
@@ -103,7 +113,11 @@ class Tombstone:
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
             target_type=row["target_type"],
-            target_id=(row["target_id"] if isinstance(row["target_id"], UUID) else UUID(row["target_id"])),
+            target_id=(
+                row["target_id"]
+                if isinstance(row["target_id"], UUID)
+                else UUID(row["target_id"])
+            ),
             created_at=row["created_at"],
             created_by=row["created_by"],
             reason=DeletionReason(row["reason"]),
@@ -204,7 +218,10 @@ def create_tombstone(
             ),
         )
 
-    logger.info(f"Created tombstone {tombstone.id} for {target_type}:{target_id} " f"reason={reason.value}")
+    logger.info(
+        f"Created tombstone {tombstone.id} for {target_type}:{target_id} "
+        f"reason={reason.value}"
+    )
 
     return tombstone
 
@@ -456,10 +473,16 @@ def get_deletion_verification(tombstone_id: UUID) -> dict[str, Any] | None:
 
         return {
             "tombstone_id": str(tombstone.id),
-            "status": ("complete" if tombstone.encryption_key_revoked else "processing"),
+            "status": (
+                "complete" if tombstone.encryption_key_revoked else "processing"
+            ),
             "tombstone_created": tombstone.created_at.isoformat(),
             "key_revoked": tombstone.encryption_key_revoked,
-            "key_revocation_timestamp": (tombstone.key_revocation_timestamp.isoformat() if tombstone.key_revocation_timestamp else None),
+            "key_revocation_timestamp": (
+                tombstone.key_revocation_timestamp.isoformat()
+                if tombstone.key_revocation_timestamp
+                else None
+            ),
             "propagation_status": {
                 "started": tombstone.propagation_started is not None,
                 "acknowledged_count": len(tombstone.acknowledged_by),

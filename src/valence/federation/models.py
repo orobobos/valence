@@ -196,8 +196,12 @@ class FederationNode:
             "phase_started_at": self.phase_started_at.isoformat(),
             "protocol_version": self.protocol_version,
             "discovered_at": self.discovered_at.isoformat(),
-            "last_seen_at": (self.last_seen_at.isoformat() if self.last_seen_at else None),
-            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
+            "last_seen_at": (
+                self.last_seen_at.isoformat() if self.last_seen_at else None
+            ),
+            "last_sync_at": (
+                self.last_sync_at.isoformat() if self.last_sync_at else None
+            ),
             "metadata": self.metadata,
         }
 
@@ -365,10 +369,26 @@ class BeliefProvenance:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_id=(row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"])),
-            federation_id=(row["federation_id"] if isinstance(row["federation_id"], UUID) else UUID(row["federation_id"])),
-            origin_node_id=(row["origin_node_id"] if isinstance(row["origin_node_id"], UUID) else UUID(row["origin_node_id"])),
-            origin_belief_id=(row["origin_belief_id"] if isinstance(row["origin_belief_id"], UUID) else UUID(row["origin_belief_id"])),
+            belief_id=(
+                row["belief_id"]
+                if isinstance(row["belief_id"], UUID)
+                else UUID(row["belief_id"])
+            ),
+            federation_id=(
+                row["federation_id"]
+                if isinstance(row["federation_id"], UUID)
+                else UUID(row["federation_id"])
+            ),
+            origin_node_id=(
+                row["origin_node_id"]
+                if isinstance(row["origin_node_id"], UUID)
+                else UUID(row["origin_node_id"])
+            ),
+            origin_belief_id=(
+                row["origin_belief_id"]
+                if isinstance(row["origin_belief_id"], UUID)
+                else UUID(row["origin_belief_id"])
+            ),
             origin_signature=row["origin_signature"],
             signed_at=row["signed_at"],
             signature_verified=row.get("signature_verified", False),
@@ -438,7 +458,9 @@ class NodeTrust:
     def __post_init__(self) -> None:
         """Validate trust values."""
         if self.overall < 0 or self.overall > 1:
-            raise ValueError(f"overall trust must be between 0 and 1, got {self.overall}")
+            raise ValueError(
+                f"overall trust must be between 0 and 1, got {self.overall}"
+            )
 
     def recalculate_overall(self, weights: dict[str, float] | None = None) -> NodeTrust:
         """Recalculate overall trust from dimensions."""
@@ -459,7 +481,9 @@ class NodeTrust:
         if total_weight > 0:
             self.overall = min(
                 1.0,
-                (weighted_sum / total_weight) + age_bonus + self.manual_trust_adjustment,
+                (weighted_sum / total_weight)
+                + age_bonus
+                + self.manual_trust_adjustment,
             )
         else:
             self.overall = 0.1 + age_bonus + self.manual_trust_adjustment
@@ -512,7 +536,11 @@ class NodeTrust:
             "endorsements_received": self.endorsements_received,
             "endorsements_given": self.endorsements_given,
             "relationship_started_at": self.relationship_started_at.isoformat(),
-            "last_interaction_at": (self.last_interaction_at.isoformat() if self.last_interaction_at else None),
+            "last_interaction_at": (
+                self.last_interaction_at.isoformat()
+                if self.last_interaction_at
+                else None
+            ),
             "manual_trust_adjustment": float(self.manual_trust_adjustment),
             "adjustment_reason": self.adjustment_reason,
             "created_at": self.created_at.isoformat(),
@@ -530,7 +558,11 @@ class NodeTrust:
 
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            node_id=(row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"])),
+            node_id=(
+                row["node_id"]
+                if isinstance(row["node_id"], UUID)
+                else UUID(row["node_id"])
+            ),
             overall=trust_data.get("overall", 0.1),
             belief_accuracy=trust_data.get("belief_accuracy"),
             extraction_quality=trust_data.get("extraction_quality"),
@@ -599,7 +631,11 @@ class UserNodeTrust:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            node_id=(row["node_id"] if isinstance(row["node_id"], UUID) else UUID(row["node_id"])),
+            node_id=(
+                row["node_id"]
+                if isinstance(row["node_id"], UUID)
+                else UUID(row["node_id"])
+            ),
             trust_preference=TrustPreference(row.get("trust_preference", "automatic")),
             manual_trust_score=row.get("manual_trust_score"),
             reason=row.get("reason"),
@@ -647,9 +683,15 @@ class BeliefTrustAnnotation:
         """Create from database row."""
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            belief_id=(row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"])),
+            belief_id=(
+                row["belief_id"]
+                if isinstance(row["belief_id"], UUID)
+                else UUID(row["belief_id"])
+            ),
             type=AnnotationType(row["type"]),
-            source_node_id=(UUID(row["source_node_id"]) if row.get("source_node_id") else None),
+            source_node_id=(
+                UUID(row["source_node_id"]) if row.get("source_node_id") else None
+            ),
             corroboration_attestation=row.get("corroboration_attestation"),
             confidence_delta=float(row.get("confidence_delta", 0)),
             created_at=row.get("created_at", datetime.now()),
@@ -704,7 +746,9 @@ class AggregatedBelief:
             "query_domain": self.query_domain,
             "query_semantic": self.query_semantic,
             "collective_confidence": float(self.collective_confidence),
-            "agreement_score": (float(self.agreement_score) if self.agreement_score else None),
+            "agreement_score": (
+                float(self.agreement_score) if self.agreement_score else None
+            ),
             "contributor_count": self.contributor_count,
             "node_count": self.node_count,
             "total_belief_count": self.total_belief_count,
@@ -715,7 +759,9 @@ class AggregatedBelief:
                 "delta": float(self.privacy_delta),
                 "mechanism": self.privacy_mechanism,
             },
-            "aggregator_node_id": (str(self.aggregator_node_id) if self.aggregator_node_id else None),
+            "aggregator_node_id": (
+                str(self.aggregator_node_id) if self.aggregator_node_id else None
+            ),
             "computed_at": self.computed_at.isoformat(),
             "valid_until": self.valid_until.isoformat() if self.valid_until else None,
             "metadata": self.metadata,
@@ -779,15 +825,21 @@ class TensionResolution:
             "node_b_id": str(self.node_b_id) if self.node_b_id else None,
             "proposed_resolution": self.proposed_resolution.value,
             "resolution_rationale": self.resolution_rationale,
-            "proposed_by_node_id": (str(self.proposed_by_node_id) if self.proposed_by_node_id else None),
+            "proposed_by_node_id": (
+                str(self.proposed_by_node_id) if self.proposed_by_node_id else None
+            ),
             "proposed_at": self.proposed_at.isoformat(),
             "consensus_method": self.consensus_method.value,
             "consensus_threshold": float(self.consensus_threshold),
             "current_support": float(self.current_support),
             "status": self.status.value,
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
-            "winning_belief_id": (str(self.winning_belief_id) if self.winning_belief_id else None),
-            "superseded_belief_id": (str(self.superseded_belief_id) if self.superseded_belief_id else None),
+            "winning_belief_id": (
+                str(self.winning_belief_id) if self.winning_belief_id else None
+            ),
+            "superseded_belief_id": (
+                str(self.superseded_belief_id) if self.superseded_belief_id else None
+            ),
         }
 
 
@@ -863,8 +915,14 @@ class SyncState:
             "last_sync_duration_ms": self.last_sync_duration_ms,
             "last_error": self.last_error,
             "error_count": self.error_count,
-            "last_sync_at": (self.last_sync_at.isoformat() if self.last_sync_at else None),
-            "next_sync_scheduled": (self.next_sync_scheduled.isoformat() if self.next_sync_scheduled else None),
+            "last_sync_at": (
+                self.last_sync_at.isoformat() if self.last_sync_at else None
+            ),
+            "next_sync_scheduled": (
+                self.next_sync_scheduled.isoformat()
+                if self.next_sync_scheduled
+                else None
+            ),
             "created_at": self.created_at.isoformat(),
             "modified_at": self.modified_at.isoformat(),
         }
@@ -1076,7 +1134,9 @@ class AggregationResult:
             "request_id": str(self.request_id),
             "result": {
                 "collective_confidence": float(self.collective_confidence),
-                "agreement_score": (float(self.agreement_score) if self.agreement_score else None),
+                "agreement_score": (
+                    float(self.agreement_score) if self.agreement_score else None
+                ),
                 "contributor_count": self.contributor_count,
                 "node_count": self.node_count,
                 "stance_summary": self.stance_summary,
@@ -1124,7 +1184,9 @@ class TrustConcentrationWarning:
             "details": self.details,
             "node_id": str(self.node_id) if self.node_id else None,
             "node_name": self.node_name,
-            "trust_share": (float(self.trust_share) if self.trust_share is not None else None),
+            "trust_share": (
+                float(self.trust_share) if self.trust_share is not None else None
+            ),
             "recommendation": self.recommendation,
             "created_at": self.created_at.isoformat(),
         }
@@ -1158,7 +1220,9 @@ class TrustConcentrationReport:
     top_node_share: float = 0.0  # Trust share of top node
     top_3_share: float = 0.0  # Trust share of top 3 nodes
     trusted_sources: int = 0  # Number of nodes with trust > 0.1
-    gini_coefficient: float | None = None  # Inequality measure (0 = equal, 1 = max inequality)
+    gini_coefficient: float | None = (
+        None  # Inequality measure (0 = equal, 1 = max inequality)
+    )
 
     # Analysis timestamp
     analyzed_at: datetime = field(default_factory=datetime.now)
@@ -1183,7 +1247,9 @@ class TrustConcentrationReport:
             WarningSeverity.WARNING,
             WarningSeverity.CRITICAL,
         ]
-        return max(self.warnings, key=lambda w: severity_order.index(w.severity)).severity
+        return max(
+            self.warnings, key=lambda w: severity_order.index(w.severity)
+        ).severity
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -1196,7 +1262,11 @@ class TrustConcentrationReport:
                 "top_node_share": float(self.top_node_share),
                 "top_3_share": float(self.top_3_share),
                 "trusted_sources": self.trusted_sources,
-                "gini_coefficient": (float(self.gini_coefficient) if self.gini_coefficient is not None else None),
+                "gini_coefficient": (
+                    float(self.gini_coefficient)
+                    if self.gini_coefficient is not None
+                    else None
+                ),
             },
             "has_warnings": self.has_warnings,
             "has_critical_warnings": self.has_critical_warnings,

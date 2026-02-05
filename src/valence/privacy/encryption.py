@@ -37,7 +37,9 @@ class EncryptionEnvelope:
     recipient_key_id: str | None = None
 
     @classmethod
-    def encrypt(cls, content: bytes, recipient_public_key: bytes) -> "EncryptionEnvelope":
+    def encrypt(
+        cls, content: bytes, recipient_public_key: bytes
+    ) -> "EncryptionEnvelope":
         """Encrypt content for a specific recipient.
 
         Args:
@@ -86,7 +88,9 @@ class EncryptionEnvelope:
         )
 
     @classmethod
-    def decrypt(cls, envelope: "EncryptionEnvelope", recipient_private_key: bytes) -> bytes:
+    def decrypt(
+        cls, envelope: "EncryptionEnvelope", recipient_private_key: bytes
+    ) -> bytes:
         """Decrypt an envelope using the recipient's private key.
 
         Args:
@@ -98,7 +102,9 @@ class EncryptionEnvelope:
         """
         # Load keys
         private_key = X25519PrivateKey.from_private_bytes(recipient_private_key)
-        ephemeral_public = X25519PublicKey.from_public_bytes(envelope.ephemeral_public_key)
+        ephemeral_public = X25519PublicKey.from_public_bytes(
+            envelope.ephemeral_public_key
+        )
 
         # Perform X25519 key exchange (reverse direction)
         shared_secret = private_key.exchange(ephemeral_public)
@@ -121,7 +127,9 @@ class EncryptionEnvelope:
             "encrypted_content": base64.b64encode(self.encrypted_content).decode(),
             "encrypted_dek": base64.b64encode(self.encrypted_dek).decode(),
             "nonce": base64.b64encode(self.nonce).decode(),
-            "ephemeral_public_key": base64.b64encode(self.ephemeral_public_key).decode(),
+            "ephemeral_public_key": base64.b64encode(
+                self.ephemeral_public_key
+            ).decode(),
             "algorithm": self.algorithm,
             "recipient_key_id": self.recipient_key_id,
         }

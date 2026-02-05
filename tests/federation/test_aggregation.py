@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.core.confidence import DimensionalConfidence
 from valence.federation.aggregation import (
     MIN_FEDERATIONS_FOR_AGGREGATE,
@@ -513,13 +514,15 @@ class TestPrivacyPreservingAggregator:
         config = PrivacyConfig(min_contributors=10)
         aggregator = PrivacyPreservingAggregator(privacy_config=config)
 
-        noisy_conf, noisy_agree, noisy_fed, noisy_belief, noisy_contrib, k_sat = aggregator.apply_privacy(
-            aggregate_confidence=0.7,
-            agreement_score=0.8,
-            federation_count=3,
-            total_belief_count=5,
-            total_contributor_count=5,  # Below min_contributors
-            domain_filter=["test"],
+        noisy_conf, noisy_agree, noisy_fed, noisy_belief, noisy_contrib, k_sat = (
+            aggregator.apply_privacy(
+                aggregate_confidence=0.7,
+                agreement_score=0.8,
+                federation_count=3,
+                total_belief_count=5,
+                total_contributor_count=5,  # Below min_contributors
+                domain_filter=["test"],
+            )
         )
 
         assert not k_sat
@@ -643,7 +646,9 @@ class TestFederationAggregator:
 
         # Need at least 5 contributions to satisfy default k-anonymity
         contributions = [
-            make_contribution([make_belief(f"Belief {i}", confidence=0.5 + i * 0.05)], trust_score=0.7)
+            make_contribution(
+                [make_belief(f"Belief {i}", confidence=0.5 + i * 0.05)], trust_score=0.7
+            )
             for i in range(6)  # 6 contributions to satisfy k=5
         ]
 
@@ -663,7 +668,9 @@ class TestFederationAggregator:
 
         # Create enough high-trust federations to satisfy k-anonymity after filtering
         high_trust_contribs = [
-            make_contribution([make_belief(f"High trust {i}")], trust_score=0.7 + i * 0.05)
+            make_contribution(
+                [make_belief(f"High trust {i}")], trust_score=0.7 + i * 0.05
+            )
             for i in range(6)  # 6 high trust
         ]
         low_trust = make_contribution(
@@ -749,7 +756,9 @@ class TestFederationAggregator:
 
     def test_exclude_conflicting_resolution(self) -> None:
         """Test exclude-conflicting conflict resolution."""
-        config = AggregationConfig(conflict_resolution=ConflictResolution.EXCLUDE_CONFLICTING)
+        config = AggregationConfig(
+            conflict_resolution=ConflictResolution.EXCLUDE_CONFLICTING
+        )
         aggregator = FederationAggregator(config=config)
 
         contrib_a = make_contribution(
@@ -949,7 +958,10 @@ class TestIntegration:
         aggregator.privacy_aggregator.privacy_budget = budget
 
         # Need 6 contributions to satisfy k=5
-        contributions = [make_contribution([make_belief(f"Belief {i}")], trust_score=0.7) for i in range(6)]
+        contributions = [
+            make_contribution([make_belief(f"Belief {i}")], trust_score=0.7)
+            for i in range(6)
+        ]
 
         initial_remaining = budget.remaining_epsilon()
 
@@ -1043,8 +1055,12 @@ class TestEdgeCases:
 
         # Need 6 contributions to satisfy k=5
         contributions = [
-            make_contribution([make_belief("Zero", confidence=0.01)], trust_score=0.7),  # Near zero
-            make_contribution([make_belief("Max", confidence=0.99)], trust_score=0.7),  # Near max
+            make_contribution(
+                [make_belief("Zero", confidence=0.01)], trust_score=0.7
+            ),  # Near zero
+            make_contribution(
+                [make_belief("Max", confidence=0.99)], trust_score=0.7
+            ),  # Near max
             make_contribution([make_belief("Mid", confidence=0.5)], trust_score=0.7),
             make_contribution([make_belief("Low", confidence=0.3)], trust_score=0.7),
             make_contribution([make_belief("High", confidence=0.8)], trust_score=0.7),
@@ -1142,7 +1158,9 @@ class TestConflictDetectorInternals:
 
         # Both beliefs have high confidence but different values
         belief_a = make_belief("Science is important", confidence=0.95)
-        belief_b = make_belief("Science is important", confidence=0.75)  # Still high but different
+        belief_b = make_belief(
+            "Science is important", confidence=0.75
+        )  # Still high but different
 
         divergence = detector._compute_stance_divergence(belief_a, belief_b)
 
@@ -1215,11 +1233,15 @@ class TestConflictDetectorInternals:
         contrib_b = make_contribution([belief_b], trust_score=0.7)
 
         # Without similarity_fn, uses Jaccard
-        conflicts = detector.detect_conflicts([contrib_a, contrib_b], similarity_fn=None)
+        conflicts = detector.detect_conflicts(
+            [contrib_a, contrib_b], similarity_fn=None
+        )
 
         # Should find conflict due to word overlap and confidence divergence
         # The Jaccard similarity is high (4/6 words match)
-        assert len(conflicts) >= 0  # May or may not find conflict depending on thresholds
+        assert (
+            len(conflicts) >= 0
+        )  # May or may not find conflict depending on thresholds
 
 
 class TestTrustWeightedAggregatorInternals:
@@ -1250,8 +1272,12 @@ class TestTrustWeightedAggregatorInternals:
         """Test agreement score when all weights are zero."""
         aggregator = TrustWeightedAggregator()
 
-        contrib_a = make_contribution([make_belief("A", confidence=0.8)], trust_score=0.7)
-        contrib_b = make_contribution([make_belief("B", confidence=0.3)], trust_score=0.7)
+        contrib_a = make_contribution(
+            [make_belief("A", confidence=0.8)], trust_score=0.7
+        )
+        contrib_b = make_contribution(
+            [make_belief("B", confidence=0.3)], trust_score=0.7
+        )
 
         # All weights are zero
         weights = {
@@ -1368,9 +1394,15 @@ class TestConflictResolutionStrategies:
         )
         aggregator = FederationAggregator(config=config)
 
-        contrib_a = make_contribution([make_belief("A", confidence=0.9)], trust_score=0.8)
-        contrib_b = make_contribution([make_belief("B", confidence=0.2)], trust_score=0.7)
-        contrib_c = make_contribution([make_belief("C", confidence=0.5)], trust_score=0.6)
+        contrib_a = make_contribution(
+            [make_belief("A", confidence=0.9)], trust_score=0.8
+        )
+        contrib_b = make_contribution(
+            [make_belief("B", confidence=0.2)], trust_score=0.7
+        )
+        contrib_c = make_contribution(
+            [make_belief("C", confidence=0.5)], trust_score=0.6
+        )
 
         result = aggregator.aggregate(
             [contrib_a, contrib_b, contrib_c],
@@ -1503,13 +1535,15 @@ class TestPrivacyAggregatorInternals:
         aggregator = PrivacyPreservingAggregator(privacy_config=config)
 
         # Zero federations but enough contributors
-        noisy_conf, noisy_agree, noisy_fed, noisy_belief, noisy_contrib, k_sat = aggregator.apply_privacy(
-            aggregate_confidence=0.7,
-            agreement_score=0.8,
-            federation_count=0,
-            total_belief_count=10,
-            total_contributor_count=10,
-            domain_filter=["test"],
+        noisy_conf, noisy_agree, noisy_fed, noisy_belief, noisy_contrib, k_sat = (
+            aggregator.apply_privacy(
+                aggregate_confidence=0.7,
+                agreement_score=0.8,
+                federation_count=0,
+                total_belief_count=10,
+                total_contributor_count=10,
+                domain_filter=["test"],
+            )
         )
 
         # k_sat should be True since min_contributors=5 and we have 10

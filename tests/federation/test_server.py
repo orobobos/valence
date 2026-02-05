@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.testclient import TestClient
+
 from valence.federation.server import (
     FederationNode,
     LocalBelief,
@@ -309,7 +310,9 @@ class TestFederationEndpoints:
             "sender_did": peer_did,
         }
 
-        with patch("valence.federation.server.verify_belief_signature", return_value=True):
+        with patch(
+            "valence.federation.server.verify_belief_signature", return_value=True
+        ):
             response = client.post("/federation/share", json=payload)
 
         assert response.status_code == 200
@@ -355,7 +358,9 @@ class TestFederationEndpoints:
             "sender_did": peer_did,
         }
 
-        with patch("valence.federation.server.verify_belief_signature", return_value=False):
+        with patch(
+            "valence.federation.server.verify_belief_signature", return_value=False
+        ):
             response = client.post("/federation/share", json=payload)
 
         assert response.status_code == 403
@@ -628,7 +633,9 @@ class TestFederationNodeClientMethods:
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session_ctx):
-            with patch("valence.federation.server.sign_belief_content", return_value="sig"):
+            with patch(
+                "valence.federation.server.sign_belief_content", return_value="sig"
+            ):
                 with patch(
                     "valence.federation.server.check_federation_allowed",
                     return_value=(True, MagicMock()),

@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.peer_sync import (
     ExportedBelief,
     ExportPackage,
@@ -433,7 +434,9 @@ class TestCLICommands:
         from valence.cli.main import cmd_peer_add
 
         # Patch registry to use temp path
-        with patch("valence.federation.peer_sync.get_trust_registry") as mock_get_registry:
+        with patch(
+            "valence.federation.peer_sync.get_trust_registry"
+        ) as mock_get_registry:
             registry = TrustRegistry(tmp_path / "trust.json")
             mock_get_registry.return_value = registry
 
@@ -452,7 +455,9 @@ class TestCLICommands:
         """Test peer list CLI command."""
         from valence.cli.main import cmd_peer_list
 
-        with patch("valence.federation.peer_sync.get_trust_registry") as mock_get_registry:
+        with patch(
+            "valence.federation.peer_sync.get_trust_registry"
+        ) as mock_get_registry:
             registry = TrustRegistry(tmp_path / "trust.json")
             registry.add_peer("did:vkb:web:alice", trust_level=0.9, name="Alice")
             mock_get_registry.return_value = registry

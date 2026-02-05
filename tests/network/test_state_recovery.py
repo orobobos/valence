@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from valence.network.node import (
     STATE_VERSION,
     ConnectionState,
@@ -37,7 +38,9 @@ from valence.network.router import (
     RouterNode,
 )
 
-pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
+pytestmark = pytest.mark.skip(
+    reason="Needs update for NodeClient decomposition - see #167"
+)
 
 
 # =============================================================================
@@ -691,7 +694,9 @@ class TestNodeLifecycleWithState:
 
         Path(node.state_file).write_text(state.to_json())
 
-        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
+        with patch.object(
+            node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]
+        ):
             await node.start()
 
         try:
@@ -706,7 +711,9 @@ class TestNodeLifecycleWithState:
         node = node_client_with_state
         _, pub_key = x25519_keypair
 
-        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
+        with patch.object(
+            node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]
+        ):
             await node.start()
 
         # Add some pending state
@@ -737,7 +744,9 @@ class TestNodeLifecycleWithState:
         node.state_save_interval = 0.1  # Fast for testing
         _, pub_key = x25519_keypair
 
-        with patch.object(node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]):
+        with patch.object(
+            node.discovery, "discover_routers", new_callable=AsyncMock, return_value=[]
+        ):
             await node.start()
 
         # Add pending state
@@ -883,7 +892,9 @@ class TestRouterReconnectionTracking:
         await router._handle_identify({"node_id": "queue-node"}, ws2)
 
         # Should show 2 queued messages in response
-        call_args = ws2.send_json.call_args_list[0][0][0]  # First call is identify response
+        call_args = ws2.send_json.call_args_list[0][0][
+            0
+        ]  # First call is identify response
         assert call_args["queued_messages"] == 2
 
     @pytest.mark.asyncio
@@ -1007,7 +1018,9 @@ class TestEdgeCases:
     """Tests for edge cases in state recovery."""
 
     @pytest.mark.asyncio
-    async def test_expired_pending_acks_not_recovered(self, node_client_with_state, x25519_keypair):
+    async def test_expired_pending_acks_not_recovered(
+        self, node_client_with_state, x25519_keypair
+    ):
         """Test that expired pending ACKs are not recovered."""
         node = node_client_with_state
         _, pub_key = x25519_keypair
@@ -1042,7 +1055,9 @@ class TestEdgeCases:
         assert "expired-ack" not in node.pending_acks
 
     @pytest.mark.asyncio
-    async def test_expired_queue_messages_not_recovered(self, node_client_with_state, x25519_keypair):
+    async def test_expired_queue_messages_not_recovered(
+        self, node_client_with_state, x25519_keypair
+    ):
         """Test that expired queued messages are not recovered."""
         node = node_client_with_state
         node.MAX_QUEUE_AGE = 60.0  # 1 minute max age

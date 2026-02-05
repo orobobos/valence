@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.models import (
     TrustConcentrationReport,
     TrustConcentrationWarning,
@@ -393,14 +394,18 @@ class TestCheckTrustConcentration:
         mock_get_cursor.fetchall.return_value = [
             make_node_row(name="node1", trust_score=0.5),  # 25%
             make_node_row(name="node2", trust_score=0.4),  # 20%
-            make_node_row(name="node3", trust_score=0.35),  # 17.5% (total 62.5% for top 3)
+            make_node_row(
+                name="node3", trust_score=0.35
+            ),  # 17.5% (total 62.5% for top 3)
             make_node_row(name="node4", trust_score=0.4),
             make_node_row(name="node5", trust_score=0.35),
         ]
 
         report = trust_policy.check_trust_concentration()
 
-        top3_warning = next((w for w in report.warnings if w.warning_type == "top_nodes_dominant"), None)
+        top3_warning = next(
+            (w for w in report.warnings if w.warning_type == "top_nodes_dominant"), None
+        )
         # Top 3 share is 0.5+0.4+0.4 / 2.0 = 0.65 > 50%
         # Actually let me recalculate: 0.5+0.4+0.35 / (0.5+0.4+0.35+0.4+0.35) = 1.25/2.0 = 62.5%
         assert top3_warning is not None
@@ -419,7 +424,9 @@ class TestCheckTrustConcentration:
 
         assert report.trusted_sources == 2
 
-        few_sources_warning = next((w for w in report.warnings if w.warning_type == "few_sources"), None)
+        few_sources_warning = next(
+            (w for w in report.warnings if w.warning_type == "few_sources"), None
+        )
         assert few_sources_warning is not None
         assert "2" in few_sources_warning.message
 
@@ -435,7 +442,9 @@ class TestCheckTrustConcentration:
 
         assert report.trusted_sources == 1
 
-        few_sources_warning = next((w for w in report.warnings if w.warning_type == "few_sources"), None)
+        few_sources_warning = next(
+            (w for w in report.warnings if w.warning_type == "few_sources"), None
+        )
         assert few_sources_warning is not None
         assert few_sources_warning.severity == WarningSeverity.CRITICAL
 
@@ -451,7 +460,9 @@ class TestCheckTrustConcentration:
 
         # With default thresholds - no warning
         report = trust_policy.check_trust_concentration()
-        single_warnings = [w for w in report.warnings if w.warning_type == "single_node_dominant"]
+        single_warnings = [
+            w for w in report.warnings if w.warning_type == "single_node_dominant"
+        ]
         assert len(single_warnings) == 0
 
         # With stricter custom threshold - should warn
@@ -464,7 +475,9 @@ class TestCheckTrustConcentration:
             "min_trust_to_count": 0.1,
         }
         report = trust_policy.check_trust_concentration(thresholds=custom_thresholds)
-        single_warnings = [w for w in report.warnings if w.warning_type == "single_node_dominant"]
+        single_warnings = [
+            w for w in report.warnings if w.warning_type == "single_node_dominant"
+        ]
         assert len(single_warnings) == 1
 
     def test_db_error_handling(self, trust_policy, mock_get_cursor):
@@ -562,8 +575,14 @@ class TestConcentrationThresholds:
     def test_thresholds_are_sensible(self):
         """Test that threshold values make sense."""
         # Warning should be lower than critical
-        assert CONCENTRATION_THRESHOLDS["single_node_warning"] < CONCENTRATION_THRESHOLDS["single_node_critical"]
-        assert CONCENTRATION_THRESHOLDS["top_3_warning"] < CONCENTRATION_THRESHOLDS["top_3_critical"]
+        assert (
+            CONCENTRATION_THRESHOLDS["single_node_warning"]
+            < CONCENTRATION_THRESHOLDS["single_node_critical"]
+        )
+        assert (
+            CONCENTRATION_THRESHOLDS["top_3_warning"]
+            < CONCENTRATION_THRESHOLDS["top_3_critical"]
+        )
 
         # All should be between 0 and 1
         for key, value in CONCENTRATION_THRESHOLDS.items():

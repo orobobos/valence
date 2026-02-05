@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 
 import pytest
+
 from valence.network.seed import (
     CorrelationDetector,
     RateLimiter,
@@ -319,7 +320,9 @@ class TestCorrelationDetector:
 
     def test_no_correlation_single_router(self, correlation_detector):
         """Single router should not trigger correlation."""
-        correlated = correlation_detector.check_heartbeat_correlation("router-1", time.time())
+        correlated = correlation_detector.check_heartbeat_correlation(
+            "router-1", time.time()
+        )
         assert correlated == []
 
     def test_heartbeat_correlation_detected(self, correlation_detector):
@@ -332,7 +335,9 @@ class TestCorrelationDetector:
         correlation_detector.record_heartbeat("router-3", now + 2)
 
         # Check correlation for a new heartbeat
-        correlated = correlation_detector.check_heartbeat_correlation("router-4", now + 3)
+        correlated = correlation_detector.check_heartbeat_correlation(
+            "router-4", now + 3
+        )
 
         # Should detect correlation with all three
         assert len(correlated) == 3
@@ -354,7 +359,9 @@ class TestCorrelationDetector:
         """Same IP endpoints should be flagged as highly similar."""
         correlation_detector.record_endpoint("router-1", ["192.168.1.100:8471"])
 
-        similar = correlation_detector.check_endpoint_similarity("router-2", ["192.168.1.100:8472"])
+        similar = correlation_detector.check_endpoint_similarity(
+            "router-2", ["192.168.1.100:8472"]
+        )
 
         assert len(similar) == 1
         assert similar[0][1] >= 0.9  # High similarity
@@ -363,7 +370,9 @@ class TestCorrelationDetector:
         """Same subnet endpoints should have moderate similarity."""
         correlation_detector.record_endpoint("router-1", ["192.168.1.100:8471"])
 
-        similar = correlation_detector.check_endpoint_similarity("router-2", ["192.168.1.200:8471"])
+        similar = correlation_detector.check_endpoint_similarity(
+            "router-2", ["192.168.1.200:8471"]
+        )
 
         assert len(similar) == 1
         assert similar[0][1] >= 0.5
@@ -372,12 +381,16 @@ class TestCorrelationDetector:
         """Different subnet endpoints should have low similarity."""
         correlation_detector.record_endpoint("router-1", ["192.168.1.100:8471"])
 
-        similar = correlation_detector.check_endpoint_similarity("router-2", ["10.0.0.50:8471"])
+        similar = correlation_detector.check_endpoint_similarity(
+            "router-2", ["10.0.0.50:8471"]
+        )
 
         # Should not exceed threshold
         assert len(similar) == 0 or similar[0][1] < 0.7
 
-    def test_analyze_and_flag_correlated(self, correlation_detector, reputation_manager):
+    def test_analyze_and_flag_correlated(
+        self, correlation_detector, reputation_manager
+    ):
         """Correlated behavior should flag routers."""
         now = time.time()
 
@@ -391,10 +404,14 @@ class TestCorrelationDetector:
 
         # Analyze a new correlated router
         reputation_manager.register_router("router-suspicious")
-        flags = correlation_detector.analyze_and_flag("router-suspicious", now + 2.5, ["192.168.1.100:8471"])
+        flags = correlation_detector.analyze_and_flag(
+            "router-suspicious", now + 2.5, ["192.168.1.100:8471"]
+        )
 
         # Should detect correlation
-        assert "correlated_heartbeats" in flags or len(flags) == 0  # Depends on threshold
+        assert (
+            "correlated_heartbeats" in flags or len(flags) == 0
+        )  # Depends on threshold
 
 
 # =============================================================================
@@ -409,13 +426,17 @@ class TestSybilResistance:
         """Registrations should be blocked when rate limited."""
         # Exhaust rate limit
         for i in range(3):
-            sybil_resistance.on_registration_success(f"router-{i}", "192.168.1.100", [f"192.168.1.{100 + i}:8471"])
+            sybil_resistance.on_registration_success(
+                f"router-{i}", "192.168.1.100", [f"192.168.1.{100 + i}:8471"]
+            )
 
         # Clear cooldown
         sybil_resistance.rate_limiter._last_registration_by_ip.clear()
 
         # Next should be blocked
-        allowed, reason = sybil_resistance.check_registration("router-new", "192.168.1.100", ["192.168.1.200:8471"])
+        allowed, reason = sybil_resistance.check_registration(
+            "router-new", "192.168.1.100", ["192.168.1.200:8471"]
+        )
 
         assert allowed is False
         assert "ip_limit_exceeded" in reason
@@ -423,7 +444,9 @@ class TestSybilResistance:
     def test_registration_blocked_by_endpoint_collision(self, sybil_resistance):
         """Nearly identical endpoints should block registration."""
         # Register first router
-        sybil_resistance.on_registration_success("router-1", "192.168.1.100", ["192.168.1.100:8471"])
+        sybil_resistance.on_registration_success(
+            "router-1", "192.168.1.100", ["192.168.1.100:8471"]
+        )
 
         # Try to register with same endpoint
         allowed, reason = sybil_resistance.check_registration(
@@ -458,7 +481,9 @@ class TestSybilResistance:
 
     def test_heartbeat_updates_reputation(self, sybil_resistance):
         """Heartbeats should update reputation."""
-        sybil_resistance.on_registration_success("router-1", "192.168.1.100", ["192.168.1.100:8471"])
+        sybil_resistance.on_registration_success(
+            "router-1", "192.168.1.100", ["192.168.1.100:8471"]
+        )
 
         initial_score = sybil_resistance.get_trust_factor("router-1")
 
@@ -470,7 +495,9 @@ class TestSybilResistance:
 
     def test_missed_heartbeat_penalizes(self, sybil_resistance):
         """Missed heartbeats should penalize reputation."""
-        sybil_resistance.on_registration_success("router-1", "192.168.1.100", ["192.168.1.100:8471"])
+        sybil_resistance.on_registration_success(
+            "router-1", "192.168.1.100", ["192.168.1.100:8471"]
+        )
 
         initial_score = sybil_resistance.get_trust_factor("router-1")
 
@@ -535,10 +562,14 @@ class TestSeedNodeSybilIntegration:
             registered_at=now,
             router_signature="",
         )
-        seed_node.sybil_resistance.on_registration_success("good-router", "10.0.0.1", ["10.0.0.1:8471"])
+        seed_node.sybil_resistance.on_registration_success(
+            "good-router", "10.0.0.1", ["10.0.0.1:8471"]
+        )
         # Build reputation
         for _ in range(10):
-            seed_node.sybil_resistance.on_heartbeat("good-router", now, ["10.0.0.1:8471"])
+            seed_node.sybil_resistance.on_heartbeat(
+                "good-router", now, ["10.0.0.1:8471"]
+            )
 
         # Add bad router
         seed_node.router_registry["bad-router"] = RouterRecord(
@@ -551,7 +582,9 @@ class TestSeedNodeSybilIntegration:
             registered_at=now,
             router_signature="",
         )
-        seed_node.sybil_resistance.on_registration_success("bad-router", "10.0.0.2", ["10.0.0.2:8471"])
+        seed_node.sybil_resistance.on_registration_success(
+            "bad-router", "10.0.0.2", ["10.0.0.2:8471"]
+        )
         # Tank reputation
         for _ in range(10):
             seed_node.sybil_resistance.on_missed_heartbeat("bad-router")

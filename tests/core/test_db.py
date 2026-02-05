@@ -6,6 +6,7 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+
 from valence.core.exceptions import DatabaseException
 
 # ============================================================================
@@ -65,7 +66,9 @@ class TestConnectionPool:
         pool.get_connection()
         mock_psycopg2_pool["pool_class"].assert_called_once()
 
-    def test_pool_config_applied(self, mock_psycopg2_pool, env_with_db_vars, monkeypatch):
+    def test_pool_config_applied(
+        self, mock_psycopg2_pool, env_with_db_vars, monkeypatch
+    ):
         """Pool should use configured min/max connections."""
         from valence.core.db import ConnectionPool
 
@@ -233,11 +236,18 @@ class TestGetConnection:
     def test_raises_on_pool_creation_error(self, env_with_db_vars):
         """Should raise DatabaseException on pool creation error."""
         import psycopg2
+
         from valence.core.db import get_connection
 
-        with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
-            mock_pool_class.side_effect = psycopg2.OperationalError("Connection refused")
-            with pytest.raises(DatabaseException, match="Failed to create connection pool"):
+        with patch(
+            "valence.core.db.psycopg2_pool.ThreadedConnectionPool"
+        ) as mock_pool_class:
+            mock_pool_class.side_effect = psycopg2.OperationalError(
+                "Connection refused"
+            )
+            with pytest.raises(
+                DatabaseException, match="Failed to create connection pool"
+            ):
                 get_connection()
 
 
@@ -266,7 +276,9 @@ class TestGetCursor:
             pass
         mock_psycopg2_pool["connection"].commit.assert_called_once()
 
-    def test_closes_cursor_and_returns_to_pool(self, mock_psycopg2_pool, env_with_db_vars):
+    def test_closes_cursor_and_returns_to_pool(
+        self, mock_psycopg2_pool, env_with_db_vars
+    ):
         """Should close cursor and return connection to pool."""
         from valence.core.db import get_cursor
 
@@ -279,7 +291,9 @@ class TestGetCursor:
         """Should rollback on IntegrityError."""
         import psycopg2
 
-        mock_psycopg2_pool["cursor"].execute.side_effect = psycopg2.IntegrityError("Duplicate key")
+        mock_psycopg2_pool["cursor"].execute.side_effect = psycopg2.IntegrityError(
+            "Duplicate key"
+        )
 
         from valence.core.db import get_cursor
 
@@ -293,7 +307,9 @@ class TestGetCursor:
         """Should rollback on ProgrammingError."""
         import psycopg2
 
-        mock_psycopg2_pool["cursor"].execute.side_effect = psycopg2.ProgrammingError("Syntax error")
+        mock_psycopg2_pool["cursor"].execute.side_effect = psycopg2.ProgrammingError(
+            "Syntax error"
+        )
 
         from valence.core.db import get_cursor
 
@@ -306,12 +322,15 @@ class TestGetCursor:
     def test_dict_cursor_by_default(self, mock_psycopg2_pool, env_with_db_vars):
         """Should use RealDictCursor by default."""
         from psycopg2.extras import RealDictCursor
+
         from valence.core.db import get_cursor
 
         with get_cursor():
             pass
 
-        mock_psycopg2_pool["connection"].cursor.assert_called_with(cursor_factory=RealDictCursor)
+        mock_psycopg2_pool["connection"].cursor.assert_called_with(
+            cursor_factory=RealDictCursor
+        )
 
     def test_regular_cursor_option(self, mock_psycopg2_pool, env_with_db_vars):
         """Should allow regular cursor."""
@@ -375,7 +394,9 @@ class TestCheckConnection:
         """Should return False when connection fails."""
         from valence.core.db import check_connection
 
-        with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
+        with patch(
+            "valence.core.db.psycopg2_pool.ThreadedConnectionPool"
+        ) as mock_pool_class:
             import psycopg2
 
             mock_pool_class.side_effect = psycopg2.OperationalError("Connection failed")
@@ -503,10 +524,13 @@ class TestGetConnectionContext:
     def test_rollback_on_error(self, mock_psycopg2_pool, env_with_db_vars):
         """Should rollback on error."""
         import psycopg2
+
         from valence.core.db import get_connection_context
 
         # Make cursor raise an error inside the context
-        mock_psycopg2_pool["connection"].cursor.side_effect = psycopg2.IntegrityError("Test error")
+        mock_psycopg2_pool["connection"].cursor.side_effect = psycopg2.IntegrityError(
+            "Test error"
+        )
 
         with pytest.raises(DatabaseException, match="Integrity constraint"):
             with get_connection_context() as conn:

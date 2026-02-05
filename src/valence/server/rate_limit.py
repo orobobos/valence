@@ -65,7 +65,9 @@ def check_rate_limit(key: str, rpm_limit: int, window_seconds: int = 60) -> bool
     return True
 
 
-def check_rate_limit_multi(keys: list[str], rpm_limit: int, window_seconds: int = 60) -> bool:
+def check_rate_limit_multi(
+    keys: list[str], rpm_limit: int, window_seconds: int = 60
+) -> bool:
     """Check rate limit across multiple keys (all must pass).
 
     Useful for checking both IP and client_id limits simultaneously.

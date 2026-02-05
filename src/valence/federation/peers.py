@@ -65,8 +65,16 @@ class Peer:
             beliefs_sent=data.get("beliefs_sent", 0),
             queries_received=data.get("queries_received", 0),
             queries_sent=data.get("queries_sent", 0),
-            first_seen=(datetime.fromisoformat(data["first_seen"]) if "first_seen" in data else datetime.now()),
-            last_seen=(datetime.fromisoformat(data["last_seen"]) if "last_seen" in data else datetime.now()),
+            first_seen=(
+                datetime.fromisoformat(data["first_seen"])
+                if "first_seen" in data
+                else datetime.now()
+            ),
+            last_seen=(
+                datetime.fromisoformat(data["last_seen"])
+                if "last_seen" in data
+                else datetime.now()
+            ),
         )
 
 
@@ -111,7 +119,9 @@ class PeerStore:
         try:
             self._persist_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._persist_path, "w") as f:
-                json.dump({"peers": [p.to_dict() for p in self._peers.values()]}, f, indent=2)
+                json.dump(
+                    {"peers": [p.to_dict() for p in self._peers.values()]}, f, indent=2
+                )
         except Exception as e:
             logger.warning(f"Failed to save peers: {e}")
 

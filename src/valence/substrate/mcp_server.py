@@ -471,8 +471,7 @@ def get_trust_graph() -> dict[str, Any]:
 
     with get_cursor() as cur:
         # Get entities with belief counts (as proxy for trust/authority)
-        cur.execute(
-            """
+        cur.execute("""
             SELECT e.id, e.name, e.type, COUNT(be.belief_id) as belief_count,
                    AVG((b.confidence->>'overall')::numeric) as avg_confidence
             FROM entities e
@@ -483,8 +482,7 @@ def get_trust_graph() -> dict[str, Any]:
             HAVING COUNT(be.belief_id) > 0
             ORDER BY belief_count DESC
             LIMIT 50
-            """
-        )
+            """)
         for row in cur.fetchall():
             result["entities"].append(
                 {
@@ -492,14 +490,15 @@ def get_trust_graph() -> dict[str, Any]:
                     "name": row["name"],
                     "type": row["type"],
                     "belief_count": row["belief_count"],
-                    "avg_confidence": (float(row["avg_confidence"]) if row["avg_confidence"] else None),
+                    "avg_confidence": (
+                        float(row["avg_confidence"]) if row["avg_confidence"] else None
+                    ),
                 }
             )
 
         # Get federation nodes with trust scores
         try:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT fn.id, fn.name, fn.instance_url, fn.status,
                        nt.trust, nt.beliefs_received, nt.beliefs_corroborated, nt.beliefs_disputed
                 FROM federation_nodes fn
@@ -507,8 +506,7 @@ def get_trust_graph() -> dict[str, Any]:
                 WHERE fn.status != 'blocked'
                 ORDER BY (nt.trust->>'overall')::numeric DESC NULLS LAST
                 LIMIT 20
-                """
-            )
+                """)
             for row in cur.fetchall():
                 node_data = {
                     "id": str(row["id"]),
@@ -534,21 +532,18 @@ def get_stats() -> dict[str, Any]:
 
     with get_cursor() as cur:
         # Get domain distribution
-        cur.execute(
-            """
+        cur.execute("""
             SELECT domain_path[1] as domain, COUNT(*) as count
             FROM beliefs
             WHERE status = 'active' AND array_length(domain_path, 1) > 0
             GROUP BY domain_path[1]
             ORDER BY count DESC
             LIMIT 10
-            """
-        )
+            """)
         domains = {row["domain"]: row["count"] for row in cur.fetchall()}
 
         # Get confidence distribution
-        cur.execute(
-            """
+        cur.execute("""
             SELECT
                 CASE
                     WHEN (confidence->>'overall')::numeric >= 0.9 THEN 'very_high'
@@ -562,20 +557,19 @@ def get_stats() -> dict[str, Any]:
             WHERE status = 'active'
             GROUP BY confidence_level
             ORDER BY count DESC
-            """
-        )
-        confidence_dist = {row["confidence_level"]: row["count"] for row in cur.fetchall()}
+            """)
+        confidence_dist = {
+            row["confidence_level"]: row["count"] for row in cur.fetchall()
+        }
 
         # Get entity type distribution
-        cur.execute(
-            """
+        cur.execute("""
             SELECT type, COUNT(*) as count
             FROM entities
             WHERE canonical_id IS NULL
             GROUP BY type
             ORDER BY count DESC
-            """
-        )
+            """)
         entity_types = {row["type"]: row["count"] for row in cur.fetchall()}
 
     return {
@@ -794,7 +788,9 @@ def belief_supersede(
         old_belief = Belief.from_row(dict(old_row))
 
         # Determine new confidence
-        new_confidence = DimensionalConfidence.from_dict(confidence or old_belief.confidence.to_dict())
+        new_confidence = DimensionalConfidence.from_dict(
+            confidence or old_belief.confidence.to_dict()
+        )
 
         # Create new belief
         cur.execute(
@@ -880,7 +876,10 @@ def belief_get(
             (belief_id,),
         )
         entity_rows = cur.fetchall()
-        belief_dict["entities"] = [{"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]} for r in entity_rows]
+        belief_dict["entities"] = [
+            {"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]}
+            for r in entity_rows
+        ]
 
         # Load history if requested
         if include_history:
@@ -902,7 +901,11 @@ def belief_get(
                             "reason": hist_row.get("extraction_method"),
                         }
                     )
-                    current_id = str(hist_row["supersedes_id"]) if hist_row["supersedes_id"] else None
+                    current_id = (
+                        str(hist_row["supersedes_id"])
+                        if hist_row["supersedes_id"]
+                        else None
+                    )
                 else:
                     break
 
@@ -919,7 +922,9 @@ def belief_get(
                 (belief_id, belief_id),
             )
             tension_rows = cur.fetchall()
-            result["tensions"] = [Tension.from_row(dict(r)).to_dict() for r in tension_rows]
+            result["tensions"] = [
+                Tension.from_row(dict(r)).to_dict() for r in tension_rows
+            ]
 
         return result
 
@@ -957,7 +962,10 @@ def entity_get(
                 (entity_id, belief_limit),
             )
             belief_rows = cur.fetchall()
-            result["beliefs"] = [{**Belief.from_row(dict(r)).to_dict(), "role": r["role"]} for r in belief_rows]
+            result["beliefs"] = [
+                {**Belief.from_row(dict(r)).to_dict(), "role": r["role"]}
+                for r in belief_rows
+            ]
 
         return result
 
@@ -1074,13 +1082,17 @@ def tension_resolve(
             # Get belief B content and supersede A with it
             cur.execute("SELECT content FROM beliefs WHERE id = %s", (belief_b_id,))
             b_content = cur.fetchone()["content"]
-            belief_supersede(str(belief_a_id), b_content, f"Tension resolution: {resolution}")
+            belief_supersede(
+                str(belief_a_id), b_content, f"Tension resolution: {resolution}"
+            )
 
         elif action == "supersede_b":
             # Get belief A content and supersede B with it
             cur.execute("SELECT content FROM beliefs WHERE id = %s", (belief_a_id,))
             a_content = cur.fetchone()["content"]
-            belief_supersede(str(belief_b_id), a_content, f"Tension resolution: {resolution}")
+            belief_supersede(
+                str(belief_b_id), a_content, f"Tension resolution: {resolution}"
+            )
 
         elif action == "archive_both":
             cur.execute(
@@ -1163,8 +1175,12 @@ def trust_check(
                     "name": row["name"],
                     "type": row["type"],
                     "belief_count": row["belief_count"],
-                    "avg_confidence": (float(row["avg_confidence"]) if row["avg_confidence"] else None),
-                    "max_confidence": (float(row["max_confidence"]) if row["max_confidence"] else None),
+                    "avg_confidence": (
+                        float(row["avg_confidence"]) if row["avg_confidence"] else None
+                    ),
+                    "max_confidence": (
+                        float(row["max_confidence"]) if row["max_confidence"] else None
+                    ),
                     "trust_reason": f"Has {row['belief_count']} beliefs about {topic} with avg confidence {float(row['avg_confidence']):.2f}",
                 }
             )
@@ -1221,7 +1237,11 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
         explanation: dict[str, Any] = {
             "success": True,
             "belief_id": belief_id,
-            "content_preview": (belief.content[:100] + "..." if len(belief.content) > 100 else belief.content),
+            "content_preview": (
+                belief.content[:100] + "..."
+                if len(belief.content) > 100
+                else belief.content
+            ),
             "overall_confidence": conf.overall,
             "overall_label": confidence_label(conf.overall),
             "dimensions": dimensions_dict,
@@ -1257,18 +1277,28 @@ def confidence_explain(belief_id: str) -> dict[str, Any]:
         # Add recommendations
         recommendations = []
         if conf.source_reliability is not None and conf.source_reliability < 0.5:
-            recommendations.append("Consider verifying the source or finding corroborating evidence")
+            recommendations.append(
+                "Consider verifying the source or finding corroborating evidence"
+            )
         if conf.corroboration is not None and conf.corroboration < 0.3:
-            recommendations.append("This belief has low corroboration - seek additional sources")
+            recommendations.append(
+                "This belief has low corroboration - seek additional sources"
+            )
         if conf.temporal_freshness is not None and conf.temporal_freshness < 0.5:
-            recommendations.append("This information may be outdated - consider refreshing")
+            recommendations.append(
+                "This information may be outdated - consider refreshing"
+            )
         if conf.internal_consistency is not None and conf.internal_consistency < 0.5:
-            recommendations.append("This belief may conflict with other knowledge - review tensions")
+            recommendations.append(
+                "This belief may conflict with other knowledge - review tensions"
+            )
 
         if recommendations:
             explanation["recommendations"] = recommendations
         else:
-            explanation["recommendations"] = ["Confidence dimensions are balanced - no immediate concerns"]
+            explanation["recommendations"] = [
+                "Confidence dimensions are balanced - no immediate concerns"
+            ]
 
         # Check for trust annotations
         try:
@@ -1387,7 +1417,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         else:
             result = {"success": False, "error": f"Unknown tool: {name}"}
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        return [
+            TextContent(type="text", text=json.dumps(result, indent=2, default=str))
+        ]
 
     except ValidationException as e:
         logger.warning(f"Validation error in tool {name}: {e}")
@@ -1439,8 +1471,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 def run() -> None:
     """Run the MCP server."""
     parser = argparse.ArgumentParser(description="Valence Substrate MCP Server")
-    parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
-    parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")
+    parser.add_argument(
+        "--health-check", action="store_true", help="Run health check and exit"
+    )
+    parser.add_argument(
+        "--skip-health-check", action="store_true", help="Skip startup health checks"
+    )
     args = parser.parse_args()
 
     # Health check mode
@@ -1462,7 +1498,9 @@ def run() -> None:
 
     async def main():
         async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
+            await server.run(
+                read_stream, write_stream, server.create_initialization_options()
+            )
 
     asyncio.run(main())
 

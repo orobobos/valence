@@ -10,6 +10,7 @@ import hashlib
 from uuid import uuid4
 
 import pytest
+
 from valence.storage.integrity import (
     IntegrityVerifier,
     MerkleProof,
@@ -183,14 +184,14 @@ class TestMerkleProof:
         assert proof.leaf_index == 0
         assert len(proof.proof_hashes) == 1
         assert proof.proof_hashes[0] == compute_hash(b"right")
-        assert proof.proof_directions[0] == True  # Sibling is on right
+        assert proof.proof_directions[0]  # Sibling is on right
 
         # Proof for right leaf
         proof = tree.get_proof(1)
         assert proof.leaf_index == 1
         assert len(proof.proof_hashes) == 1
         assert proof.proof_hashes[0] == compute_hash(b"left")
-        assert proof.proof_directions[0] == False  # Sibling is on left
+        assert not proof.proof_directions[0]  # Sibling is on left
 
     def test_proof_larger_tree(self):
         """Proof for larger tree."""
@@ -443,6 +444,6 @@ class TestIntegrityReport:
         )
 
         d = report.to_dict()
-        assert d["is_valid"] == True
+        assert d["is_valid"]
         assert d["total_shards"] == 5
         assert d["details"] == "All good"

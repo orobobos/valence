@@ -299,7 +299,10 @@ SUBSTRATE_TOOLS = [
     ),
     Tool(
         name="tension_resolve",
-        description=("Mark a tension as resolved with explanation.\n\n" "Use when you've determined how to reconcile conflicting beliefs."),
+        description=(
+            "Mark a tension as resolved with explanation.\n\n"
+            "Use when you've determined how to reconcile conflicting beliefs."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
@@ -377,7 +380,10 @@ def belief_query(
     """
     # Audit log when accessing revoked content
     if include_revoked:
-        logger.info(f"Query includes revoked content: user={user_did or 'unknown'}, " f"query={query[:100]}{'...' if len(query) > 100 else ''}")
+        logger.info(
+            f"Query includes revoked content: user={user_did or 'unknown'}, "
+            f"query={query[:100]}{'...' if len(query) > 100 else ''}"
+        )
 
     with get_cursor() as cur:
         sql = """
@@ -532,7 +538,9 @@ def belief_supersede(
         old_belief = Belief.from_row(dict(old_row))
 
         # Determine new confidence
-        new_confidence = DimensionalConfidence.from_dict(confidence or old_belief.confidence.to_dict())
+        new_confidence = DimensionalConfidence.from_dict(
+            confidence or old_belief.confidence.to_dict()
+        )
 
         # Create new belief
         cur.execute(
@@ -617,7 +625,10 @@ def belief_get(
             (belief_id,),
         )
         entity_rows = cur.fetchall()
-        result["belief"]["entities"] = [{"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]} for r in entity_rows]
+        result["belief"]["entities"] = [
+            {"entity": Entity.from_row(dict(r)).to_dict(), "role": r["role"]}
+            for r in entity_rows
+        ]
 
         # Load history if requested
         if include_history:
@@ -639,7 +650,11 @@ def belief_get(
                             "reason": hist_row.get("extraction_method"),
                         }
                     )
-                    current_id = str(hist_row["supersedes_id"]) if hist_row["supersedes_id"] else None
+                    current_id = (
+                        str(hist_row["supersedes_id"])
+                        if hist_row["supersedes_id"]
+                        else None
+                    )
                 else:
                     break
 
@@ -656,7 +671,9 @@ def belief_get(
                 (belief_id, belief_id),
             )
             tension_rows = cur.fetchall()
-            result["tensions"] = [Tension.from_row(dict(r)).to_dict() for r in tension_rows]
+            result["tensions"] = [
+                Tension.from_row(dict(r)).to_dict() for r in tension_rows
+            ]
 
         return result
 
@@ -694,7 +711,10 @@ def entity_get(
                 (entity_id, belief_limit),
             )
             belief_rows = cur.fetchall()
-            result["beliefs"] = [{**Belief.from_row(dict(r)).to_dict(), "role": r["role"]} for r in belief_rows]
+            result["beliefs"] = [
+                {**Belief.from_row(dict(r)).to_dict(), "role": r["role"]}
+                for r in belief_rows
+            ]
 
         return result
 
@@ -811,13 +831,17 @@ def tension_resolve(
             # Get belief B content and supersede A with it
             cur.execute("SELECT content FROM beliefs WHERE id = %s", (belief_b_id,))
             b_content = cur.fetchone()["content"]
-            belief_supersede(str(belief_a_id), b_content, f"Tension resolution: {resolution}")
+            belief_supersede(
+                str(belief_a_id), b_content, f"Tension resolution: {resolution}"
+            )
 
         elif action == "supersede_b":
             # Get belief A content and supersede B with it
             cur.execute("SELECT content FROM beliefs WHERE id = %s", (belief_a_id,))
             a_content = cur.fetchone()["content"]
-            belief_supersede(str(belief_b_id), a_content, f"Tension resolution: {resolution}")
+            belief_supersede(
+                str(belief_b_id), a_content, f"Tension resolution: {resolution}"
+            )
 
         elif action == "archive_both":
             cur.execute(

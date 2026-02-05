@@ -14,11 +14,11 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.network.discovery import (
     DiscoveryClient,
     DiscoveryError,
@@ -311,7 +311,7 @@ class TestCacheBehavior:
         """Cache hit should increment stats."""
         discovery_client._update_router_cache(multiple_routers)
 
-        initial_hits = discovery_client._stats["cache_hits"]
+        discovery_client._stats["cache_hits"]
 
         # This should use cache
         selected = discovery_client._select_from_cache(3, None)
@@ -676,7 +676,9 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_discover_routers_function(self, router_info):
         """discover_routers convenience function should work."""
-        with patch("valence.network.discovery.DiscoveryClient") as MockClient:
+        with patch(
+            "valence.network.discovery.DiscoveryClient"
+        ) as MockClient:  # noqa: N806
             mock_client = MagicMock()
             mock_client.discover_routers = AsyncMock(return_value=[router_info])
             mock_client.add_seed = MagicMock()
@@ -768,7 +770,7 @@ class TestErrorHandling:
         discovery_client.add_seed("https://slow-seed.local:8470")
 
         async def slow_query(*args, **kwargs):
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         with patch.object(discovery_client, "_query_seed", side_effect=slow_query):
             with pytest.raises(NoSeedsAvailableError):
@@ -785,7 +787,9 @@ class TestErrorHandling:
         async def connection_error(*args, **kwargs):
             raise aiohttp.ClientError("Connection refused")
 
-        with patch.object(discovery_client, "_query_seed", side_effect=connection_error):
+        with patch.object(
+            discovery_client, "_query_seed", side_effect=connection_error
+        ):
             with pytest.raises(NoSeedsAvailableError):
                 await discovery_client.discover_routers(count=1)
 
@@ -984,7 +988,7 @@ class TestSeedHealthTracking:
             return [router_info]
 
         with patch.object(discovery_client, "_query_seed", side_effect=mock_query):
-            routers = await discovery_client.discover_routers(count=1)
+            await discovery_client.discover_routers(count=1)
 
         assert discovery_client.last_successful_seed == "https://seed2.local:8470"
 

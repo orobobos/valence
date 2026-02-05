@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.gateway import (
     DEFAULT_RATE_LIMIT_MAX_BELIEFS,
     DEFAULT_RATE_LIMIT_MAX_REQUESTS,
@@ -88,7 +89,9 @@ def gateway_config() -> GatewayConfig:
 
 
 @pytest.fixture
-def gateway(federation_id: UUID, gateway_endpoint: str, gateway_config: GatewayConfig) -> GatewayNode:
+def gateway(
+    federation_id: UUID, gateway_endpoint: str, gateway_config: GatewayConfig
+) -> GatewayNode:
     """Test gateway node."""
     return GatewayNode(
         federation_id=federation_id,
@@ -113,7 +116,9 @@ def mock_belief() -> FederatedBelief:
 
 
 @pytest.fixture
-def inbound_share(external_federation_id: UUID, mock_belief: FederatedBelief) -> InboundShare:
+def inbound_share(
+    external_federation_id: UUID, mock_belief: FederatedBelief
+) -> InboundShare:
     """Test inbound share."""
     return InboundShare(
         source_federation_id=external_federation_id,
@@ -124,7 +129,9 @@ def inbound_share(external_federation_id: UUID, mock_belief: FederatedBelief) ->
 
 
 @pytest.fixture
-def outbound_share(external_federation_id: UUID, mock_belief: FederatedBelief) -> OutboundShare:
+def outbound_share(
+    external_federation_id: UUID, mock_belief: FederatedBelief
+) -> OutboundShare:
     """Test outbound share."""
     return OutboundShare(
         target_federation_id=external_federation_id,

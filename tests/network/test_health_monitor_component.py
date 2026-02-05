@@ -18,6 +18,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.health_monitor import (
     HealthMonitor,
     HealthMonitorConfig,
@@ -157,12 +158,16 @@ class TestHealthObservations:
         )
 
         # Observation should be stored
-        assert mock_router_connection.router.router_id in health_monitor._own_observations
+        assert (
+            mock_router_connection.router.router_id in health_monitor._own_observations
+        )
         obs = health_monitor._own_observations[mock_router_connection.router.router_id]
         assert obs.latency_ms == 50.0
         assert obs.success_rate == 0.9
 
-    def test_get_aggregated_health_own_only(self, health_monitor, mock_router_connection):
+    def test_get_aggregated_health_own_only(
+        self, health_monitor, mock_router_connection
+    ):
         """Test aggregated health with only own observations."""
         router_id = mock_router_connection.router.router_id
 
@@ -181,7 +186,9 @@ class TestHealthObservations:
         # Should return default score
         assert score == 0.5
 
-    def test_get_aggregated_health_with_peer_observations(self, health_monitor, mock_router_connection):
+    def test_get_aggregated_health_with_peer_observations(
+        self, health_monitor, mock_router_connection
+    ):
         """Test aggregated health combining own and peer observations."""
         router_id = mock_router_connection.router.router_id
 
@@ -407,7 +414,9 @@ class TestMisbehaviorDetection:
 
         # Record many failures to exceed threshold
         for i in range(10):
-            health_monitor.record_delivery_outcome(router_id, f"msg{i}", delivered=False)
+            health_monitor.record_delivery_outcome(
+                router_id, f"msg{i}", delivered=False
+            )
             health_monitor.record_ack_outcome(router_id, success=False)
 
         # Should be flagged

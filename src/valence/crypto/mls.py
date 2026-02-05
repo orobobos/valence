@@ -121,8 +121,16 @@ class MLSMember:
             leaf_index=data["leaf_index"],
             credential=bytes.fromhex(data.get("credential", "")),
             key_package=bytes.fromhex(data.get("key_package", "")),
-            joined_at=(datetime.fromisoformat(data["joined_at"]) if data.get("joined_at") else datetime.now()),
-            last_update=(datetime.fromisoformat(data["last_update"]) if data.get("last_update") else datetime.now()),
+            joined_at=(
+                datetime.fromisoformat(data["joined_at"])
+                if data.get("joined_at")
+                else datetime.now()
+            ),
+            last_update=(
+                datetime.fromisoformat(data["last_update"])
+                if data.get("last_update")
+                else datetime.now()
+            ),
         )
 
 
@@ -161,7 +169,11 @@ class MLSKeySchedule:
             32-byte application key for encryption
         """
         # In real MLS, this uses HKDF with the application secret
-        data = b"valence-mls-app-key-v1" + self.application_secret + generation.to_bytes(8, "big")
+        data = (
+            b"valence-mls-app-key-v1"
+            + self.application_secret
+            + generation.to_bytes(8, "big")
+        )
         return hashlib.sha256(data).digest()
 
     def derive_nonce(self, generation: int) -> bytes:
@@ -173,7 +185,11 @@ class MLSKeySchedule:
         Returns:
             12-byte nonce for AEAD
         """
-        data = b"valence-mls-nonce-v1" + self.application_secret + generation.to_bytes(8, "big")
+        data = (
+            b"valence-mls-nonce-v1"
+            + self.application_secret
+            + generation.to_bytes(8, "big")
+        )
         return hashlib.sha256(data).digest()[:12]
 
     def export_secret(self, label: bytes, context: bytes, length: int = 32) -> bytes:
@@ -187,7 +203,13 @@ class MLSKeySchedule:
         Returns:
             Exported secret of the specified length
         """
-        data = b"valence-mls-export-v1" + self.exporter_secret + label + context + length.to_bytes(4, "big")
+        data = (
+            b"valence-mls-export-v1"
+            + self.exporter_secret
+            + label
+            + context
+            + length.to_bytes(4, "big")
+        )
         # Use SHA-512 and truncate for variable length
         full_hash = hashlib.sha512(data).digest()
         return full_hash[:length]
@@ -252,7 +274,11 @@ class MLSProposal:
             epoch=data["epoch"],
             payload=bytes.fromhex(data["payload"]),
             proposal_ref=bytes.fromhex(data["proposal_ref"]),
-            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            created_at=(
+                datetime.fromisoformat(data["created_at"])
+                if data.get("created_at")
+                else datetime.now()
+            ),
         )
 
 
@@ -335,9 +361,19 @@ class MLSGroup:
             epoch=data["epoch"],
             cipher_suite=data.get("cipher_suite", 0x0001),
             members=[MLSMember.from_dict(m) for m in data.get("members", [])],
-            pending_proposals=[MLSProposal.from_dict(p) for p in data.get("pending_proposals", [])],
-            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
-            last_commit=(datetime.fromisoformat(data["last_commit"]) if data.get("last_commit") else datetime.now()),
+            pending_proposals=[
+                MLSProposal.from_dict(p) for p in data.get("pending_proposals", [])
+            ],
+            created_at=(
+                datetime.fromisoformat(data["created_at"])
+                if data.get("created_at")
+                else datetime.now()
+            ),
+            last_commit=(
+                datetime.fromisoformat(data["last_commit"])
+                if data.get("last_commit")
+                else datetime.now()
+            ),
         )
 
 
@@ -375,7 +411,11 @@ class MLSCommit:
             proposals=[bytes.fromhex(p) for p in data["proposals"]],
             committer=bytes.fromhex(data["committer"]),
             commit_secret=bytes.fromhex(data["commit_secret"]),
-            created_at=(datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now()),
+            created_at=(
+                datetime.fromisoformat(data["created_at"])
+                if data.get("created_at")
+                else datetime.now()
+            ),
         )
 
 
@@ -805,7 +845,9 @@ class MockMLSBackend(MLSBackend):
             raise MLSMemberNotFoundError(f"Proposer not in group: {proposer_id.hex()}")
 
         if group.get_member(member_id) is None:
-            raise MLSMemberNotFoundError(f"Target member not in group: {member_id.hex()}")
+            raise MLSMemberNotFoundError(
+                f"Target member not in group: {member_id.hex()}"
+            )
 
         proposal = MLSProposal(
             proposal_type=ProposalType.REMOVE,
@@ -829,18 +871,24 @@ class MockMLSBackend(MLSBackend):
             raise MLSGroupNotFoundError(f"Group not found: {group_id.hex()}")
 
         if group.get_member(committer_id) is None:
-            raise MLSMemberNotFoundError(f"Committer not in group: {committer_id.hex()}")
+            raise MLSMemberNotFoundError(
+                f"Committer not in group: {committer_id.hex()}"
+            )
 
         # Select proposals to commit
         if proposal_refs is None:
             proposals_to_commit = group.pending_proposals[:]
         else:
-            proposals_to_commit = [p for p in group.pending_proposals if p.proposal_ref in proposal_refs]
+            proposals_to_commit = [
+                p for p in group.pending_proposals if p.proposal_ref in proposal_refs
+            ]
 
         # Verify all proposals are for current epoch
         for p in proposals_to_commit:
             if p.epoch != group.epoch:
-                raise MLSEpochMismatchError(f"Proposal epoch {p.epoch} != group epoch {group.epoch}")
+                raise MLSEpochMismatchError(
+                    f"Proposal epoch {p.epoch} != group epoch {group.epoch}"
+                )
 
         # Apply proposals
         for proposal in proposals_to_commit:
@@ -864,7 +912,9 @@ class MockMLSBackend(MLSBackend):
 
         # Clear committed proposals
         committed_refs = [p.proposal_ref for p in proposals_to_commit]
-        group.pending_proposals = [p for p in group.pending_proposals if p.proposal_ref not in committed_refs]
+        group.pending_proposals = [
+            p for p in group.pending_proposals if p.proposal_ref not in committed_refs
+        ]
 
         # Create commit
         commit = MLSCommit(
@@ -899,7 +949,9 @@ class MockMLSBackend(MLSBackend):
             raise MLSGroupNotFoundError(f"Group not found: {group_id.hex()}")
 
         if commit.epoch != group.epoch:
-            raise MLSEpochMismatchError(f"Commit epoch {commit.epoch} != group epoch {group.epoch}")
+            raise MLSEpochMismatchError(
+                f"Commit epoch {commit.epoch} != group epoch {group.epoch}"
+            )
 
         # In a real implementation, we would:
         # 1. Verify the commit signature

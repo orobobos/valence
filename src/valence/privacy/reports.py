@@ -178,7 +178,9 @@ class ReportMetadata:
             "report_id": self.report_id,
             "user_did": self.user_did,
             "requested_at": self.requested_at.isoformat(),
-            "generated_at": (self.generated_at.isoformat() if self.generated_at else None),
+            "generated_at": (
+                self.generated_at.isoformat() if self.generated_at else None
+            ),
             "scope": self.scope.to_dict(),
             "format": self.format.value,
             "status": self.status.value,
@@ -254,8 +256,12 @@ class DataReport:
                 row = asdict(belief)
                 row["domains"] = ";".join(row["domains"])
                 row["metadata"] = json.dumps(row["metadata"])
-                row["created_at"] = row["created_at"].isoformat() if row["created_at"] else ""
-                row["updated_at"] = row["updated_at"].isoformat() if row["updated_at"] else ""
+                row["created_at"] = (
+                    row["created_at"].isoformat() if row["created_at"] else ""
+                )
+                row["updated_at"] = (
+                    row["updated_at"].isoformat() if row["updated_at"] else ""
+                )
                 writer.writerow(row)
             csvs["beliefs"] = output.getvalue()
 
@@ -278,8 +284,12 @@ class DataReport:
             writer.writeheader()
             for share in self.shares_sent:
                 row = asdict(share)
-                row["created_at"] = row["created_at"].isoformat() if row["created_at"] else ""
-                row["revoked_at"] = row["revoked_at"].isoformat() if row["revoked_at"] else ""
+                row["created_at"] = (
+                    row["created_at"].isoformat() if row["created_at"] else ""
+                )
+                row["revoked_at"] = (
+                    row["revoked_at"].isoformat() if row["revoked_at"] else ""
+                )
                 writer.writerow(row)
             csvs["shares_sent"] = output.getvalue()
 
@@ -302,8 +312,12 @@ class DataReport:
             writer.writeheader()
             for share in self.shares_received:
                 row = asdict(share)
-                row["created_at"] = row["created_at"].isoformat() if row["created_at"] else ""
-                row["revoked_at"] = row["revoked_at"].isoformat() if row["revoked_at"] else ""
+                row["created_at"] = (
+                    row["created_at"].isoformat() if row["created_at"] else ""
+                )
+                row["revoked_at"] = (
+                    row["revoked_at"].isoformat() if row["revoked_at"] else ""
+                )
                 writer.writerow(row)
             csvs["shares_received"] = output.getvalue()
 
@@ -328,9 +342,15 @@ class DataReport:
             writer.writeheader()
             for trust in self.trust_outgoing:
                 row = asdict(trust)
-                row["created_at"] = row["created_at"].isoformat() if row["created_at"] else ""
-                row["updated_at"] = row["updated_at"].isoformat() if row["updated_at"] else ""
-                row["expires_at"] = row["expires_at"].isoformat() if row["expires_at"] else ""
+                row["created_at"] = (
+                    row["created_at"].isoformat() if row["created_at"] else ""
+                )
+                row["updated_at"] = (
+                    row["updated_at"].isoformat() if row["updated_at"] else ""
+                )
+                row["expires_at"] = (
+                    row["expires_at"].isoformat() if row["expires_at"] else ""
+                )
                 writer.writerow(row)
             csvs["trust_outgoing"] = output.getvalue()
 
@@ -355,9 +375,15 @@ class DataReport:
             writer.writeheader()
             for trust in self.trust_incoming:
                 row = asdict(trust)
-                row["created_at"] = row["created_at"].isoformat() if row["created_at"] else ""
-                row["updated_at"] = row["updated_at"].isoformat() if row["updated_at"] else ""
-                row["expires_at"] = row["expires_at"].isoformat() if row["expires_at"] else ""
+                row["created_at"] = (
+                    row["created_at"].isoformat() if row["created_at"] else ""
+                )
+                row["updated_at"] = (
+                    row["updated_at"].isoformat() if row["updated_at"] else ""
+                )
+                row["expires_at"] = (
+                    row["expires_at"].isoformat() if row["expires_at"] else ""
+                )
                 writer.writerow(row)
             csvs["trust_incoming"] = output.getvalue()
 
@@ -381,7 +407,9 @@ class DataReport:
             writer.writeheader()
             for event in self.audit_events:
                 row = asdict(event)
-                row["timestamp"] = row["timestamp"].isoformat() if row["timestamp"] else ""
+                row["timestamp"] = (
+                    row["timestamp"].isoformat() if row["timestamp"] else ""
+                )
                 row["metadata"] = json.dumps(row["metadata"])
                 writer.writerow(row)
             csvs["audit_events"] = output.getvalue()
@@ -822,13 +850,18 @@ class ReportService:
             await self._report_store.save_report(report_id, report)
             await self._report_store.update_status(report_id, ReportStatus.COMPLETED)
 
-            logger.info(f"Report {report_id} generated with " f"{sum(metadata.record_counts.values())} total records")
+            logger.info(
+                f"Report {report_id} generated with "
+                f"{sum(metadata.record_counts.values())} total records"
+            )
 
             return report
 
         except Exception as e:
             logger.error(f"Report generation failed for {report_id}: {e}")
-            await self._report_store.update_status(report_id, ReportStatus.FAILED, str(e))
+            await self._report_store.update_status(
+                report_id, ReportStatus.FAILED, str(e)
+            )
             raise ReportGenerationError(f"Failed to generate report: {e}") from e
 
     async def get_report_status(self, report_id: str) -> ReportMetadata:
@@ -866,7 +899,9 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
 
         if metadata.status != ReportStatus.COMPLETED:
-            raise ReportGenerationError(f"Report {report_id} is not completed (status: {metadata.status.value})")
+            raise ReportGenerationError(
+                f"Report {report_id} is not completed (status: {metadata.status.value})"
+            )
 
         report = await self._report_store.get_report(report_id)
         if report is None:
@@ -950,7 +985,9 @@ async def generate_data_report(
     """
     service = get_report_service()
     if service is None:
-        raise ReportError("No report service configured. Call set_report_service() first.")
+        raise ReportError(
+            "No report service configured. Call set_report_service() first."
+        )
 
     metadata = await service.request_report(user_did, scope, format)
     return await service.generate_report(metadata.report_id)

@@ -164,7 +164,9 @@ class KeyPair:
         else:
             # Fallback: assume 32-byte seed, derive public key manually
             # This is a simplified version - real implementation needs full Ed25519
-            raise NotImplementedError("Ed25519 key derivation requires cryptography library")
+            raise NotImplementedError(
+                "Ed25519 key derivation requires cryptography library"
+            )
 
         return cls(
             private_key_bytes=private_bytes,
@@ -276,7 +278,9 @@ def parse_did(did_string: str) -> DID:
     if method == DIDMethod.USER:
         # User DID: did:vkb:user:<node-method>:<node-id>:<username>
         if len(parts) < 4:
-            raise ValueError("Invalid user DID: must have node-method, node-id, and username")
+            raise ValueError(
+                "Invalid user DID: must have node-method, node-id, and username"
+            )
 
         try:
             node_method = DIDMethod(parts[1])
@@ -305,7 +309,9 @@ def parse_did(did_string: str) -> DID:
     elif method == DIDMethod.KEY:
         # Validate multibase format (should start with z for base58btc)
         if not identifier.startswith("z"):
-            raise ValueError("Invalid key DID: must use base58btc encoding (start with 'z')")
+            raise ValueError(
+                "Invalid key DID: must use base58btc encoding (start with 'z')"
+            )
         try:
             multibase_decode(identifier)
         except Exception as e:
@@ -327,7 +333,9 @@ def create_web_did(domain: str) -> DID:
     domain = domain.lower().rstrip(".")
 
     # Validate domain
-    if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", domain):
+    if not re.match(
+        r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", domain
+    ):
         raise ValueError(f"Invalid domain: {domain}")
 
     return DID(
@@ -344,7 +352,9 @@ def create_key_did(public_key_multibase: str) -> DID:
     """
     # Validate multibase format
     if not public_key_multibase.startswith("z"):
-        raise ValueError("Public key must be in multibase base58btc format (start with 'z')")
+        raise ValueError(
+            "Public key must be in multibase base58btc format (start with 'z')"
+        )
 
     try:
         decoded = multibase_decode(public_key_multibase)
@@ -484,7 +494,9 @@ class DIDDocument:
             doc["controller"] = self.controller
 
         if self.verification_methods:
-            doc["verificationMethod"] = [vm.to_dict() for vm in self.verification_methods]
+            doc["verificationMethod"] = [
+                vm.to_dict() for vm in self.verification_methods
+            ]
 
         if self.authentication:
             doc["authentication"] = self.authentication
@@ -548,8 +560,12 @@ class DIDDocument:
             capabilities=data.get("vfp:capabilities", []),
             profile=data.get("vfp:profile", {}),
             protocol_version=data.get("vfp:protocolVersion", "1.0"),
-            created=(datetime.fromisoformat(data["created"]) if data.get("created") else None),
-            updated=(datetime.fromisoformat(data["updated"]) if data.get("updated") else None),
+            created=(
+                datetime.fromisoformat(data["created"]) if data.get("created") else None
+            ),
+            updated=(
+                datetime.fromisoformat(data["updated"]) if data.get("updated") else None
+            ),
         )
 
 
@@ -693,7 +709,9 @@ async def _resolve_web_did(did: DID) -> DIDDocument | None:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
                 if response.status == 200:
                     data = await response.json()
                     return DIDDocument.from_dict(data)

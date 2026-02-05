@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from valence.server.cli import (
     cmd_create,
     get_secure_token_dir,
@@ -112,7 +113,9 @@ class TestSecureTokenStorage:
                         # Tokens are typically 32+ chars of hex/base64
                         if len(word) > 30 and word.isalnum():
                             # This might be a token - shouldn't be in output
-                            pytest.fail(f"Possible token found in output: {word[:10]}...")
+                            pytest.fail(
+                                f"Possible token found in output: {word[:10]}..."
+                            )
 
     def test_token_file_path_in_output(self, capsys):
         """cmd_create should print the path to the token file."""

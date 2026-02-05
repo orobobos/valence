@@ -86,7 +86,10 @@ def is_federation_compatible(
         >>> is_federation_compatible("text_embedding_3_small", 1536)
         False
     """
-    return embedding_type == FEDERATION_EMBEDDING_TYPE and dimensions == FEDERATION_EMBEDDING_DIMS
+    return (
+        embedding_type == FEDERATION_EMBEDDING_TYPE
+        and dimensions == FEDERATION_EMBEDDING_DIMS
+    )
 
 
 def validate_federation_embedding(
@@ -216,7 +219,9 @@ async def prepare_belief_for_federation(
     # Check visibility allows federation
     visibility = row.get("visibility", "private")
     if visibility == "private":
-        raise ValueError(f"Belief {belief_id_str} has private visibility, cannot federate")
+        raise ValueError(
+            f"Belief {belief_id_str} has private visibility, cannot federate"
+        )
 
     # Determine embedding
     embedding = None
@@ -237,7 +242,9 @@ async def prepare_belief_for_federation(
                 else:
                     embedding = list(vector_data)
 
-                logger.debug(f"Using existing federation-compatible embedding for belief {belief_id_str}")
+                logger.debug(
+                    f"Using existing federation-compatible embedding for belief {belief_id_str}"
+                )
 
         if embedding is None:
             # Generate federation-standard embedding
@@ -296,7 +303,9 @@ async def prepare_beliefs_batch_for_federation(
     results = []
     for belief_id in belief_ids:
         try:
-            prepared = await prepare_belief_for_federation(belief_id, include_embedding=include_embeddings)
+            prepared = await prepare_belief_for_federation(
+                belief_id, include_embedding=include_embeddings
+            )
             results.append(prepared)
         except ValueError as e:
             logger.warning(f"Skipping belief {belief_id}: {e}")
@@ -339,13 +348,22 @@ def validate_incoming_belief_embedding(
 
     # If metadata is provided, it must match federation standard
     if embedding_model and embedding_model != FEDERATION_EMBEDDING_MODEL:
-        return False, (f"Embedding model mismatch: expected '{FEDERATION_EMBEDDING_MODEL}', " f"got '{embedding_model}'")
+        return False, (
+            f"Embedding model mismatch: expected '{FEDERATION_EMBEDDING_MODEL}', "
+            f"got '{embedding_model}'"
+        )
 
     if embedding_dims and embedding_dims != FEDERATION_EMBEDDING_DIMS:
-        return False, (f"Embedding dimensions mismatch: expected {FEDERATION_EMBEDDING_DIMS}, " f"got {embedding_dims}")
+        return False, (
+            f"Embedding dimensions mismatch: expected {FEDERATION_EMBEDDING_DIMS}, "
+            f"got {embedding_dims}"
+        )
 
     if embedding_type and embedding_type != FEDERATION_EMBEDDING_TYPE:
-        return False, (f"Embedding type mismatch: expected '{FEDERATION_EMBEDDING_TYPE}', " f"got '{embedding_type}'")
+        return False, (
+            f"Embedding type mismatch: expected '{FEDERATION_EMBEDDING_TYPE}', "
+            f"got '{embedding_type}'"
+        )
 
     # Validate the actual embedding vector
     return validate_federation_embedding(embedding)

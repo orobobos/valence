@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.ring_coefficient import (
     MAX_NORMAL_VELOCITY,
     MIN_RING_COEFFICIENT,
@@ -344,7 +345,9 @@ class TestSybilClusterDetector:
 
         # Find the cluster containing alice, bob, carol
         sybil_nodes = {node_ids["alice"], node_ids["bob"], node_ids["carol"]}
-        sybil_cluster = next((c for c in clusters if set(c.node_ids) & sybil_nodes), None)
+        sybil_cluster = next(
+            (c for c in clusters if set(c.node_ids) & sybil_nodes), None
+        )
 
         assert sybil_cluster is not None
         assert sybil_cluster.density > 0.5
@@ -400,7 +403,9 @@ class TestSybilClusterDetector:
         clusters = detector.detect_clusters(ring_graph)
 
         # Ring graph should be flagged
-        ring_clusters = [c for c in clusters if "ring" in str(c.detection_reasons).lower()]
+        ring_clusters = [
+            c for c in clusters if "ring" in str(c.detection_reasons).lower()
+        ]
         assert len(ring_clusters) >= 1
 
 
@@ -555,8 +560,12 @@ class TestIntegrationWithTrustPropagation:
             apply_ring_coefficient=False,
         )
 
-        result_with = engine_with_ring.compute_transitive_trust(node_ids["alice"], node_ids["carol"])
-        result_without = engine_without_ring.compute_transitive_trust(node_ids["alice"], node_ids["carol"])
+        result_with = engine_with_ring.compute_transitive_trust(
+            node_ids["alice"], node_ids["carol"]
+        )
+        engine_without_ring.compute_transitive_trust(
+            node_ids["alice"], node_ids["carol"]
+        )
 
         # Ring coefficient should be applied
         assert result_with.ring_coefficient_applied <= 1.0

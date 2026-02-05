@@ -167,7 +167,9 @@ class TestParser:
     def test_list_with_filters(self):
         """Test list command with filters."""
         parser = create_parser()
-        args = parser.parse_args(["list", "--status", "active", "--trust-phase", "participant", "-n", "10"])
+        args = parser.parse_args(
+            ["list", "--status", "active", "--trust-phase", "participant", "-n", "10"]
+        )
 
         assert args.command == "list"
         assert args.status == "active"
@@ -185,7 +187,9 @@ class TestParser:
         """Test trust command parsing."""
         parser = create_parser()
         node_id = str(uuid4())
-        args = parser.parse_args(["trust", node_id, "elevated", "--reason", "Trusted partner"])
+        args = parser.parse_args(
+            ["trust", node_id, "elevated", "--reason", "Trusted partner"]
+        )
 
         assert args.command == "trust"
         assert args.node_id == node_id
@@ -461,7 +465,9 @@ class TestTrustCommand:
 
         with (
             patch("valence.federation.tools.federation_trust_get") as mock_get,
-            patch("valence.federation.tools.federation_trust_set_preference") as mock_set,
+            patch(
+                "valence.federation.tools.federation_trust_set_preference"
+            ) as mock_set,
         ):
             mock_get.return_value = {"success": True, "effective_trust": 0.5}
             mock_set.return_value = {"success": True, "effective_trust": 0.75}

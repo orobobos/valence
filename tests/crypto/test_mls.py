@@ -6,6 +6,7 @@ These tests verify the MLS interface and mock implementation work correctly.
 from datetime import datetime
 
 import pytest
+
 from valence.crypto.mls import (
     MLSBackend,
     MLSCommit,
@@ -335,8 +336,8 @@ class TestMockMLSBackend:
         backend.create_group(b"test-group", b"alice")
 
         # Create proposals
-        p1 = backend.propose_add(b"test-group", b"alice", b"bob", b"bob-kp")
-        p2 = backend.propose_add(b"test-group", b"alice", b"charlie", b"charlie-kp")
+        backend.propose_add(b"test-group", b"alice", b"bob", b"bob-kp")
+        backend.propose_add(b"test-group", b"alice", b"charlie", b"charlie-kp")
 
         group = backend.get_group(b"test-group")
         assert len(group.pending_proposals) == 2
@@ -355,7 +356,7 @@ class TestMockMLSBackend:
         backend.create_group(b"test-group", b"alice")
 
         p1 = backend.propose_add(b"test-group", b"alice", b"bob", b"bob-kp")
-        p2 = backend.propose_add(b"test-group", b"alice", b"charlie", b"charlie-kp")
+        backend.propose_add(b"test-group", b"alice", b"charlie", b"charlie-kp")
 
         # Only commit first proposal
         group, commit = backend.commit(b"test-group", b"alice", [p1.proposal_ref])
@@ -550,7 +551,7 @@ class TestMLSBackendInterface:
         backend = MockMLSBackend()
 
         # These should not raise NotImplementedError
-        group = backend.create_group(b"test", b"alice")
+        backend.create_group(b"test", b"alice")
         backend.add_member(b"test", b"bob", b"kp")
         backend.remove_member(b"test", b"bob", b"alice")
         backend.update_keys(b"test", b"alice")

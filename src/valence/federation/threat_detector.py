@@ -82,7 +82,11 @@ class ThreatDetector:
                 assessment["threat_score"] += min(0.3, dispute_ratio)
 
         # Signal 2: Very low trust after significant interaction
-        total_interactions = node_trust.beliefs_received + node_trust.sync_requests_served + node_trust.aggregation_participations
+        total_interactions = (
+            node_trust.beliefs_received
+            + node_trust.sync_requests_served
+            + node_trust.aggregation_participations
+        )
         if total_interactions > 20 and node_trust.overall < 0.2:
             assessment["signals"].append(
                 {
@@ -95,7 +99,9 @@ class ThreatDetector:
 
         # Signal 3: Trust declined rapidly (low corroboration)
         if node_trust.beliefs_corroborated > 0:
-            corroboration_ratio = node_trust.beliefs_corroborated / max(1, node_trust.beliefs_received)
+            corroboration_ratio = node_trust.beliefs_corroborated / max(
+                1, node_trust.beliefs_received
+            )
             if corroboration_ratio < 0.1:
                 assessment["signals"].append(
                     {
@@ -108,7 +114,9 @@ class ThreatDetector:
 
         # Signal 4: Rapid volume (potential spam/Sybil)
         if node_trust.beliefs_received > 100:
-            days_active = max(1, (datetime.now() - node_trust.relationship_started_at).days)
+            days_active = max(
+                1, (datetime.now() - node_trust.relationship_started_at).days
+            )
             daily_rate = node_trust.beliefs_received / days_active
             if daily_rate > 50:  # More than 50 beliefs per day
                 assessment["signals"].append(
@@ -122,7 +130,9 @@ class ThreatDetector:
 
         # Determine threat level from score
         threat_level = ThreatLevel.NONE
-        for level, threshold in sorted(THREAT_THRESHOLDS.items(), key=lambda x: x[1], reverse=True):
+        for level, threshold in sorted(
+            THREAT_THRESHOLDS.items(), key=lambda x: x[1], reverse=True
+        ):
             if assessment["threat_score"] >= threshold:
                 threat_level = level
                 break
@@ -157,7 +167,9 @@ class ThreatDetector:
 
         # Level 1: Low - Increased scrutiny (log, no penalty)
         if threat_level == ThreatLevel.LOW:
-            logger.warning(f"Node {node_id} at LOW threat level: {assessment['signals']}")
+            logger.warning(
+                f"Node {node_id} at LOW threat level: {assessment['signals']}"
+            )
             return True
 
         # Level 2: Medium - Reduce trust
@@ -167,7 +179,9 @@ class ThreatDetector:
             node_trust.adjustment_reason = f"Automated penalty: {threat_level.value}"
             node_trust.recalculate_overall()
             self.registry.save_node_trust(node_trust)
-            logger.warning(f"Node {node_id} at MEDIUM threat level, applied trust penalty: {penalty}")
+            logger.warning(
+                f"Node {node_id} at MEDIUM threat level, applied trust penalty: {penalty}"
+            )
             return True
 
         # Level 3: High - Quarantine from sensitive operations
@@ -196,13 +210,17 @@ class ThreatDetector:
             except Exception as e:
                 logger.exception(f"Error setting quarantine: {e}")
 
-            logger.warning(f"Node {node_id} at HIGH threat level, quarantined for 7 days")
+            logger.warning(
+                f"Node {node_id} at HIGH threat level, quarantined for 7 days"
+            )
             return True
 
         # Level 4: Critical - Functional isolation (read-only)
         if threat_level == ThreatLevel.CRITICAL:
             penalty = -0.5
-            node_trust.manual_trust_adjustment = max(-0.9, node_trust.manual_trust_adjustment + penalty)
+            node_trust.manual_trust_adjustment = max(
+                -0.9, node_trust.manual_trust_adjustment + penalty
+            )
             node_trust.adjustment_reason = f"Isolation: {threat_level.value}"
             node_trust.recalculate_overall()
             self.registry.save_node_trust(node_trust)

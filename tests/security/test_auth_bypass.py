@@ -36,7 +36,9 @@ class TestJWTSecurityControls:
         secrets_generated = set()
         for i in range(10):
             # Each fresh settings instance should get a random secret if not configured
-            with patch.dict("os.environ", {"VALENCE_OAUTH_JWT_SECRET": ""}, clear=False):
+            with patch.dict(
+                "os.environ", {"VALENCE_OAUTH_JWT_SECRET": ""}, clear=False
+            ):
                 settings = ServerSettings()
                 # When not explicitly set, secret should be generated
                 if settings.oauth_jwt_secret:
@@ -52,7 +54,9 @@ class TestJWTSecurityControls:
         generated_secret = secrets.token_hex(32)
 
         # 256 bits = 32 bytes = 64 hex chars
-        assert len(generated_secret) >= 64, "JWT secret should be at least 256 bits (64 hex chars)"
+        assert (
+            len(generated_secret) >= 64
+        ), "JWT secret should be at least 256 bits (64 hex chars)"
 
     def test_jwt_token_signature_verified(self):
         """JWT tokens must have their signatures verified on every request."""
@@ -96,7 +100,11 @@ class TestJWTSecurityControls:
         # Modify payload
         original_payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
         original_payload["sub"] = "admin"  # Try to escalate privileges
-        tampered_payload = base64.urlsafe_b64encode(json.dumps(original_payload).encode()).decode().rstrip("=")
+        tampered_payload = (
+            base64.urlsafe_b64encode(json.dumps(original_payload).encode())
+            .decode()
+            .rstrip("=")
+        )
 
         tampered_token = f"{parts[0]}.{tampered_payload}.{parts[2]}"
 
@@ -116,11 +124,14 @@ class TestPKCEImplementation:
         from starlette.applications import Starlette
         from starlette.routing import Route
         from starlette.testclient import TestClient
+
         from valence.server.oauth import authorize
 
         # Build minimal app
-        app = Starlette(routes=[Route("/oauth/authorize", authorize, methods=["GET", "POST"])])
-        client = TestClient(app)
+        app = Starlette(
+            routes=[Route("/oauth/authorize", authorize, methods=["GET", "POST"])]
+        )
+        TestClient(app)
 
         # Request without code_challenge should fail
         # (would require full setup - this tests the principle)
@@ -133,7 +144,11 @@ class TestPKCEImplementation:
 
         # Generate valid PKCE pair
         verifier = secrets.token_urlsafe(43)  # 43 chars for 256 bits
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
 
         # Correct verifier should pass
         assert verify_pkce(verifier, challenge, "S256") is True
@@ -290,7 +305,9 @@ class TestFederationAuthentication:
 
         # The endpoint should have @require_did_signature decorator
         # Check that unauthenticated requests are rejected
-        assert hasattr(federation_protocol, "__wrapped__"), "federation_protocol should be decorated with @require_did_signature"
+        assert hasattr(
+            federation_protocol, "__wrapped__"
+        ), "federation_protocol should be decorated with @require_did_signature"
 
     @pytest.mark.asyncio
     async def test_did_signature_timestamp_validation(self):
@@ -342,7 +359,9 @@ class TestCredentialExposure:
 
         # Verify no password-like fields in response
         assert "password" not in json.dumps(api_response).lower()
-        assert "secret" not in json.dumps(api_response).lower() or "oauth_jwt_secret" not in json.dumps(api_response)
+        assert "secret" not in json.dumps(
+            api_response
+        ).lower() or "oauth_jwt_secret" not in json.dumps(api_response)
 
     def test_private_key_not_in_responses(self):
         """Federation private key must never appear in HTTP responses."""

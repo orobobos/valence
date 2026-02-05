@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 import pytest
+
 from valence.server.oauth_models import (
     AuthorizationCode,
     AuthorizationCodeStore,
@@ -136,7 +137,9 @@ class TestOAuthClientStore:
             redirect_uris=["http://localhost/callback", "http://localhost/alt"],
         )
 
-        assert store.validate_redirect_uri(client.client_id, "http://localhost/callback")
+        assert store.validate_redirect_uri(
+            client.client_id, "http://localhost/callback"
+        )
         assert store.validate_redirect_uri(client.client_id, "http://localhost/alt")
 
     def test_validate_redirect_uri_invalid(self, temp_clients_file):
@@ -147,7 +150,9 @@ class TestOAuthClientStore:
             redirect_uris=["http://localhost/callback"],
         )
 
-        assert not store.validate_redirect_uri(client.client_id, "http://evil.com/steal")
+        assert not store.validate_redirect_uri(
+            client.client_id, "http://evil.com/steal"
+        )
 
     def test_persistence(self, temp_clients_file):
         """Test clients persist to file."""
@@ -526,7 +531,10 @@ class TestAccessToken:
 
         assert "Token expired" in caplog.text
         # Verify it's at WARNING level, not DEBUG
-        assert any(record.levelno == logging.WARNING and "Token expired" in record.message for record in caplog.records)
+        assert any(
+            record.levelno == logging.WARNING and "Token expired" in record.message
+            for record in caplog.records
+        )
 
     def test_verify_wrong_audience(self):
         """Test rejecting token with wrong audience."""
@@ -563,7 +571,11 @@ class TestPKCE:
 
         # Generate a valid verifier and challenge
         verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+        challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+            .rstrip(b"=")
+            .decode("ascii")
+        )
 
         assert verify_pkce(verifier, challenge, "S256") is True
 

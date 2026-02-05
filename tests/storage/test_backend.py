@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+
 from valence.storage.backend import (
     BackendRegistry,
     LocalFileBackend,
@@ -180,7 +181,7 @@ class TestLocalFileBackend:
     @pytest.mark.asyncio
     async def test_creates_directories(self, temp_dir):
         """Backend creates necessary directories."""
-        backend = LocalFileBackend(temp_dir, "test")
+        LocalFileBackend(temp_dir, "test")
 
         assert Path(temp_dir, "shards").exists()
         assert Path(temp_dir, "metadata").exists()
@@ -244,11 +245,15 @@ class TestLocalFileBackend:
         """Quota is enforced on storage."""
         backend = LocalFileBackend(temp_dir, "quota-test", quota_bytes=100)
 
-        small_shard = StorageShard(data=b"small", metadata=ShardMetadata(shard_id=uuid4(), index=0))
+        small_shard = StorageShard(
+            data=b"small", metadata=ShardMetadata(shard_id=uuid4(), index=0)
+        )
         await backend.store_shard(small_shard)
 
         # Try to store a large shard
-        large_shard = StorageShard(data=b"x" * 200, metadata=ShardMetadata(shard_id=uuid4(), index=1))
+        large_shard = StorageShard(
+            data=b"x" * 200, metadata=ShardMetadata(shard_id=uuid4(), index=1)
+        )
         with pytest.raises(StorageQuotaExceededError):
             await backend.store_shard(large_shard)
 

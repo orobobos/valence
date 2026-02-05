@@ -76,13 +76,11 @@ class TestBeliefCreation:
         """Test creating belief linked to a source."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create source first
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO sources (type, title)
                 VALUES ('document', 'Test Document')
                 RETURNING id
-            """
-            )
+            """)
             source_id = cur.fetchone()["id"]
 
             # Create belief with source
@@ -104,14 +102,14 @@ class TestBeliefQuerying:
 
     def test_query_by_domain(self, db_conn_committed, seed_beliefs):
         """Test querying beliefs by domain path."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute("""
                 SELECT id, content, domain_path
                 FROM beliefs
                 WHERE domain_path @> ARRAY['tech']
-            """
-            )
+            """)
 
             results = cur.fetchall()
 
@@ -122,14 +120,14 @@ class TestBeliefQuerying:
 
     def test_query_by_subdomain(self, db_conn_committed, seed_beliefs):
         """Test querying beliefs by specific subdomain."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute("""
                 SELECT content
                 FROM beliefs
                 WHERE domain_path @> ARRAY['tech', 'ai']
-            """
-            )
+            """)
 
             results = cur.fetchall()
 
@@ -138,14 +136,14 @@ class TestBeliefQuerying:
 
     def test_query_by_confidence_threshold(self, db_conn_committed, seed_beliefs):
         """Test filtering beliefs by minimum confidence."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute("""
                 SELECT content, confidence
                 FROM beliefs
                 WHERE (confidence->>'overall')::numeric >= 0.85
-            """
-            )
+            """)
 
             results = cur.fetchall()
 
@@ -154,14 +152,14 @@ class TestBeliefQuerying:
 
     def test_full_text_search(self, db_conn_committed, seed_beliefs):
         """Test full-text search on belief content."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute("""
                 SELECT content
                 FROM beliefs
                 WHERE content_tsv @@ plainto_tsquery('english', 'programming language')
-            """
-            )
+            """)
 
             results = cur.fetchall()
 
@@ -176,13 +174,11 @@ class TestBeliefSupersession:
         """Test superseding a belief with updated information."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create original belief
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('Python 3.11 is the latest version', '{"overall": 0.9}', ARRAY['tech'])
                 RETURNING id
-            """
-            )
+            """)
             original_id = cur.fetchone()["id"]
 
             # Create new belief that supersedes it
@@ -224,23 +220,19 @@ class TestBeliefSupersession:
         """Test querying excludes superseded beliefs by default."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create active and superseded beliefs
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path, status)
                 VALUES
                     ('Active belief', '{"overall": 0.8}', ARRAY['test'], 'active'),
                     ('Superseded belief', '{"overall": 0.7}', ARRAY['test'], 'superseded')
-            """
-            )
+            """)
 
             # Query active only
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT content FROM beliefs
                 WHERE domain_path @> ARRAY['test']
                 AND status = 'active'
-            """
-            )
+            """)
 
             results = cur.fetchall()
             contents = [r["content"] for r in results]
@@ -256,22 +248,18 @@ class TestBeliefTensions:
         """Test creating a tension between conflicting beliefs."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create two conflicting beliefs
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('Feature X should be implemented', '{"overall": 0.7}', ARRAY['decisions'])
                 RETURNING id
-            """
-            )
+            """)
             belief_a = cur.fetchone()["id"]
 
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('Feature X should not be implemented', '{"overall": 0.6}', ARRAY['decisions'])
                 RETURNING id
-            """
-            )
+            """)
             belief_b = cur.fetchone()["id"]
 
             # Record tension
@@ -291,14 +279,12 @@ class TestBeliefTensions:
         """Test resolving a tension."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create beliefs and tension
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES
                     ('Old decision', '{"overall": 0.5}', ARRAY['decisions']),
                     ('New decision', '{"overall": 0.9}', ARRAY['decisions'])
-            """
-            )
+            """)
 
             cur.execute("SELECT id FROM beliefs WHERE content = 'Old decision'")
             old_id = cur.fetchone()["id"]
@@ -335,10 +321,14 @@ class TestBeliefTensions:
 class TestBeliefEntityLinks:
     """Tests for belief-entity relationships."""
 
-    def test_link_belief_to_entity(self, db_conn_committed, seed_beliefs, seed_entities):
+    def test_link_belief_to_entity(
+        self, db_conn_committed, seed_beliefs, seed_entities
+    ):
         """Test linking a belief to an entity."""
         # Get a belief and entity
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
             cur.execute("SELECT id FROM beliefs WHERE content LIKE '%Python%' LIMIT 1")
             belief_id = cur.fetchone()["id"]
 
@@ -358,9 +348,13 @@ class TestBeliefEntityLinks:
             link = cur.fetchone()
             assert link is not None
 
-    def test_query_beliefs_by_entity(self, db_conn_committed, seed_beliefs, seed_entities):
+    def test_query_beliefs_by_entity(
+        self, db_conn_committed, seed_beliefs, seed_entities
+    ):
         """Test querying beliefs related to an entity."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
             # Link some beliefs to entities first
             cur.execute("SELECT id FROM beliefs WHERE content LIKE '%Python%' LIMIT 1")
             belief_id = cur.fetchone()["id"]
@@ -378,15 +372,13 @@ class TestBeliefEntityLinks:
             db_conn_committed.commit()
 
             # Query beliefs by entity
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT b.content
                 FROM beliefs b
                 JOIN belief_entities be ON b.id = be.belief_id
                 JOIN entities e ON be.entity_id = e.id
                 WHERE e.name = 'Python'
-            """
-            )
+            """)
 
             results = cur.fetchall()
             assert len(results) >= 1
@@ -399,13 +391,11 @@ class TestBeliefDeletion:
         """Test archiving a belief (soft delete)."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create belief
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('To be archived', '{"overall": 0.5}', ARRAY['test'])
                 RETURNING id
-            """
-            )
+            """)
             belief_id = cur.fetchone()["id"]
 
             # Archive it
@@ -426,17 +416,17 @@ class TestBeliefDeletion:
         """Test hard deleting a belief."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create belief
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('To be deleted', '{"overall": 0.5}', ARRAY['test'])
                 RETURNING id
-            """
-            )
+            """)
             belief_id = cur.fetchone()["id"]
 
             # Delete belief (clean up any links first)
-            cur.execute("DELETE FROM belief_entities WHERE belief_id = %s", (belief_id,))
+            cur.execute(
+                "DELETE FROM belief_entities WHERE belief_id = %s", (belief_id,)
+            )
             cur.execute(
                 "DELETE FROM tensions WHERE belief_a_id = %s OR belief_b_id = %s",
                 (belief_id, belief_id),

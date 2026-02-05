@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
+
 from valence.federation.identity import (
     DIDMethod,
     create_key_did,
@@ -75,7 +76,9 @@ class TestIdentity:
         assert len(signature) > 0
 
         # Verify
-        is_valid = verify_belief_signature(content, signature, keypair.public_key_multibase)
+        is_valid = verify_belief_signature(
+            content, signature, keypair.public_key_multibase
+        )
 
         assert is_valid is True
 
@@ -96,7 +99,9 @@ class TestIdentity:
         signature = sign_belief_content(content, keypair1.private_key_bytes)
 
         # Verify with keypair2's public key (should fail)
-        is_valid = verify_belief_signature(content, signature, keypair2.public_key_multibase)
+        is_valid = verify_belief_signature(
+            content, signature, keypair2.public_key_multibase
+        )
 
         assert is_valid is False
 
@@ -119,7 +124,9 @@ class TestIdentity:
         content["content"] = "This has been tampered with!"
 
         # Verify (should fail)
-        is_valid = verify_belief_signature(content, signature, keypair.public_key_multibase)
+        is_valid = verify_belief_signature(
+            content, signature, keypair.public_key_multibase
+        )
 
         assert is_valid is False
 
@@ -161,9 +168,15 @@ class TestPeerStore:
         """Test listing peers."""
         store = PeerStore()
 
-        store.add_peer(did="did:vkb:key:z1", endpoint="http://a", public_key_multibase="z1")
-        store.add_peer(did="did:vkb:key:z2", endpoint="http://b", public_key_multibase="z2")
-        store.add_peer(did="did:vkb:key:z3", endpoint="http://c", public_key_multibase="z3")
+        store.add_peer(
+            did="did:vkb:key:z1", endpoint="http://a", public_key_multibase="z1"
+        )
+        store.add_peer(
+            did="did:vkb:key:z2", endpoint="http://b", public_key_multibase="z2"
+        )
+        store.add_peer(
+            did="did:vkb:key:z3", endpoint="http://c", public_key_multibase="z3"
+        )
 
         peers = store.list_peers()
 

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+
 from valence.privacy.audit import (
     AuditEvent,
     AuditEventType,

@@ -83,7 +83,9 @@ def encrypt_message(
     shared_secret = ephemeral_private.exchange(recipient_public_key)
 
     # Derive DEK using HKDF
-    dek = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1").derive(shared_secret)
+    dek = HKDF(
+        algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1"
+    ).derive(shared_secret)
 
     # Encrypt content with AES-256-GCM
     nonce = os.urandom(12)
@@ -138,16 +140,22 @@ def decrypt_message(
     # Verify signature
     payload_bytes = json.dumps(encrypted["payload"], sort_keys=True).encode()
     signature = bytes.fromhex(encrypted["signature"])
-    sender_public_key.verify(signature, payload_bytes)  # Raises InvalidSignature on failure
+    sender_public_key.verify(
+        signature, payload_bytes
+    )  # Raises InvalidSignature on failure
 
     # Extract ephemeral public key
-    ephemeral_public = X25519PublicKey.from_public_bytes(bytes.fromhex(encrypted["payload"]["ephemeral_public"]))
+    ephemeral_public = X25519PublicKey.from_public_bytes(
+        bytes.fromhex(encrypted["payload"]["ephemeral_public"])
+    )
 
     # Derive shared secret via ECDH
     shared_secret = recipient_private_key.exchange(ephemeral_public)
 
     # Derive DEK using HKDF
-    dek = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1").derive(shared_secret)
+    dek = HKDF(
+        algorithm=hashes.SHA256(), length=32, salt=None, info=b"valence-relay-v1"
+    ).derive(shared_secret)
 
     # Decrypt
     nonce = bytes.fromhex(encrypted["payload"]["nonce"])

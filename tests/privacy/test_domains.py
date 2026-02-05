@@ -2,9 +2,9 @@
 
 import hashlib
 from datetime import UTC, datetime
-from typing import Optional
 
 import pytest
+
 from valence.privacy.domains import (
     AdminSignatureVerifier,
     DNSTxtVerifier,
@@ -174,15 +174,19 @@ class MockDomainDatabase:
 
     def __init__(self):
         self.domains: dict[str, dict] = {}
-        self.memberships: dict[str, dict[str, dict]] = {}  # domain_id -> member_did -> membership
-        self.verification_results: dict[str, dict[str, dict]] = {}  # domain_id -> member_did -> result
+        self.memberships: dict[str, dict[str, dict]] = (
+            {}
+        )  # domain_id -> member_did -> membership
+        self.verification_results: dict[str, dict[str, dict]] = (
+            {}
+        )  # domain_id -> member_did -> result
 
     async def create_domain(
         self,
         domain_id: str,
         name: str,
         owner_did: str,
-        description: Optional[str],
+        description: str | None,
     ) -> None:
         self.domains[domain_id] = {
             "domain_id": domain_id,
@@ -195,10 +199,10 @@ class MockDomainDatabase:
         self.memberships[domain_id] = {}
         self.verification_results[domain_id] = {}
 
-    async def get_domain(self, domain_id: str) -> Optional[dict]:
+    async def get_domain(self, domain_id: str) -> dict | None:
         return self.domains.get(domain_id)
 
-    async def get_domain_by_name(self, name: str, owner_did: str) -> Optional[dict]:
+    async def get_domain_by_name(self, name: str, owner_did: str) -> dict | None:
         for domain in self.domains.values():
             if domain["name"] == name and domain["owner_did"] == owner_did:
                 return domain
@@ -233,7 +237,7 @@ class MockDomainDatabase:
             return True
         return False
 
-    async def get_membership(self, domain_id: str, member_did: str) -> Optional[dict]:
+    async def get_membership(self, domain_id: str, member_did: str) -> dict | None:
         if domain_id in self.memberships:
             return self.memberships[domain_id].get(member_did)
         return None
@@ -255,7 +259,7 @@ class MockDomainDatabase:
     async def set_verification_requirement(
         self,
         domain_id: str,
-        requirement: Optional[dict],
+        requirement: dict | None,
     ) -> None:
         if domain_id in self.domains:
             self.domains[domain_id]["verification_requirement"] = requirement
@@ -274,7 +278,7 @@ class MockDomainDatabase:
         self,
         domain_id: str,
         member_did: str,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         if domain_id in self.verification_results:
             return self.verification_results[domain_id].get(member_did)
         return None
@@ -451,7 +455,9 @@ class TestDomainService:
         assert result is True
 
         # Verify member is gone
-        is_member = await domain_service.is_member(domain.domain_id, "did:example:member")
+        is_member = await domain_service.is_member(
+            domain.domain_id, "did:example:member"
+        )
         assert is_member is False
 
     @pytest.mark.asyncio
@@ -510,9 +516,15 @@ class TestDomainService:
             role=DomainRole.ADMIN,
         )
 
-        owner_role = await domain_service.get_member_role(domain.domain_id, "did:example:owner")
-        admin_role = await domain_service.get_member_role(domain.domain_id, "did:example:admin")
-        nonmember_role = await domain_service.get_member_role(domain.domain_id, "did:example:stranger")
+        owner_role = await domain_service.get_member_role(
+            domain.domain_id, "did:example:owner"
+        )
+        admin_role = await domain_service.get_member_role(
+            domain.domain_id, "did:example:admin"
+        )
+        nonmember_role = await domain_service.get_member_role(
+            domain.domain_id, "did:example:stranger"
+        )
 
         assert owner_role == DomainRole.OWNER
         assert admin_role == DomainRole.ADMIN
@@ -533,7 +545,9 @@ class TestDomainService:
 
         assert await domain_service.is_member(domain.domain_id, "did:example:owner")
         assert await domain_service.is_member(domain.domain_id, "did:example:member")
-        assert not await domain_service.is_member(domain.domain_id, "did:example:stranger")
+        assert not await domain_service.is_member(
+            domain.domain_id, "did:example:stranger"
+        )
 
     @pytest.mark.asyncio
     async def test_list_domains_for_member(self, domain_service):
@@ -801,7 +815,9 @@ class TestAdminSignatureVerifier:
         admin_did = "did:example:admin"
 
         # Generate expected signature (simple mode)
-        expected_sig = hashlib.sha256(f"{domain_id}:{member_did}:{admin_did}".encode()).hexdigest()
+        expected_sig = hashlib.sha256(
+            f"{domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
 
         result = await verifier.verify(
             domain_id=domain_id,
@@ -954,7 +970,10 @@ class TestDomainServiceVerification:
         )
 
         assert updated.verification_requirement is not None
-        assert updated.verification_requirement.method == VerificationMethod.ADMIN_SIGNATURE
+        assert (
+            updated.verification_requirement.method
+            == VerificationMethod.ADMIN_SIGNATURE
+        )
 
     @pytest.mark.asyncio
     async def test_set_verification_requirement_owner_only(self, domain_service):
@@ -1064,7 +1083,9 @@ class TestDomainServiceVerification:
         member_did = "did:example:member"
 
         # Generate valid signature
-        expected_sig = hashlib.sha256(f"{domain.domain_id}:{member_did}:{admin_did}".encode()).hexdigest()
+        expected_sig = hashlib.sha256(
+            f"{domain.domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
 
         result = await domain_service.verify_membership(
             domain_id=domain.domain_id,
@@ -1163,7 +1184,9 @@ class TestDomainServiceVerification:
         # After verification
         admin_did = "did:example:owner"
         member_did = "did:example:member"
-        expected_sig = hashlib.sha256(f"{domain.domain_id}:{member_did}:{admin_did}".encode()).hexdigest()
+        expected_sig = hashlib.sha256(
+            f"{domain.domain_id}:{member_did}:{admin_did}".encode()
+        ).hexdigest()
 
         await domain_service.verify_membership(
             domain_id=domain.domain_id,

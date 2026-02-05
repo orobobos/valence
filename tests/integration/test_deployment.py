@@ -109,13 +109,11 @@ class TestDatabaseSchema:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'public'
-        """
-        )
+        """)
         existing_tables = {row[0] for row in cursor.fetchall()}
         conn.close()
 
@@ -136,13 +134,11 @@ class TestDatabaseSchema:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = 'beliefs'
-        """
-        )
+        """)
         actual_columns = {row[0] for row in cursor.fetchall()}
         conn.close()
 
@@ -161,13 +157,11 @@ class TestDatabaseSchema:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name = 'sessions'
-        """
-        )
+        """)
         actual_columns = {row[0] for row in cursor.fetchall()}
         conn.close()
 
@@ -190,13 +184,11 @@ class TestBeliefOperations:
         """Test creating a belief."""
         cursor = db_conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO beliefs (content, confidence, domain_path)
             VALUES ('Test belief from integration test', 0.8, ARRAY['test'])
             RETURNING id
-        """
-        )
+        """)
         belief_id = cursor.fetchone()[0]
         assert belief_id is not None
 
@@ -210,22 +202,18 @@ class TestBeliefOperations:
         cursor = db_conn.cursor()
 
         # Insert test data
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO beliefs (content, confidence, domain_path)
             VALUES ('Query test belief', 0.7, ARRAY['test', 'query'])
             RETURNING id
-        """
-        )
+        """)
         belief_id = cursor.fetchone()[0]
 
         # Query by domain path
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT id, content FROM beliefs
             WHERE domain_path @> ARRAY['test']
-        """
-        )
+        """)
         results = cursor.fetchall()
         assert any(r[0] == belief_id for r in results)
 
@@ -245,13 +233,11 @@ class TestSessionOperations:
         """Test creating a session."""
         cursor = db_conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO vkb_sessions (external_room_id, status, platform)
             VALUES ('!test_room:example.com', 'active', 'slack')
             RETURNING id
-        """
-        )
+        """)
         session_id = cursor.fetchone()[0]
         assert session_id is not None
 
@@ -260,13 +246,11 @@ class TestSessionOperations:
         cursor = db_conn.cursor()
 
         # Create session
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO vkb_sessions (external_room_id, status, platform)
             VALUES ('!exchange_test:example.com', 'active', 'slack')
             RETURNING id
-        """
-        )
+        """)
         session_id = cursor.fetchone()[0]
 
         # Add exchange
@@ -297,13 +281,11 @@ class TestEntityOperations:
         """Test creating an entity."""
         cursor = db_conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO entities (name, entity_type, aliases)
             VALUES ('Test Entity', 'concept', ARRAY['test', 'testing'])
             RETURNING id
-        """
-        )
+        """)
         entity_id = cursor.fetchone()[0]
         assert entity_id is not None
 
@@ -311,21 +293,17 @@ class TestEntityOperations:
         """Test entity alias lookup."""
         cursor = db_conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             INSERT INTO entities (name, entity_type, aliases)
             VALUES ('Alias Test', 'tool', ARRAY['at', 'alias-test'])
             RETURNING id
-        """
-        )
+        """)
         entity_id = cursor.fetchone()[0]
 
         # Query by alias
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT id FROM entities WHERE 'at' = ANY(aliases)
-        """
-        )
+        """)
         result = cursor.fetchone()
         assert result[0] == entity_id
 
@@ -398,13 +376,11 @@ class TestIdempotency:
         # This should not raise errors if schema is idempotent
 
         # Test a typical IF NOT EXISTS pattern
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS beliefs (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid()
             )
-        """
-        )
+        """)
         # Should not raise error
 
         db_conn.rollback()

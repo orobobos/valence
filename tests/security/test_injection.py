@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.core.db import VALID_TABLES, count_rows, table_exists
 
 
@@ -165,7 +166,7 @@ class TestSQLInjectionPrevention:
         mock_cur.execute.assert_called()
         call_args = mock_cur.execute.call_args
         sql = call_args[0][0]
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("vars", ())
+        (call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("vars", ()))
 
         # SQL should use %s placeholder, not f-string interpolation
         assert "%s" in sql, "SQL should use parameterized query"
@@ -191,7 +192,11 @@ class TestCommandInjectionPrevention:
 
         # Get module source if possible
         source_file = inspect.getfile(valence)
-        assert "shell=True" not in open(source_file).read() if source_file.endswith(".py") else True
+        assert (
+            "shell=True" not in open(source_file).read()
+            if source_file.endswith(".py")
+            else True
+        )
 
     def test_path_traversal_in_schema_init(self):
         """init_schema() must not be vulnerable to path traversal.
@@ -266,11 +271,8 @@ class TestBatchOperationInjection:
 
         # Look for f-string patterns in execute calls
         # This is a simplified check - a real audit would be more thorough
-        dangerous_patterns = [
-            'execute(f"',
-            "execute(f'",
-            ".format(",
-        ]
 
         # Check for the fixed count_rows (should use allowlist)
-        assert "VALID_TABLES" in source, "count_rows should reference VALID_TABLES allowlist"
+        assert (
+            "VALID_TABLES" in source
+        ), "count_rows should reference VALID_TABLES allowlist"

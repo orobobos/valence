@@ -75,11 +75,15 @@ class MCPServerBase(ABC):
         async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return await self._handle_tool_call(name, arguments)
 
-    async def _handle_tool_call(self, name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    async def _handle_tool_call(
+        self, name: str, arguments: dict[str, Any]
+    ) -> list[TextContent]:
         """Handle a tool call with consistent error handling."""
         try:
             result = self.handle_tool(name, arguments)
-            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+            return [
+                TextContent(type="text", text=json.dumps(result, indent=2, default=str))
+            ]
 
         except ValidationException as e:
             logger.warning(f"Validation error in tool {name}: {e}")
@@ -150,7 +154,9 @@ class MCPServerBase(ABC):
     def parse_args(self) -> argparse.Namespace:
         """Parse command line arguments."""
         parser = argparse.ArgumentParser(description=self.server_description)
-        parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
+        parser.add_argument(
+            "--health-check", action="store_true", help="Run health check and exit"
+        )
         parser.add_argument(
             "--skip-health-check",
             action="store_true",

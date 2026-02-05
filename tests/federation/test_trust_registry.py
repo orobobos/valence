@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.models import (
     AnnotationType,
     TrustPreference,
@@ -157,7 +158,9 @@ def sample_belief_annotation_row():
 class TestGetNodeTrust:
     """Tests for get_node_trust method."""
 
-    def test_get_node_trust_success(self, trust_registry, mock_get_cursor, sample_node_trust_row):
+    def test_get_node_trust_success(
+        self, trust_registry, mock_get_cursor, sample_node_trust_row
+    ):
         """Test successful node trust retrieval."""
         node_id = uuid4()
         mock_get_cursor.fetchone.return_value = sample_node_trust_row(node_id=node_id)
@@ -188,7 +191,9 @@ class TestGetNodeTrust:
 class TestGetNode:
     """Tests for get_node method."""
 
-    def test_get_node_success(self, trust_registry, mock_get_cursor, sample_federation_node_row):
+    def test_get_node_success(
+        self, trust_registry, mock_get_cursor, sample_federation_node_row
+    ):
         """Test successful federation node retrieval."""
         node_id = uuid4()
         mock_get_cursor.fetchone.return_value = sample_federation_node_row(id=node_id)
@@ -223,7 +228,9 @@ class TestGetNode:
 class TestSaveNodeTrust:
     """Tests for save_node_trust method."""
 
-    def test_save_node_trust_success(self, trust_registry, mock_get_cursor, sample_node_trust_row):
+    def test_save_node_trust_success(
+        self, trust_registry, mock_get_cursor, sample_node_trust_row
+    ):
         """Test successful node trust save."""
         node_id = uuid4()
         row = sample_node_trust_row(node_id=node_id)
@@ -239,7 +246,9 @@ class TestSaveNodeTrust:
         assert result is not None
         mock_get_cursor.execute.assert_called_once()
 
-    def test_save_node_trust_not_found(self, trust_registry, mock_get_cursor, sample_node_trust_row):
+    def test_save_node_trust_not_found(
+        self, trust_registry, mock_get_cursor, sample_node_trust_row
+    ):
         """Test save when node trust doesn't exist (returns None)."""
         mock_get_cursor.fetchone.return_value = None
 
@@ -251,7 +260,9 @@ class TestSaveNodeTrust:
 
         assert result is None
 
-    def test_save_node_trust_db_error(self, trust_registry, mock_get_cursor, sample_node_trust_row):
+    def test_save_node_trust_db_error(
+        self, trust_registry, mock_get_cursor, sample_node_trust_row
+    ):
         """Test database error handling on save."""
         mock_get_cursor.execute.side_effect = Exception("Database error")
 
@@ -272,10 +283,14 @@ class TestSaveNodeTrust:
 class TestGetUserTrustPreference:
     """Tests for get_user_trust_preference method."""
 
-    def test_get_user_trust_preference_success(self, trust_registry, mock_get_cursor, sample_user_node_trust_row):
+    def test_get_user_trust_preference_success(
+        self, trust_registry, mock_get_cursor, sample_user_node_trust_row
+    ):
         """Test successful user preference retrieval."""
         node_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(node_id=node_id)
+        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(
+            node_id=node_id
+        )
 
         result = trust_registry.get_user_trust_preference(node_id)
 
@@ -302,10 +317,14 @@ class TestGetUserTrustPreference:
 class TestSetUserPreference:
     """Tests for set_user_preference method."""
 
-    def test_set_user_preference_success(self, trust_registry, mock_get_cursor, sample_user_node_trust_row):
+    def test_set_user_preference_success(
+        self, trust_registry, mock_get_cursor, sample_user_node_trust_row
+    ):
         """Test successful user preference setting."""
         node_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(node_id=node_id, trust_preference="elevated")
+        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(
+            node_id=node_id, trust_preference="elevated"
+        )
 
         result = trust_registry.set_user_preference(
             node_id=node_id,
@@ -316,10 +335,14 @@ class TestSetUserPreference:
         assert result is not None
         mock_get_cursor.execute.assert_called_once()
 
-    def test_set_user_preference_with_manual_score(self, trust_registry, mock_get_cursor, sample_user_node_trust_row):
+    def test_set_user_preference_with_manual_score(
+        self, trust_registry, mock_get_cursor, sample_user_node_trust_row
+    ):
         """Test setting preference with manual score override."""
         node_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(node_id=node_id, manual_trust_score=0.9)
+        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(
+            node_id=node_id, manual_trust_score=0.9
+        )
 
         result = trust_registry.set_user_preference(
             node_id=node_id,
@@ -330,7 +353,9 @@ class TestSetUserPreference:
 
         assert result is not None
 
-    def test_set_user_preference_with_domain_overrides(self, trust_registry, mock_get_cursor, sample_user_node_trust_row):
+    def test_set_user_preference_with_domain_overrides(
+        self, trust_registry, mock_get_cursor, sample_user_node_trust_row
+    ):
         """Test setting preference with domain-specific overrides."""
         node_id = uuid4()
         mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(
@@ -345,12 +370,18 @@ class TestSetUserPreference:
 
         assert result is not None
 
-    def test_set_user_preference_blocked(self, trust_registry, mock_get_cursor, sample_user_node_trust_row):
+    def test_set_user_preference_blocked(
+        self, trust_registry, mock_get_cursor, sample_user_node_trust_row
+    ):
         """Test blocking a node."""
         node_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(node_id=node_id, trust_preference="blocked")
+        mock_get_cursor.fetchone.return_value = sample_user_node_trust_row(
+            node_id=node_id, trust_preference="blocked"
+        )
 
-        result = trust_registry.set_user_preference(node_id=node_id, preference=TrustPreference.BLOCKED, reason="Spam source")
+        result = trust_registry.set_user_preference(
+            node_id=node_id, preference=TrustPreference.BLOCKED, reason="Spam source"
+        )
 
         assert result is not None
 
@@ -358,7 +389,9 @@ class TestSetUserPreference:
         """Test database error handling."""
         mock_get_cursor.execute.side_effect = Exception("Database error")
 
-        result = trust_registry.set_user_preference(node_id=uuid4(), preference=TrustPreference.ELEVATED)
+        result = trust_registry.set_user_preference(
+            node_id=uuid4(), preference=TrustPreference.ELEVATED
+        )
 
         assert result is None
 
@@ -371,10 +404,14 @@ class TestSetUserPreference:
 class TestAnnotateBelief:
     """Tests for annotate_belief method."""
 
-    def test_annotate_belief_success(self, trust_registry, mock_get_cursor, sample_belief_annotation_row):
+    def test_annotate_belief_success(
+        self, trust_registry, mock_get_cursor, sample_belief_annotation_row
+    ):
         """Test successful belief annotation."""
         belief_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(belief_id=belief_id)
+        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(
+            belief_id=belief_id
+        )
 
         result = trust_registry.annotate_belief(
             belief_id=belief_id,
@@ -385,11 +422,15 @@ class TestAnnotateBelief:
         assert result is not None
         mock_get_cursor.execute.assert_called_once()
 
-    def test_annotate_belief_with_source_node(self, trust_registry, mock_get_cursor, sample_belief_annotation_row):
+    def test_annotate_belief_with_source_node(
+        self, trust_registry, mock_get_cursor, sample_belief_annotation_row
+    ):
         """Test annotation with source node."""
         belief_id = uuid4()
         source_node_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(belief_id=belief_id, source_node_id=source_node_id)
+        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(
+            belief_id=belief_id, source_node_id=source_node_id
+        )
 
         result = trust_registry.annotate_belief(
             belief_id=belief_id,
@@ -400,7 +441,9 @@ class TestAnnotateBelief:
 
         assert result is not None
 
-    def test_annotate_belief_with_attestation(self, trust_registry, mock_get_cursor, sample_belief_annotation_row):
+    def test_annotate_belief_with_attestation(
+        self, trust_registry, mock_get_cursor, sample_belief_annotation_row
+    ):
         """Test annotation with corroboration attestation."""
         belief_id = uuid4()
         attestation = {
@@ -408,7 +451,9 @@ class TestAnnotateBelief:
             "similarity": 0.95,
             "corroborated_at": datetime.now().isoformat(),
         }
-        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(belief_id=belief_id, corroboration_attestation=attestation)
+        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(
+            belief_id=belief_id, corroboration_attestation=attestation
+        )
 
         result = trust_registry.annotate_belief(
             belief_id=belief_id,
@@ -419,11 +464,15 @@ class TestAnnotateBelief:
 
         assert result is not None
 
-    def test_annotate_belief_with_expiry(self, trust_registry, mock_get_cursor, sample_belief_annotation_row):
+    def test_annotate_belief_with_expiry(
+        self, trust_registry, mock_get_cursor, sample_belief_annotation_row
+    ):
         """Test annotation with expiry date."""
         belief_id = uuid4()
         expires_at = datetime.now()
-        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(belief_id=belief_id, expires_at=expires_at)
+        mock_get_cursor.fetchone.return_value = sample_belief_annotation_row(
+            belief_id=belief_id, expires_at=expires_at
+        )
 
         result = trust_registry.annotate_belief(
             belief_id=belief_id,
@@ -450,7 +499,9 @@ class TestAnnotateBelief:
 class TestGetBeliefTrustAdjustments:
     """Tests for get_belief_trust_adjustments method."""
 
-    def test_get_belief_trust_adjustments_success(self, trust_registry, mock_get_cursor):
+    def test_get_belief_trust_adjustments_success(
+        self, trust_registry, mock_get_cursor
+    ):
         """Test successful trust adjustment retrieval."""
         belief_id = uuid4()
         mock_get_cursor.fetchone.return_value = {"total_delta": 0.25}
@@ -459,7 +510,9 @@ class TestGetBeliefTrustAdjustments:
 
         assert result == 0.25
 
-    def test_get_belief_trust_adjustments_no_annotations(self, trust_registry, mock_get_cursor):
+    def test_get_belief_trust_adjustments_no_annotations(
+        self, trust_registry, mock_get_cursor
+    ):
         """Test when no annotations exist."""
         mock_get_cursor.fetchone.return_value = {"total_delta": 0.0}
 
@@ -475,7 +528,9 @@ class TestGetBeliefTrustAdjustments:
 
         assert result == 0.0
 
-    def test_get_belief_trust_adjustments_negative(self, trust_registry, mock_get_cursor):
+    def test_get_belief_trust_adjustments_negative(
+        self, trust_registry, mock_get_cursor
+    ):
         """Test negative adjustments (disputes)."""
         mock_get_cursor.fetchone.return_value = {"total_delta": -0.15}
 
@@ -483,7 +538,9 @@ class TestGetBeliefTrustAdjustments:
 
         assert result == -0.15
 
-    def test_get_belief_trust_adjustments_db_error(self, trust_registry, mock_get_cursor):
+    def test_get_belief_trust_adjustments_db_error(
+        self, trust_registry, mock_get_cursor
+    ):
         """Test database error handling."""
         mock_get_cursor.execute.side_effect = Exception("Database error")
 

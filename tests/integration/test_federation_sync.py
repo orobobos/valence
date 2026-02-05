@@ -129,13 +129,11 @@ class TestBeliefSync:
     def test_create_syncable_belief(self, db_conn):
         """Test creating a belief marked for federation sync."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path, status)
                 VALUES ('Shared knowledge for sync', '{"overall": 0.85}', ARRAY['shared'], 'active')
                 RETURNING id
-            """
-            )
+            """)
             belief_id = cur.fetchone()["id"]
 
             # Mark for sync (if sync_status column exists)
@@ -164,24 +162,20 @@ class TestBeliefSync:
         """Test logging sync operations."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create a belief to sync
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('Belief to sync', '{"overall": 0.8}', ARRAY['test'])
                 RETURNING id
-            """
-            )
+            """)
             belief_id = cur.fetchone()["id"]
 
             # Check if sync_log table exists
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
                     WHERE table_name = 'sync_log'
                 )
-            """
-            )
+            """)
 
             if cur.fetchone()["exists"]:
                 # Log sync operation
@@ -201,27 +195,23 @@ class TestBeliefSync:
         """Test detecting conflicts during sync."""
         with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Create local belief
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO beliefs (content, confidence, domain_path)
                 VALUES ('Local version of fact', '{"overall": 0.7}', ARRAY['shared'])
                 RETURNING id
-            """
-            )
-            local_id = cur.fetchone()["id"]
+            """)
+            cur.fetchone()["id"]
 
             # Simulate incoming belief with same content but different confidence
             # In real sync, we'd detect this as a potential conflict
 
             # Check for existing belief with similar content
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT id, content, confidence
                 FROM beliefs
                 WHERE content_tsv @@ plainto_tsquery('english', 'Local version fact')
                 AND status = 'active'
-            """
-            )
+            """)
 
             existing = cur.fetchall()
 
@@ -402,7 +392,9 @@ class TestSyncProtocol:
 
     def test_sync_cursor_pagination(self, db_conn_committed, seed_beliefs):
         """Test paginated sync using cursor."""
-        with db_conn_committed.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with db_conn_committed.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
             page_size = 2
 
             # First page

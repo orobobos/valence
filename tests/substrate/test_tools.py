@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.substrate.tools import (
     SUBSTRATE_HANDLERS,
     SUBSTRATE_TOOLS,
@@ -67,7 +68,9 @@ def mock_get_cursor(mock_cursor):
 def sample_belief_row():
     """Create a sample belief row."""
 
-    def _factory(id: UUID | None = None, content: str = "Test belief content", **kwargs):
+    def _factory(
+        id: UUID | None = None, content: str = "Test belief content", **kwargs
+    ):
         now = datetime.now()
         return {
             "id": id or uuid4(),
@@ -177,7 +180,9 @@ class TestToolDefinitions:
         assert "CRITICAL" in belief_query_tool.description
         assert "MUST call" in belief_query_tool.description
 
-        belief_create_tool = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_create")
+        belief_create_tool = next(
+            t for t in SUBSTRATE_TOOLS if t.name == "belief_create"
+        )
         assert "PROACTIVELY" in belief_create_tool.description
 
 
@@ -192,7 +197,9 @@ class TestBeliefQuery:
     def test_belief_query_basic(self, mock_get_cursor, sample_belief_row):
         """Test basic belief query."""
         belief_id = uuid4()
-        mock_get_cursor.fetchall.return_value = [sample_belief_row(id=belief_id, content="Python is great")]
+        mock_get_cursor.fetchall.return_value = [
+            sample_belief_row(id=belief_id, content="Python is great")
+        ]
 
         result = belief_query(query="Python")
 
@@ -203,7 +210,9 @@ class TestBeliefQuery:
 
     def test_belief_query_with_domain_filter(self, mock_get_cursor, sample_belief_row):
         """Test belief query with domain filter."""
-        mock_get_cursor.fetchall.return_value = [sample_belief_row(domain_path=["tech", "python"])]
+        mock_get_cursor.fetchall.return_value = [
+            sample_belief_row(domain_path=["tech", "python"])
+        ]
 
         result = belief_query(query="Python", domain_filter=["tech", "python"])
 
@@ -247,7 +256,9 @@ class TestBeliefQuery:
         params = calls[0][0][1]
         assert 5 in params
 
-    def test_belief_query_filters_revoked_by_default(self, mock_get_cursor, sample_belief_row):
+    def test_belief_query_filters_revoked_by_default(
+        self, mock_get_cursor, sample_belief_row
+    ):
         """Test that revoked beliefs are filtered out by default."""
         mock_get_cursor.fetchall.return_value = []
 
@@ -261,9 +272,13 @@ class TestBeliefQuery:
         assert "consent_chains" in sql_call
         assert "revoked = true" in sql_call
 
-    def test_belief_query_include_revoked_explicit(self, mock_get_cursor, sample_belief_row):
+    def test_belief_query_include_revoked_explicit(
+        self, mock_get_cursor, sample_belief_row
+    ):
         """Test that include_revoked=True bypasses revocation filter."""
-        mock_get_cursor.fetchall.return_value = [sample_belief_row(content="Revoked belief content")]
+        mock_get_cursor.fetchall.return_value = [
+            sample_belief_row(content="Revoked belief content")
+        ]
 
         result = belief_query(query="test", include_revoked=True)
 
@@ -274,7 +289,9 @@ class TestBeliefQuery:
         sql_call = calls[0][0][0]
         assert "consent_chains" not in sql_call
 
-    def test_belief_query_include_revoked_audit_logging(self, mock_get_cursor, sample_belief_row, caplog):
+    def test_belief_query_include_revoked_audit_logging(
+        self, mock_get_cursor, sample_belief_row, caplog
+    ):
         """Test that accessing revoked content is audit logged."""
         import logging
 
@@ -289,11 +306,15 @@ class TestBeliefQuery:
 
         # Check that audit log was written
         assert any(
-            "Query includes revoked content" in record.message and "did:key:test123" in record.message and "test query for audit" in record.message
+            "Query includes revoked content" in record.message
+            and "did:key:test123" in record.message
+            and "test query for audit" in record.message
             for record in caplog.records
         )
 
-    def test_belief_query_no_audit_log_when_not_including_revoked(self, mock_get_cursor, sample_belief_row, caplog):
+    def test_belief_query_no_audit_log_when_not_including_revoked(
+        self, mock_get_cursor, sample_belief_row, caplog
+    ):
         """Test that no audit log when include_revoked=False."""
         import logging
 
@@ -303,9 +324,14 @@ class TestBeliefQuery:
         belief_query(query="test", include_revoked=False)
 
         # Check that no audit log was written
-        assert not any("Query includes revoked content" in record.message for record in caplog.records)
+        assert not any(
+            "Query includes revoked content" in record.message
+            for record in caplog.records
+        )
 
-    def test_belief_query_mixed_results_revoked_filtered(self, mock_get_cursor, sample_belief_row):
+    def test_belief_query_mixed_results_revoked_filtered(
+        self, mock_get_cursor, sample_belief_row
+    ):
         """Test that only non-revoked beliefs are returned by default.
 
         This tests the scenario where some beliefs have revoked consent chains
@@ -333,7 +359,9 @@ class TestBeliefCreate:
     def test_belief_create_basic(self, mock_get_cursor, sample_belief_row):
         """Test basic belief creation."""
         belief_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_belief_row(id=belief_id, content="Test content")
+        mock_get_cursor.fetchone.return_value = sample_belief_row(
+            id=belief_id, content="Test content"
+        )
 
         result = belief_create(content="Test content")
 
@@ -345,17 +373,20 @@ class TestBeliefCreate:
         """Test belief creation with confidence."""
         mock_get_cursor.fetchone.return_value = sample_belief_row()
 
-        result = belief_create(content="Test", confidence={"overall": 0.9, "source_reliability": 0.8})
+        result = belief_create(
+            content="Test", confidence={"overall": 0.9, "source_reliability": 0.8}
+        )
 
         assert result["success"] is True
         # Verify confidence was serialized in the call
-        calls = mock_get_cursor.execute.call_args_list
 
     def test_belief_create_with_domain_path(self, mock_get_cursor, sample_belief_row):
         """Test belief creation with domain path."""
         mock_get_cursor.fetchone.return_value = sample_belief_row()
 
-        result = belief_create(content="Test", domain_path=["tech", "python", "testing"])
+        result = belief_create(
+            content="Test", domain_path=["tech", "python", "testing"]
+        )
 
         assert result["success"] is True
 
@@ -369,19 +400,24 @@ class TestBeliefCreate:
             sample_belief_row(),  # belief insert
         ]
 
-        result = belief_create(content="Test", source_type="conversation", source_ref="session-123")
+        result = belief_create(
+            content="Test", source_type="conversation", source_ref="session-123"
+        )
 
         assert result["success"] is True
 
-    def test_belief_create_with_opt_out_federation(self, mock_get_cursor, sample_belief_row):
+    def test_belief_create_with_opt_out_federation(
+        self, mock_get_cursor, sample_belief_row
+    ):
         """Test belief creation with federation opt-out (Issue #26)."""
-        mock_get_cursor.fetchone.return_value = sample_belief_row(opt_out_federation=True)
+        mock_get_cursor.fetchone.return_value = sample_belief_row(
+            opt_out_federation=True
+        )
 
         result = belief_create(content="Private belief", opt_out_federation=True)
 
         assert result["success"] is True
         # Verify opt_out_federation was passed
-        calls = mock_get_cursor.execute.call_args_list
         # The INSERT should include opt_out_federation
 
     def test_belief_create_with_entities(self, mock_get_cursor, sample_belief_row):
@@ -443,12 +479,16 @@ class TestBeliefSupersede:
         """Test supersession when old belief not found."""
         mock_get_cursor.fetchone.return_value = None
 
-        result = belief_supersede(old_belief_id=str(uuid4()), new_content="New content", reason="Test")
+        result = belief_supersede(
+            old_belief_id=str(uuid4()), new_content="New content", reason="Test"
+        )
 
         assert result["success"] is False
         assert "not found" in result["error"]
 
-    def test_belief_supersede_preserves_entities(self, mock_get_cursor, sample_belief_row):
+    def test_belief_supersede_preserves_entities(
+        self, mock_get_cursor, sample_belief_row
+    ):
         """Test that supersession copies entity links."""
         old_id = uuid4()
         new_id = uuid4()
@@ -458,7 +498,9 @@ class TestBeliefSupersede:
             sample_belief_row(id=new_id),
         ]
 
-        result = belief_supersede(old_belief_id=str(old_id), new_content="Updated", reason="Fix")
+        result = belief_supersede(
+            old_belief_id=str(old_id), new_content="Updated", reason="Fix"
+        )
 
         assert result["success"] is True
         # Verify entity copy SQL was executed
@@ -520,7 +562,9 @@ class TestBeliefGet:
         assert result["success"] is True
         assert "history" in result
 
-    def test_belief_get_with_tensions(self, mock_get_cursor, sample_belief_row, sample_tension_row):
+    def test_belief_get_with_tensions(
+        self, mock_get_cursor, sample_belief_row, sample_tension_row
+    ):
         """Test getting belief with tensions."""
         belief_id = uuid4()
 
@@ -563,14 +607,20 @@ class TestEntityGet:
         assert result["success"] is False
         assert "not found" in result["error"]
 
-    def test_entity_get_with_beliefs(self, mock_get_cursor, sample_entity_row, sample_belief_row):
+    def test_entity_get_with_beliefs(
+        self, mock_get_cursor, sample_entity_row, sample_belief_row
+    ):
         """Test getting entity with related beliefs."""
         entity_id = uuid4()
 
         mock_get_cursor.fetchone.return_value = sample_entity_row(id=entity_id)
-        mock_get_cursor.fetchall.return_value = [{**sample_belief_row(), "role": "subject"}]
+        mock_get_cursor.fetchall.return_value = [
+            {**sample_belief_row(), "role": "subject"}
+        ]
 
-        result = entity_get(entity_id=str(entity_id), include_beliefs=True, belief_limit=5)
+        result = entity_get(
+            entity_id=str(entity_id), include_beliefs=True, belief_limit=5
+        )
 
         assert result["success"] is True
         assert "beliefs" in result
@@ -593,7 +643,9 @@ class TestEntitySearch:
 
     def test_entity_search_with_type_filter(self, mock_get_cursor, sample_entity_row):
         """Test entity search with type filter."""
-        mock_get_cursor.fetchall.return_value = [sample_entity_row(name="Alice", type="person")]
+        mock_get_cursor.fetchall.return_value = [
+            sample_entity_row(name="Alice", type="person")
+        ]
 
         result = entity_search(query="Alice", type="person")
 
@@ -611,7 +663,9 @@ class TestEntitySearch:
 class TestTensionList:
     """Tests for tension_list function."""
 
-    def test_tension_list_basic(self, mock_get_cursor, sample_tension_row, sample_belief_row):
+    def test_tension_list_basic(
+        self, mock_get_cursor, sample_tension_row, sample_belief_row
+    ):
         """Test basic tension listing."""
         tension = sample_tension_row()
         mock_get_cursor.fetchall.side_effect = [
@@ -667,13 +721,17 @@ class TestTensionResolve:
         assert result["success"] is True
         assert result["action"] == "keep_both"
 
-    def test_tension_resolve_supersede_a(self, mock_get_cursor, sample_tension_row, sample_belief_row):
+    def test_tension_resolve_supersede_a(
+        self, mock_get_cursor, sample_tension_row, sample_belief_row
+    ):
         """Test resolving tension by superseding belief A."""
         tension_id = uuid4()
         belief_a_id = uuid4()
         belief_b_id = uuid4()
 
-        tension = sample_tension_row(id=tension_id, belief_a_id=belief_a_id, belief_b_id=belief_b_id)
+        tension = sample_tension_row(
+            id=tension_id, belief_a_id=belief_a_id, belief_b_id=belief_b_id
+        )
 
         mock_get_cursor.fetchone.side_effect = [
             tension,  # Get tension
@@ -695,7 +753,9 @@ class TestTensionResolve:
         """Test resolving non-existent tension."""
         mock_get_cursor.fetchone.return_value = None
 
-        result = tension_resolve(tension_id=str(uuid4()), resolution="Test", action="keep_both")
+        result = tension_resolve(
+            tension_id=str(uuid4()), resolution="Test", action="keep_both"
+        )
 
         assert result["success"] is False
         assert "not found" in result["error"]

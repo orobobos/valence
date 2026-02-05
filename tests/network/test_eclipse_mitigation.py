@@ -16,13 +16,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from valence.network.discovery import DiscoveryClient, RouterInfo
 from valence.network.node import (
     NodeClient,
     RouterConnection,
 )
 
-pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
+pytestmark = pytest.mark.skip(
+    reason="Needs update for NodeClient decomposition - see #167"
+)
 
 
 # =============================================================================
@@ -127,7 +130,7 @@ class TestSubnetDiversity:
     def test_check_ip_diversity_different_subnets(self, node_client):
         """Test that routers from different /16 subnets pass diversity check."""
         # Connect to first router
-        router1 = create_mock_router("a" * 64, "192.168.1.1")
+        create_mock_router("a" * 64, "192.168.1.1")
         node_client._connected_subnets.add("192.168.0.0/16")
 
         # Router from different /16 should pass
@@ -385,7 +388,9 @@ class TestAnomalyDetection:
 class TestRouterRotation:
     """Tests for periodic router rotation."""
 
-    def test_connection_timestamp_tracking(self, node_client, mock_websocket, mock_session):
+    def test_connection_timestamp_tracking(
+        self, node_client, mock_websocket, mock_session
+    ):
         """Test that connection timestamps are tracked."""
         router = create_mock_router("a" * 64, "192.168.1.1")
 
@@ -405,7 +410,9 @@ class TestRouterRotation:
         assert node_client._connection_timestamps[router.router_id] == now
 
     @pytest.mark.asyncio
-    async def test_rotate_router_success(self, node_client, mock_websocket, mock_session):
+    async def test_rotate_router_success(
+        self, node_client, mock_websocket, mock_session
+    ):
         """Test successful router rotation."""
         old_router = create_mock_router("a" * 64, "192.168.1.1", "AS12345")
         new_router = create_mock_router("b" * 64, "10.0.1.1", "AS67890")
@@ -445,7 +452,9 @@ class TestRouterRotation:
         assert node_client._stats["routers_rotated"] == 1
         assert old_router.router_id not in node_client.connections
 
-    def test_get_eclipse_mitigation_status(self, node_client, mock_websocket, mock_session):
+    def test_get_eclipse_mitigation_status(
+        self, node_client, mock_websocket, mock_session
+    ):
         """Test eclipse mitigation status reporting."""
         router = create_mock_router("a" * 64, "192.168.1.1", "AS12345")
 
@@ -579,7 +588,9 @@ class TestOOBVerification:
     """Tests for out-of-band verification."""
 
     @pytest.mark.asyncio
-    async def test_oob_verification_success(self, node_client, mock_websocket, mock_session):
+    async def test_oob_verification_success(
+        self, node_client, mock_websocket, mock_session
+    ):
         """Test successful OOB verification."""
         node_client.oob_verification_enabled = True
         node_client.oob_verification_url = "https://verify.example.com/check"

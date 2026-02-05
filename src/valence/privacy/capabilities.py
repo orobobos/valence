@@ -353,7 +353,9 @@ class Capability:
         except jwt.ExpiredSignatureError as e:
             raise CapabilityExpiredError("Capability has expired") from e
         except jwt.InvalidTokenError as e:
-            raise CapabilityInvalidSignatureError(f"Invalid capability token: {e}") from e
+            raise CapabilityInvalidSignatureError(
+                f"Invalid capability token: {e}"
+            ) from e
 
         # Convert timestamps back to datetime
         issued_at = datetime.fromtimestamp(payload["iat"], tz=UTC)
@@ -516,15 +518,23 @@ def validate_capability(
         revoked = capability.revoked_at
         if revoked and revoked.tzinfo is None:
             revoked = revoked.replace(tzinfo=UTC)
-        errors.append(f"Capability was revoked at {revoked.isoformat() if revoked else 'unknown time'}")
+        errors.append(
+            f"Capability was revoked at {revoked.isoformat() if revoked else 'unknown time'}"
+        )
 
     # Check resource match
     if capability.resource != resource:
-        errors.append(f"Resource mismatch: capability grants access to '{capability.resource}', " f"but '{resource}' was requested")
+        errors.append(
+            f"Resource mismatch: capability grants access to '{capability.resource}', "
+            f"but '{resource}' was requested"
+        )
 
     # Check action permission
     if not capability.has_action(action):
-        errors.append(f"Action not permitted: capability grants {capability.actions}, " f"but '{action}' was requested")
+        errors.append(
+            f"Action not permitted: capability grants {capability.actions}, "
+            f"but '{action}' was requested"
+        )
 
     return ValidationResult(
         is_valid=len(errors) == 0,
@@ -573,7 +583,9 @@ async def validate_capability_async(
             revoked = capability.revoked_at
             if revoked and revoked.tzinfo is None:
                 revoked = revoked.replace(tzinfo=UTC)
-            errors.append(f"Capability was revoked at {revoked.isoformat() if revoked else 'unknown time'}")
+            errors.append(
+                f"Capability was revoked at {revoked.isoformat() if revoked else 'unknown time'}"
+            )
         # Also check store
         elif await store.is_revoked(capability.id):
             errors.append(f"Capability {capability.id} was revoked (store check)")
@@ -655,7 +667,9 @@ def requires_capability(
             # Extract capability from arguments
             cap = _extract_param(func, args, kwargs, capability_param)
             if cap is None:
-                raise ValueError(f"Required parameter '{capability_param}' not provided")
+                raise ValueError(
+                    f"Required parameter '{capability_param}' not provided"
+                )
 
             # Resolve resource (might be callable)
             resolved_resource = _resolve_resource(resource, func, args, kwargs)
@@ -680,7 +694,9 @@ def requires_capability(
             # Extract capability from arguments
             cap = _extract_param(func, args, kwargs, capability_param)
             if cap is None:
-                raise ValueError(f"Required parameter '{capability_param}' not provided")
+                raise ValueError(
+                    f"Required parameter '{capability_param}' not provided"
+                )
 
             # Resolve resource (might be callable)
             resolved_resource = _resolve_resource(resource, func, args, kwargs)
@@ -692,7 +708,9 @@ def requires_capability(
 
             # Validate (use async version if store provided)
             if store is not None:
-                result = await validate_capability_async(cap, resolved_resource, action, store=store)
+                result = await validate_capability_async(
+                    cap, resolved_resource, action, store=store
+                )
             else:
                 result = validate_capability(cap, resolved_resource, action)
 
@@ -790,15 +808,21 @@ class CapabilityStore:
         """Retrieve a capability by ID."""
         raise NotImplementedError
 
-    async def list_by_holder(self, holder_did: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_holder(
+        self, holder_did: str, include_expired: bool = False
+    ) -> list[Capability]:
         """List capabilities held by a DID."""
         raise NotImplementedError
 
-    async def list_by_issuer(self, issuer_did: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_issuer(
+        self, issuer_did: str, include_expired: bool = False
+    ) -> list[Capability]:
         """List capabilities issued by a DID."""
         raise NotImplementedError
 
-    async def list_by_resource(self, resource: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_resource(
+        self, resource: str, include_expired: bool = False
+    ) -> list[Capability]:
         """List capabilities for a resource."""
         raise NotImplementedError
 
@@ -844,7 +868,9 @@ class CapabilityStore:
         """Check if a capability is revoked."""
         raise NotImplementedError
 
-    async def get_revocation_info(self, capability_id: str) -> tuple[datetime, str] | None:
+    async def get_revocation_info(
+        self, capability_id: str
+    ) -> tuple[datetime, str] | None:
         """Get revocation timestamp and reason for a capability.
 
         Returns:
@@ -869,7 +895,9 @@ class InMemoryCapabilityStore(CapabilityStore):
     async def get(self, capability_id: str) -> Capability | None:
         return self._capabilities.get(capability_id)
 
-    async def list_by_holder(self, holder_did: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_holder(
+        self, holder_did: str, include_expired: bool = False
+    ) -> list[Capability]:
         result = []
         for cap in self._capabilities.values():
             if cap.holder_did == holder_did:
@@ -877,7 +905,9 @@ class InMemoryCapabilityStore(CapabilityStore):
                     result.append(cap)
         return result
 
-    async def list_by_issuer(self, issuer_did: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_issuer(
+        self, issuer_did: str, include_expired: bool = False
+    ) -> list[Capability]:
         result = []
         for cap in self._capabilities.values():
             if cap.issuer_did == issuer_did:
@@ -885,7 +915,9 @@ class InMemoryCapabilityStore(CapabilityStore):
                     result.append(cap)
         return result
 
-    async def list_by_resource(self, resource: str, include_expired: bool = False) -> list[Capability]:
+    async def list_by_resource(
+        self, resource: str, include_expired: bool = False
+    ) -> list[Capability]:
         result = []
         for cap in self._capabilities.values():
             if cap.resource == resource:
@@ -934,10 +966,17 @@ class InMemoryCapabilityStore(CapabilityStore):
             return cap.is_revoked
         return False
 
-    async def get_revocation_info(self, capability_id: str) -> tuple[datetime, str] | None:
+    async def get_revocation_info(
+        self, capability_id: str
+    ) -> tuple[datetime, str] | None:
         """Get revocation timestamp and reason for a capability."""
         cap = self._capabilities.get(capability_id)
-        if cap and cap.is_revoked and cap.revoked_at is not None and cap.revocation_reason is not None:
+        if (
+            cap
+            and cap.is_revoked
+            and cap.revoked_at is not None
+            and cap.revocation_reason is not None
+        ):
             return (cap.revoked_at, cap.revocation_reason)
         return None
 
@@ -1041,17 +1080,23 @@ class CapabilityService:
             CapabilityInsufficientPermissionError: If parent doesn't allow delegation
         """
         # Determine TTL
-        effective_ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl_seconds
+        effective_ttl = (
+            ttl_seconds if ttl_seconds is not None else self.default_ttl_seconds
+        )
 
         # Enforce maximum TTL
         if effective_ttl > self.max_ttl_seconds:
-            raise CapabilityTTLExceededError(f"Requested TTL ({effective_ttl}s) exceeds maximum ({self.max_ttl_seconds}s)")
+            raise CapabilityTTLExceededError(
+                f"Requested TTL ({effective_ttl}s) exceeds maximum ({self.max_ttl_seconds}s)"
+            )
 
         # If delegating from parent, validate delegation rights
         parent_id = None
         if parent_capability:
             if not parent_capability.has_action(CapabilityAction.DELEGATE.value):
-                raise CapabilityInsufficientPermissionError("Parent capability does not grant delegation rights")
+                raise CapabilityInsufficientPermissionError(
+                    "Parent capability does not grant delegation rights"
+                )
 
             if parent_capability.is_expired:
                 raise CapabilityExpiredError("Parent capability has expired")
@@ -1067,13 +1112,17 @@ class CapabilityService:
                 requested_actions = set(actions)
                 if not requested_actions.issubset(parent_actions):
                     extra = requested_actions - parent_actions
-                    raise CapabilityInsufficientPermissionError(f"Cannot delegate actions not in parent: {extra}")
+                    raise CapabilityInsufficientPermissionError(
+                        f"Cannot delegate actions not in parent: {extra}"
+                    )
 
             # Delegated capability TTL cannot exceed parent's remaining TTL
             parent_ttl = parent_capability.ttl_seconds
             if effective_ttl > parent_ttl:
                 effective_ttl = int(parent_ttl)
-                logger.info(f"Capped delegated capability TTL to parent's remaining TTL: {effective_ttl}s")
+                logger.info(
+                    f"Capped delegated capability TTL to parent's remaining TTL: {effective_ttl}s"
+                )
 
             parent_id = parent_capability.id
 
@@ -1100,7 +1149,9 @@ class CapabilityService:
         await self.store.save(capability)
 
         logger.info(
-            f"Issued capability {capability.id}: " f"{issuer_did} -> {holder_did} for {resource} " f"(actions={actions}, ttl={effective_ttl}s)"
+            f"Issued capability {capability.id}: "
+            f"{issuer_did} -> {holder_did} for {resource} "
+            f"(actions={actions}, ttl={effective_ttl}s)"
         )
 
         return capability
@@ -1139,7 +1190,9 @@ class CapabilityService:
         if issuer_public_key is None:
             issuer_public_key = await self.key_resolver(capability.issuer_did)
             if issuer_public_key is None:
-                raise CapabilityInvalidSignatureError(f"Cannot resolve public key for {capability.issuer_did}")
+                raise CapabilityInvalidSignatureError(
+                    f"Cannot resolve public key for {capability.issuer_did}"
+                )
 
         # Verify signature
         if not capability.signature:
@@ -1150,7 +1203,9 @@ class CapabilityService:
             signature = bytes.fromhex(capability.signature)
             issuer_public_key.verify(signature, payload)
         except InvalidSignature:
-            raise CapabilityInvalidSignatureError(f"Invalid signature on capability {capability.id}")
+            raise CapabilityInvalidSignatureError(
+                f"Invalid signature on capability {capability.id}"
+            )
 
         return True
 
@@ -1198,7 +1253,9 @@ class CapabilityService:
 
         count = await self.store.revoke_by_issuer(issuer_did, reason)
         if count > 0:
-            logger.info(f"Revoked {count} capabilities issued by {issuer_did}: {reason}")
+            logger.info(
+                f"Revoked {count} capabilities issued by {issuer_did}: {reason}"
+            )
         return count
 
     async def revoke_by_holder(self, holder_did: str, reason: str) -> int:
@@ -1225,7 +1282,9 @@ class CapabilityService:
             logger.info(f"Revoked {count} capabilities held by {holder_did}: {reason}")
         return count
 
-    async def get_revocation_info(self, capability_id: str) -> tuple[datetime, str] | None:
+    async def get_revocation_info(
+        self, capability_id: str
+    ) -> tuple[datetime, str] | None:
         """Get revocation information for a capability.
 
         Args:
@@ -1297,7 +1356,9 @@ class CapabilityService:
         Returns:
             Valid capability granting access, or None if no access
         """
-        capabilities = await self.store.list_by_holder(holder_did, include_expired=False)
+        capabilities = await self.store.list_by_holder(
+            holder_did, include_expired=False
+        )
 
         for cap in capabilities:
             # Check resource match
@@ -1417,7 +1478,9 @@ class CapabilityService:
             New delegated Capability
         """
         # Use parent's actions if none specified
-        effective_actions = actions if actions is not None else parent_capability.actions.copy()
+        effective_actions = (
+            actions if actions is not None else parent_capability.actions.copy()
+        )
 
         # The delegator becomes the issuer of the new capability
         # (the holder of the parent capability)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
+
 from valence.core.temporal import (
     SupersessionChain,
     TemporalValidity,

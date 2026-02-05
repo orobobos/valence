@@ -242,8 +242,16 @@ class StakeRegistration:
             "registered_at": self.registered_at.isoformat(),
             "eligible_from_epoch": self.eligible_from_epoch,
             "status": self.status.value,
-            "unbond_requested_at": (self.unbond_requested_at.isoformat() if self.unbond_requested_at else None),
-            "unbond_available_at": (self.unbond_available_at.isoformat() if self.unbond_available_at else None),
+            "unbond_requested_at": (
+                self.unbond_requested_at.isoformat()
+                if self.unbond_requested_at
+                else None
+            ),
+            "unbond_available_at": (
+                self.unbond_available_at.isoformat()
+                if self.unbond_available_at
+                else None
+            ),
             "slashed_amount": self.slashed_amount,
             "slash_reason": self.slash_reason,
             "effective_stake": self.effective_stake(),
@@ -394,7 +402,9 @@ class ValidatorSet:
     previous_epoch_hash: bytes = field(default_factory=bytes)
 
     # Constraints used
-    diversity_constraints: DiversityConstraints = field(default_factory=DiversityConstraints)
+    diversity_constraints: DiversityConstraints = field(
+        default_factory=DiversityConstraints
+    )
 
     @property
     def validator_count(self) -> int:
@@ -485,7 +495,9 @@ class EpochTransition:
             "ending_epoch": self.ending_epoch,
             "starting_epoch": self.starting_epoch,
             "outgoing_validators": self.outgoing_validators,
-            "outgoing_performance": {k: v.to_dict() for k, v in self.outgoing_performance.items()},
+            "outgoing_performance": {
+                k: v.to_dict() for k, v in self.outgoing_performance.items()
+            },
             "incoming_validators": self.incoming_validators,
             "selection_seed": self.selection_seed.hex(),
             "pending_elevations": [str(e) for e in self.pending_elevations],
@@ -493,7 +505,11 @@ class EpochTransition:
             "outgoing_signature_count": self.outgoing_signature_count,
             "incoming_acknowledgment_count": self.incoming_acknowledgment_count,
             "transition_started_at": self.transition_started_at.isoformat(),
-            "transition_completed_at": (self.transition_completed_at.isoformat() if self.transition_completed_at else None),
+            "transition_completed_at": (
+                self.transition_completed_at.isoformat()
+                if self.transition_completed_at
+                else None
+            ),
         }
 
 
@@ -568,8 +584,12 @@ class SlashingEvent:
             "reported_at": self.reported_at.isoformat(),
             "status": self.status.value,
             "resolution_votes": self.resolution_votes,
-            "resolution_at": (self.resolution_at.isoformat() if self.resolution_at else None),
-            "appeal_deadline": (self.appeal_deadline.isoformat() if self.appeal_deadline else None),
+            "resolution_at": (
+                self.resolution_at.isoformat() if self.resolution_at else None
+            ),
+            "appeal_deadline": (
+                self.appeal_deadline.isoformat() if self.appeal_deadline else None
+            ),
             "reporter_reward": self.reporter_reward,
             "security_fund": self.security_fund,
             "burned": self.burned,
@@ -686,7 +706,9 @@ class ElevationProposal:
             "votes": [v.to_dict() for v in self.votes],
             "requirements": self.requirements,
             "outcome": self.outcome.value,
-            "finalized_at": (self.finalized_at.isoformat() if self.finalized_at else None),
+            "finalized_at": (
+                self.finalized_at.isoformat() if self.finalized_at else None
+            ),
             "approve_count": self.approve_count(),
             "reject_count": self.reject_count(),
             "abstain_count": self.abstain_count(),
@@ -729,13 +751,19 @@ class EligibilityRequirements:
             reasons.append(f"Reputation {reputation:.2f} < {self.min_reputation:.2f}")
 
         if account_age_days < self.min_account_age_days:
-            reasons.append(f"Account age {account_age_days} days < {self.min_account_age_days} days")
+            reasons.append(
+                f"Account age {account_age_days} days < {self.min_account_age_days} days"
+            )
 
         if verification_count < self.min_verification_history:
-            reasons.append(f"Verification count {verification_count} < {self.min_verification_history}")
+            reasons.append(
+                f"Verification count {verification_count} < {self.min_verification_history}"
+            )
 
         if uphold_rate < self.min_uphold_rate:
-            reasons.append(f"Uphold rate {uphold_rate:.2%} < {self.min_uphold_rate:.2%}")
+            reasons.append(
+                f"Uphold rate {uphold_rate:.2%} < {self.min_uphold_rate:.2%}"
+            )
 
         if self.requires_attestation and attestation_count < 1:
             reasons.append("No valid identity attestation")

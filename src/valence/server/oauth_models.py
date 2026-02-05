@@ -25,7 +25,9 @@ class OAuthClient:
     client_id: str
     client_name: str
     redirect_uris: list[str]
-    grant_types: list[str] = field(default_factory=lambda: ["authorization_code", "refresh_token"])
+    grant_types: list[str] = field(
+        default_factory=lambda: ["authorization_code", "refresh_token"]
+    )
     response_types: list[str] = field(default_factory=lambda: ["code"])
     scope: str = "mcp:tools mcp:resources"
     client_secret: str | None = None  # For confidential clients
@@ -51,7 +53,9 @@ class OAuthClient:
             client_id=data["client_id"],
             client_name=data["client_name"],
             redirect_uris=data["redirect_uris"],
-            grant_types=data.get("grant_types", ["authorization_code", "refresh_token"]),
+            grant_types=data.get(
+                "grant_types", ["authorization_code", "refresh_token"]
+            ),
             response_types=data.get("response_types", ["code"]),
             scope=data.get("scope", "mcp:tools mcp:resources"),
             client_secret=data.get("client_secret"),
@@ -113,8 +117,13 @@ class OAuthClientStore:
         try:
             with open(self.clients_file) as f:
                 data = json.load(f)
-            self._clients = {c["client_id"]: OAuthClient.from_dict(c) for c in data.get("clients", [])}
-            logger.info(f"Loaded {len(self._clients)} OAuth clients from {self.clients_file}")
+            self._clients = {
+                c["client_id"]: OAuthClient.from_dict(c)
+                for c in data.get("clients", [])
+            }
+            logger.info(
+                f"Loaded {len(self._clients)} OAuth clients from {self.clients_file}"
+            )
         except Exception as e:
             logger.error(f"Failed to load OAuth clients: {e}")
             self._clients = {}

@@ -1,9 +1,10 @@
 """Tests for AI-assisted insight extraction (Issue #95)."""
 
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 import pytest
+
 from valence.privacy.extraction import (
     ExtractedInsight,
     ExtractionAlreadyReviewedError,
@@ -332,7 +333,9 @@ class TestMockInsightExtractor:
         def custom_themes(content: str) -> str:
             return "Custom themes: AI, Technology"
 
-        extractor = MockInsightExtractor(custom_extractors={ExtractionLevel.THEMES: custom_themes})
+        extractor = MockInsightExtractor(
+            custom_extractors={ExtractionLevel.THEMES: custom_themes}
+        )
 
         result = extractor.extract("any content", ExtractionLevel.THEMES)
         assert result == "Custom themes: AI, Technology"
@@ -730,7 +733,9 @@ class TestGlobalService:
 
     def test_set_extraction_service(self):
         """Can set global service singleton."""
-        custom = ExtractionService(extractor=MockInsightExtractor(extractor_id="global-custom"))
+        custom = ExtractionService(
+            extractor=MockInsightExtractor(extractor_id="global-custom")
+        )
         set_extraction_service(custom)
 
         svc = get_extraction_service()
@@ -758,7 +763,7 @@ class CustomTestExtractor(InsightExtractor):
         self,
         content: str,
         level: ExtractionLevel,
-        context: Optional[dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> str:
         self.call_count += 1
         self.last_content = content

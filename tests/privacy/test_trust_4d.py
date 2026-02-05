@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from valence.privacy.trust import TrustEdge
 
 

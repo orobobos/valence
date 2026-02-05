@@ -13,6 +13,7 @@ import argparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.cli.seed import (
     async_main,
     cmd_discover,
@@ -382,7 +383,9 @@ class TestCmdStatus:
         )
 
         mock_session = AsyncMock()
-        mock_session.get = MagicMock(side_effect=aiohttp.ClientError("Connection refused"))
+        mock_session.get = MagicMock(
+            side_effect=aiohttp.ClientError("Connection refused")
+        )
 
         mock_session_ctx = AsyncMock()
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
@@ -670,7 +673,9 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch("valence.cli.seed.cmd_status", new_callable=AsyncMock) as mock_status:
+        with patch(
+            "valence.cli.seed.cmd_status", new_callable=AsyncMock
+        ) as mock_status:
             mock_status.return_value = 0
             result = await async_main(args)
 
@@ -691,7 +696,9 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch("valence.cli.seed.cmd_discover", new_callable=AsyncMock) as mock_discover:
+        with patch(
+            "valence.cli.seed.cmd_discover", new_callable=AsyncMock
+        ) as mock_discover:
             mock_discover.return_value = 0
             result = await async_main(args)
 

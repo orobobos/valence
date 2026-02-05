@@ -56,8 +56,12 @@ class MerkleProof:
 
     leaf_hash: str  # Hash of the leaf data
     leaf_index: int  # Position in the tree (0-indexed)
-    proof_hashes: list[str] = field(default_factory=list)  # Sibling hashes on path to root
-    proof_directions: list[bool] = field(default_factory=list)  # True = sibling is on right
+    proof_hashes: list[str] = field(
+        default_factory=list
+    )  # Sibling hashes on path to root
+    proof_directions: list[bool] = field(
+        default_factory=list
+    )  # True = sibling is on right
     root_hash: str = ""  # Expected root hash
 
     def to_dict(self) -> dict[str, Any]:
@@ -147,7 +151,9 @@ class MerkleTree:
         return len(self.leaves)
 
     @classmethod
-    def from_data(cls, data_items: Sequence[bytes], algorithm: str = "sha256") -> MerkleTree:
+    def from_data(
+        cls, data_items: Sequence[bytes], algorithm: str = "sha256"
+    ) -> MerkleTree:
         """Build a Merkle tree from raw data items.
 
         Args:
@@ -166,7 +172,9 @@ class MerkleTree:
         return cls.from_hashes(leaves, algorithm)
 
     @classmethod
-    def from_hashes(cls, leaf_hashes: list[str], algorithm: str = "sha256") -> MerkleTree:
+    def from_hashes(
+        cls, leaf_hashes: list[str], algorithm: str = "sha256"
+    ) -> MerkleTree:
         """Build a Merkle tree from pre-computed leaf hashes.
 
         Args:
@@ -201,7 +209,9 @@ class MerkleTree:
         return cls(leaves=leaves, levels=levels, algorithm=algorithm)
 
     @classmethod
-    def from_shards(cls, shards: Sequence[StorageShard], algorithm: str = "sha256") -> MerkleTree:
+    def from_shards(
+        cls, shards: Sequence[StorageShard], algorithm: str = "sha256"
+    ) -> MerkleTree:
         """Build a Merkle tree from storage shards.
 
         Args:
@@ -234,7 +244,9 @@ class MerkleTree:
             IndexError: If leaf_index is out of range
         """
         if leaf_index < 0 or leaf_index >= len(self.leaves):
-            raise IndexError(f"Leaf index {leaf_index} out of range [0, {len(self.leaves)})")
+            raise IndexError(
+                f"Leaf index {leaf_index} out of range [0, {len(self.leaves)})"
+            )
 
         proof_hashes = []
         proof_directions = []
@@ -350,7 +362,9 @@ class IntegrityVerifier:
         can_recover = valid_count >= shard_set.data_shards_k
 
         # Overall validity
-        is_valid = len(corrupted_indices) == 0 and len(missing_indices) == 0 and merkle_valid
+        is_valid = (
+            len(corrupted_indices) == 0 and len(missing_indices) == 0 and merkle_valid
+        )
 
         # Build details message
         details_parts = []
@@ -359,7 +373,9 @@ class IntegrityVerifier:
         if missing_indices:
             details_parts.append(f"Missing shards: {missing_indices}")
         if not can_recover:
-            details_parts.append(f"Cannot recover: need {shard_set.data_shards_k}, have {valid_count}")
+            details_parts.append(
+                f"Cannot recover: need {shard_set.data_shards_k}, have {valid_count}"
+            )
         if is_valid:
             details_parts.append("All shards valid and complete")
 
@@ -424,7 +440,9 @@ class IntegrityVerifier:
 
         return tree.get_proof(position)
 
-    def challenge_response_verify(self, shard: StorageShard, expected_checksum: str) -> bool:
+    def challenge_response_verify(
+        self, shard: StorageShard, expected_checksum: str
+    ) -> bool:
         """Challenge-response verification for a shard.
 
         Used for remote verification where we send a challenge

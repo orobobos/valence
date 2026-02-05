@@ -4,6 +4,7 @@ import hashlib
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.watermark import (
     HOMOGLYPH_MAP,
     REVERSE_HOMOGLYPH_MAP,
@@ -138,7 +139,6 @@ class TestWatermark:
 
     def test_verify_tampered_recipient(self, watermark: Watermark, secret_key: bytes):
         """Test verification fails if recipient is modified."""
-        original_sig = watermark.signature
         watermark.recipient_id = "user_eve"  # Tamper
 
         # Signature should no longer match
@@ -265,7 +265,9 @@ class TestEmbedAndExtract:
         depending on content structure. The main purpose is for defense-in-depth
         with COMBINED technique.
         """
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.WHITESPACE)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.WHITESPACE
+        )
 
         # Content should be different (has additional whitespace)
         assert watermarked != sample_content
@@ -273,12 +275,14 @@ class TestEmbedAndExtract:
 
         # Whitespace extraction is fragile - just verify it doesn't crash
         # and that the embedding modified the content
-        extracted = extract_watermark(watermarked)
+        extract_watermark(watermarked)
         # May or may not extract depending on content structure
 
     def test_embed_extract_homoglyph(self, watermark: Watermark, sample_content: str):
         """Test homoglyph technique round-trip."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.HOMOGLYPH)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.HOMOGLYPH
+        )
 
         # Visually same length
         assert len(watermarked) == len(sample_content)
@@ -290,7 +294,9 @@ class TestEmbedAndExtract:
 
     def test_embed_extract_combined(self, watermark: Watermark, sample_content: str):
         """Test combined technique round-trip."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.COMBINED)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.COMBINED
+        )
 
         # Should extract watermark
         extracted = extract_watermark(watermarked)
@@ -299,10 +305,15 @@ class TestEmbedAndExtract:
 
     def test_combined_redundancy(self, watermark: Watermark, sample_content: str):
         """Test that combined technique uses both zero-width and homoglyph."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.COMBINED)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.COMBINED
+        )
 
         # Combined uses both techniques - verify zero-width chars are present
-        has_zw = any(c in watermarked for c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER))
+        has_zw = any(
+            c in watermarked
+            for c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER)
+        )
         assert has_zw, "Combined technique should include zero-width chars"
 
         # Primary extraction should work
@@ -315,7 +326,9 @@ class TestEmbedAndExtract:
         extracted = extract_watermark(sample_content)
         assert extracted is None
 
-    def test_verify_watermark(self, watermark: Watermark, sample_content: str, secret_key: bytes):
+    def test_verify_watermark(
+        self, watermark: Watermark, sample_content: str, secret_key: bytes
+    ):
         """Test watermark verification."""
         watermarked = embed_watermark(sample_content, watermark)
 
@@ -360,9 +373,13 @@ class TestEmbedAndExtract:
 class TestTransformationSurvival:
     """Tests for watermark survival through transformations."""
 
-    def test_survives_leading_trailing_strip(self, watermark: Watermark, sample_content: str):
+    def test_survives_leading_trailing_strip(
+        self, watermark: Watermark, sample_content: str
+    ):
         """Test watermark survives stripping leading/trailing whitespace."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.COMBINED)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.COMBINED
+        )
 
         stripped = watermarked.strip()
         extracted = extract_watermark(stripped)
@@ -370,10 +387,14 @@ class TestTransformationSurvival:
         assert extracted is not None
         assert extracted.recipient_id == watermark.recipient_id
 
-    def test_survives_extra_whitespace_collapse(self, watermark: Watermark, sample_content: str):
+    def test_survives_extra_whitespace_collapse(
+        self, watermark: Watermark, sample_content: str
+    ):
         """Test combined watermark survives multiple space collapse."""
         # Use COMBINED which has zero-width as primary (survives whitespace collapse)
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.COMBINED)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.COMBINED
+        )
 
         # Collapse multiple spaces (would destroy whitespace-only encoding)
         import re
@@ -385,16 +406,20 @@ class TestTransformationSurvival:
         assert extracted is not None
         assert extracted.recipient_id == watermark.recipient_id
 
-    def test_survives_case_change_partial(self, watermark: Watermark, sample_content: str):
+    def test_survives_case_change_partial(
+        self, watermark: Watermark, sample_content: str
+    ):
         """Test watermark survives partial content remaining."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.COMBINED)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.COMBINED
+        )
 
         # Take only first 80% of content
         partial = watermarked[: int(len(watermarked) * 0.8)]
 
         # May or may not survive depending on where data was embedded
         # This tests that extraction doesn't crash
-        extracted = extract_watermark(partial)
+        extract_watermark(partial)
         # Note: extraction may fail on partial content - that's acceptable
 
 
@@ -416,16 +441,22 @@ class TestStripWatermarks:
 
     def test_strip_homoglyphs(self, watermark: Watermark, sample_content: str):
         """Test stripping homoglyph substitutions."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.HOMOGLYPH)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.HOMOGLYPH
+        )
         stripped = strip_watermarks(watermarked)
 
         # Should not contain any known homoglyphs
         for char in stripped:
             assert char.lower() not in REVERSE_HOMOGLYPH_MAP
 
-    def test_strip_normalizes_whitespace(self, watermark: Watermark, sample_content: str):
+    def test_strip_normalizes_whitespace(
+        self, watermark: Watermark, sample_content: str
+    ):
         """Test stripping normalizes whitespace."""
-        watermarked = embed_watermark(sample_content, watermark, WatermarkTechnique.WHITESPACE)
+        watermarked = embed_watermark(
+            sample_content, watermark, WatermarkTechnique.WHITESPACE
+        )
         stripped = strip_watermarks(watermarked)
 
         # Should not have tab characters used for encoding
@@ -496,12 +527,16 @@ class TestWatermarkRegistry:
         assert result["recipient_id"] == "leaky_user"
         assert result["signature_valid"]
 
-    def test_investigate_no_watermark(self, registry: WatermarkRegistry, sample_content: str):
+    def test_investigate_no_watermark(
+        self, registry: WatermarkRegistry, sample_content: str
+    ):
         """Test investigation of non-watermarked content."""
         result = registry.investigate_leak(sample_content)
         assert result is None
 
-    def test_get_recipients_for_content(self, registry: WatermarkRegistry, sample_content: str):
+    def test_get_recipients_for_content(
+        self, registry: WatermarkRegistry, sample_content: str
+    ):
         """Test tracking recipients by content hash."""
         # Share to multiple recipients
         registry.watermark_content(sample_content, "user_a")
@@ -517,7 +552,9 @@ class TestWatermarkRegistry:
         assert "user_b" in recipients
         assert "user_c" in recipients
 
-    def test_different_techniques(self, registry: WatermarkRegistry, sample_content: str):
+    def test_different_techniques(
+        self, registry: WatermarkRegistry, sample_content: str
+    ):
         """Test registry works with different techniques."""
         # COMBINED is the most reliable, test it explicitly
         watermarked = registry.watermark_content(
@@ -538,11 +575,11 @@ class TestWatermarkRegistry:
         )
 
         # May extract if enough carrier capacity
-        result_hg = registry.investigate_leak(watermarked_hg)
+        registry.investigate_leak(watermarked_hg)
         # Homoglyph extraction is capacity-dependent, so just check it doesn't crash
 
         # WHITESPACE embeds after sentence boundaries
-        watermarked_ws = registry.watermark_content(
+        registry.watermark_content(
             content=sample_content,
             recipient_id="user_ws",
             technique=WatermarkTechnique.WHITESPACE,

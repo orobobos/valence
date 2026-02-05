@@ -16,6 +16,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.discovery import (
     DiscoveryClient,
     RouterInfo,
@@ -407,7 +408,9 @@ class TestSeedRegionalSelection:
     def test_fallback_to_any_region(self, seed_node, regional_routers):
         """Should fall back to any region if preferred unavailable."""
         # Only add European routers
-        seed_node.router_registry[regional_routers["de"].router_id] = regional_routers["de"]
+        seed_node.router_registry[regional_routers["de"].router_id] = regional_routers[
+            "de"
+        ]
 
         # Request US region (not available)
         selected = seed_node.select_routers(
@@ -447,7 +450,9 @@ class TestSeedRegionalSelection:
         # Should return all routers (order based on other scoring factors)
         assert len(selected) == 4
 
-    def test_score_difference_same_region_vs_same_continent(self, seed_node, regional_routers):
+    def test_score_difference_same_region_vs_same_continent(
+        self, seed_node, regional_routers
+    ):
         """Same region should score higher than same continent."""
         us_router = regional_routers["us"]
         ca_router = regional_routers["ca"]
@@ -467,7 +472,9 @@ class TestSeedRegionalSelection:
         actual_diff = us_score - ca_score
         assert abs(actual_diff - expected_diff) < 0.06
 
-    def test_score_difference_same_continent_vs_different(self, seed_node, regional_routers):
+    def test_score_difference_same_continent_vs_different(
+        self, seed_node, regional_routers
+    ):
         """Same continent should score higher than different continent."""
         ca_router = regional_routers["ca"]  # CA, same continent as US
         de_router = regional_routers["de"]  # DE, different continent

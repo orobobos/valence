@@ -1,6 +1,7 @@
 """Tests for encryption envelope - AES-256-GCM with X25519 key exchange."""
 
 import pytest
+
 from valence.privacy.encryption import EncryptionEnvelope, generate_keypair
 
 

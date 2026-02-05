@@ -91,7 +91,11 @@ class SharePolicy:
             level=ShareLevel(data["level"]),
             enforcement=EnforcementType(data.get("enforcement", "policy")),
             recipients=data.get("recipients"),
-            propagation=(PropagationRules.from_dict(data["propagation"]) if data.get("propagation") else None),
+            propagation=(
+                PropagationRules.from_dict(data["propagation"])
+                if data.get("propagation")
+                else None
+            ),
         )
 
     @classmethod
@@ -114,7 +118,9 @@ class SharePolicy:
         )
 
     @classmethod
-    def bounded(cls, max_hops: int = 2, allowed_domains: list[str] | None = None) -> "SharePolicy":
+    def bounded(
+        cls, max_hops: int = 2, allowed_domains: list[str] | None = None
+    ) -> "SharePolicy":
         """Create a bounded policy - can reshare within scope."""
         return cls(
             level=ShareLevel.BOUNDED,

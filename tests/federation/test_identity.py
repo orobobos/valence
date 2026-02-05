@@ -15,6 +15,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.federation.identity import (
     CRYPTO_AVAILABLE,
     # DID
@@ -194,7 +195,7 @@ class TestBase58:
         with pytest.raises(ValueError):
             base58_decode("0")  # '0' is not in base58 alphabet
 
-    def test_decode_invalid_char_O(self):
+    def test_decode_invalid_char_capital_o(self):
         """'O' is not in base58 alphabet."""
         with pytest.raises(ValueError):
             base58_decode("O")
@@ -248,14 +249,18 @@ class TestMultibase:
 class TestKeyPair:
     """Test KeyPair class."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_generate_keypair(self):
         """Should generate valid keypair."""
         kp = generate_keypair()
         assert len(kp.private_key_bytes) == 32
         assert len(kp.public_key_bytes) == 32
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_public_key_multibase(self):
         """Public key multibase should have correct format."""
         kp = generate_keypair()
@@ -267,7 +272,9 @@ class TestKeyPair:
         assert decoded[:2] == MULTICODEC_ED25519_PUB
         assert len(decoded) == 34  # 2 prefix + 32 key
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_private_key_hex(self):
         """Private key hex should be valid hex string."""
         kp = generate_keypair()
@@ -277,7 +284,9 @@ class TestKeyPair:
         # Should be valid hex
         assert bytes.fromhex(hex_str) == kp.private_key_bytes
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_from_private_key_hex(self):
         """Should restore keypair from hex."""
         kp1 = generate_keypair()
@@ -287,7 +296,9 @@ class TestKeyPair:
         assert kp2.private_key_bytes == kp1.private_key_bytes
         assert kp2.public_key_bytes == kp1.public_key_bytes
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_keypairs_unique(self):
         """Each generated keypair should be unique."""
         kp1 = generate_keypair()
@@ -389,7 +400,7 @@ class TestDID:
         """Should not equal non-DID, non-string."""
         did = DID(method=DIDMethod.WEB, identifier="example.com")
         assert did != 123
-        assert did != None
+        assert did is not None
 
     def test_hash(self):
         """Should be hashable."""
@@ -528,7 +539,9 @@ class TestCreateWebDID:
 class TestCreateKeyDID:
     """Test create_key_did function."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_creates_key_did(self):
         """Should create key DID from multibase key."""
         kp = generate_keypair()
@@ -576,7 +589,9 @@ class TestCreateUserDID:
     def test_user_under_user_raises(self):
         """Should raise when creating user under another user."""
         user_did = "did:vkb:user:web:example.com:alice"
-        with pytest.raises(ValueError, match="Cannot create user DID under another user"):
+        with pytest.raises(
+            ValueError, match="Cannot create user DID under another user"
+        ):
             create_user_did(user_did, "bob")
 
     def test_invalid_username_raises(self):
@@ -800,7 +815,9 @@ class TestDIDDocument:
 class TestCreateDIDDocument:
     """Test create_did_document function."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_creates_document(self):
         """Should create DID document with all fields."""
         kp = generate_keypair()
@@ -815,7 +832,9 @@ class TestCreateDIDDocument:
         )
         assert doc.id == "did:vkb:web:example.com"
         assert len(doc.verification_methods) == 1
-        assert doc.verification_methods[0].public_key_multibase == kp.public_key_multibase
+        assert (
+            doc.verification_methods[0].public_key_multibase == kp.public_key_multibase
+        )
         assert doc.verification_methods[0].controller == "did:vkb:web:example.com"
         assert len(doc.services) == 2
         assert doc.capabilities == ["belief_sync", "aggregation_participate"]
@@ -824,7 +843,9 @@ class TestCreateDIDDocument:
         assert doc.created is not None
         assert doc.updated is not None
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_creates_with_did_object(self):
         """Should accept DID object."""
         kp = generate_keypair()
@@ -835,7 +856,9 @@ class TestCreateDIDDocument:
         )
         assert doc.id == "did:vkb:web:example.com"
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_minimal_document(self):
         """Should create minimal document with defaults."""
         kp = generate_keypair()
@@ -856,7 +879,9 @@ class TestCreateDIDDocument:
 class TestResolveKeyDID:
     """Test _resolve_key_did function."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_resolves_key_did(self):
         """Should resolve key DID to document."""
         kp = generate_keypair()
@@ -865,14 +890,18 @@ class TestResolveKeyDID:
 
         assert doc.id == did.full
         assert len(doc.verification_methods) == 1
-        assert doc.verification_methods[0].public_key_multibase == kp.public_key_multibase
+        assert (
+            doc.verification_methods[0].public_key_multibase == kp.public_key_multibase
+        )
         assert doc.capabilities == ["belief_sync"]
 
 
 class TestResolveDIDSync:
     """Test resolve_did_sync function."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     def test_resolves_key_did(self):
         """Should resolve key DID synchronously."""
         kp = generate_keypair()
@@ -897,7 +926,9 @@ class TestResolveDIDSync:
 class TestResolveDIDAsync:
     """Test async resolve_did function."""
 
-    @pytest.mark.skipif(not CRYPTO_AVAILABLE, reason="cryptography library not available")
+    @pytest.mark.skipif(
+        not CRYPTO_AVAILABLE, reason="cryptography library not available"
+    )
     async def test_resolves_key_did(self):
         """Should resolve key DID asynchronously."""
         kp = generate_keypair()
@@ -911,7 +942,9 @@ class TestResolveDIDAsync:
         """User DID should resolve to node's document."""
         # Mock _resolve_web_did to return a document
         mock_doc = DIDDocument(id="did:vkb:web:example.com")
-        with patch("valence.federation.identity._resolve_web_did", return_value=mock_doc) as mock:
+        with patch(
+            "valence.federation.identity._resolve_web_did", return_value=mock_doc
+        ) as mock:
             doc = await resolve_did("did:vkb:user:web:example.com:alice")
             mock.assert_called_once()
             assert doc == mock_doc
@@ -928,7 +961,11 @@ class TestResolveWebDID:
         mock_response.json = AsyncMock(return_value={"id": "did:vkb:web:example.com"})
 
         mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()))
+        mock_session.get = MagicMock(
+            return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         with patch("aiohttp.ClientSession") as mock_client:
             mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -946,7 +983,11 @@ class TestResolveWebDID:
         mock_response.status = 404
 
         mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()))
+        mock_session.get = MagicMock(
+            return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=mock_response), __aexit__=AsyncMock()
+            )
+        )
 
         with patch("aiohttp.ClientSession") as mock_client:
             mock_client.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -960,7 +1001,9 @@ class TestResolveWebDID:
     async def test_returns_none_on_exception(self):
         """Should return None on network error."""
         with patch("aiohttp.ClientSession") as mock_client:
-            mock_client.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
+            mock_client.return_value.__aenter__ = AsyncMock(
+                side_effect=Exception("Network error")
+            )
 
             did = parse_did("did:vkb:web:example.com")
             doc = await _resolve_web_did(did)
@@ -999,7 +1042,9 @@ class TestSigning:
         message = b"Hello, World!"
         signature = sign_message(message, kp.private_key_bytes)
 
-        assert not verify_signature(b"Different message", signature, kp.public_key_multibase)
+        assert not verify_signature(
+            b"Different message", signature, kp.public_key_multibase
+        )
 
     def test_verify_signature_invalid_key(self):
         """Should reject signature for wrong key."""
@@ -1101,7 +1146,9 @@ class TestBeliefSigning:
         kp = generate_keypair()
         content = {"statement": "Test"}
 
-        assert not verify_belief_signature(content, "not-valid-base64!!!", kp.public_key_multibase)
+        assert not verify_belief_signature(
+            content, "not-valid-base64!!!", kp.public_key_multibase
+        )
 
     def test_verify_belief_signature_invalid_key(self):
         """Should return False for invalid public key."""

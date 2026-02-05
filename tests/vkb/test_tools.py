@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.vkb.tools import (
     VKB_HANDLERS,
     VKB_TOOLS,
@@ -205,17 +206,25 @@ class TestSessionStart:
         assert "session" in result
         mock_get_cursor.execute.assert_called()
 
-    def test_session_start_with_project_context(self, mock_get_cursor, sample_session_row):
+    def test_session_start_with_project_context(
+        self, mock_get_cursor, sample_session_row
+    ):
         """Test session start with project context."""
-        mock_get_cursor.fetchone.return_value = sample_session_row(project_context="valence-repo")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            project_context="valence-repo"
+        )
 
         result = session_start(platform="claude-code", project_context="valence-repo")
 
         assert result["success"] is True
 
-    def test_session_start_with_external_room(self, mock_get_cursor, sample_session_row):
+    def test_session_start_with_external_room(
+        self, mock_get_cursor, sample_session_row
+    ):
         """Test session start with external room ID."""
-        mock_get_cursor.fetchone.return_value = sample_session_row(external_room_id="!room:slack.com")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            external_room_id="!room:slack.com"
+        )
 
         result = session_start(platform="slack", external_room_id="!room:slack.com")
 
@@ -225,7 +234,9 @@ class TestSessionStart:
         """Test session start with metadata."""
         mock_get_cursor.fetchone.return_value = sample_session_row()
 
-        result = session_start(platform="api", metadata={"client_version": "1.0", "model": "claude-3"})
+        result = session_start(
+            platform="api", metadata={"client_version": "1.0", "model": "claude-3"}
+        )
 
         assert result["success"] is True
 
@@ -236,7 +247,9 @@ class TestSessionEnd:
     def test_session_end_basic(self, mock_get_cursor, sample_session_row):
         """Test basic session end."""
         session_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_session_row(id=session_id, status="completed")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            id=session_id, status="completed"
+        )
 
         result = session_end(session_id=str(session_id))
 
@@ -245,7 +258,9 @@ class TestSessionEnd:
     def test_session_end_with_summary(self, mock_get_cursor, sample_session_row):
         """Test session end with summary."""
         session_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_session_row(id=session_id, summary="Discussed valence architecture")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            id=session_id, summary="Discussed valence architecture"
+        )
 
         result = session_end(
             session_id=str(session_id),
@@ -267,7 +282,9 @@ class TestSessionEnd:
     def test_session_end_abandoned(self, mock_get_cursor, sample_session_row):
         """Test session end with abandoned status."""
         session_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_session_row(id=session_id, status="abandoned")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            id=session_id, status="abandoned"
+        )
 
         result = session_end(session_id=str(session_id), status="abandoned")
 
@@ -296,7 +313,9 @@ class TestSessionGet:
         assert result["success"] is False
         assert "not found" in result["error"]
 
-    def test_session_get_with_exchanges(self, mock_get_cursor, sample_session_row, sample_exchange_row):
+    def test_session_get_with_exchanges(
+        self, mock_get_cursor, sample_session_row, sample_exchange_row
+    ):
         """Test getting session with exchanges."""
         session_id = uuid4()
 
@@ -306,7 +325,9 @@ class TestSessionGet:
             sample_exchange_row(session_id=session_id, sequence=2),
         ]
 
-        result = session_get(session_id=str(session_id), include_exchanges=True, exchange_limit=10)
+        result = session_get(
+            session_id=str(session_id), include_exchanges=True, exchange_limit=10
+        )
 
         assert result["success"] is True
         assert "exchanges" in result
@@ -327,7 +348,9 @@ class TestSessionList:
         assert result["success"] is True
         assert len(result["sessions"]) == 2
 
-    def test_session_list_with_platform_filter(self, mock_get_cursor, sample_session_row):
+    def test_session_list_with_platform_filter(
+        self, mock_get_cursor, sample_session_row
+    ):
         """Test session list with platform filter."""
         mock_get_cursor.fetchall.return_value = [sample_session_row(platform="slack")]
 
@@ -353,7 +376,9 @@ class TestSessionFindByRoom:
     def test_session_find_by_room_found(self, mock_get_cursor, sample_session_row):
         """Test finding session by room ID."""
         session_id = uuid4()
-        mock_get_cursor.fetchone.return_value = sample_session_row(id=session_id, external_room_id="!room:example.com")
+        mock_get_cursor.fetchone.return_value = sample_session_row(
+            id=session_id, external_room_id="!room:example.com"
+        )
 
         result = session_find_by_room(external_room_id="!room:example.com")
 
@@ -389,7 +414,9 @@ class TestExchangeAdd:
             sample_exchange_row(session_id=session_id, sequence=1),  # insert result
         ]
 
-        result = exchange_add(session_id=str(session_id), role="user", content="Hello, how are you?")
+        result = exchange_add(
+            session_id=str(session_id), role="user", content="Hello, how are you?"
+        )
 
         assert result["success"] is True
         assert "exchange" in result
@@ -472,7 +499,9 @@ class TestPatternRecord:
         pattern_id = uuid4()
         mock_get_cursor.fetchone.return_value = sample_pattern_row(id=pattern_id)
 
-        result = pattern_record(type="topic_recurrence", description="User frequently discusses Python")
+        result = pattern_record(
+            type="topic_recurrence", description="User frequently discusses Python"
+        )
 
         assert result["success"] is True
         assert "pattern" in result
@@ -482,7 +511,9 @@ class TestPatternRecord:
         session1 = uuid4()
         session2 = uuid4()
 
-        mock_get_cursor.fetchone.return_value = sample_pattern_row(evidence=[session1, session2])
+        mock_get_cursor.fetchone.return_value = sample_pattern_row(
+            evidence=[session1, session2]
+        )
 
         result = pattern_record(
             type="preference",
@@ -521,7 +552,9 @@ class TestPatternReinforce:
             sample_pattern_row(id=pattern_id),
         ]
 
-        result = pattern_reinforce(pattern_id=str(pattern_id), session_id=str(session_id))
+        result = pattern_reinforce(
+            pattern_id=str(pattern_id), session_id=str(session_id)
+        )
 
         assert result["success"] is True
 
@@ -566,7 +599,9 @@ class TestPatternList:
 
         assert result["success"] is True
 
-    def test_pattern_list_with_min_confidence(self, mock_get_cursor, sample_pattern_row):
+    def test_pattern_list_with_min_confidence(
+        self, mock_get_cursor, sample_pattern_row
+    ):
         """Test pattern list with minimum confidence."""
         mock_get_cursor.fetchall.return_value = []
 
@@ -626,7 +661,9 @@ class TestInsightExtract:
             {"id": insight_id},  # insight link
         ]
 
-        result = insight_extract(session_id=str(session_id), content="Python is great for data science")
+        result = insight_extract(
+            session_id=str(session_id), content="Python is great for data science"
+        )
 
         assert result["success"] is True
         assert "belief_id" in result

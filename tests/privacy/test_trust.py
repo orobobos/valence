@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.privacy.trust import (
     TrustEdge,
     TrustGraphStore,
@@ -399,7 +400,9 @@ class TestTransitiveTrust:
             ("did:key:b", "did:key:c"): b_c,
         }
 
-        result = compute_transitive_trust("did:key:a", "did:key:c", graph, respect_delegation=False)
+        result = compute_transitive_trust(
+            "did:key:a", "did:key:c", graph, respect_delegation=False
+        )
 
         assert result is not None
         assert result.source_did == "did:key:a"
@@ -418,7 +421,9 @@ class TestTransitiveTrust:
 
         graph = {("did:key:a", "did:key:b"): a_b}
 
-        result = compute_transitive_trust("did:key:a", "did:key:c", graph, respect_delegation=False)
+        result = compute_transitive_trust(
+            "did:key:a", "did:key:c", graph, respect_delegation=False
+        )
 
         assert result is None
 
@@ -470,7 +475,9 @@ class TestTransitiveTrust:
             ("did:key:c", "did:key:d"): c_d,
         }
 
-        result = compute_transitive_trust("did:key:a", "did:key:d", graph, respect_delegation=False)
+        result = compute_transitive_trust(
+            "did:key:a", "did:key:d", graph, respect_delegation=False
+        )
 
         assert result is not None
         # Path 1: competence = min(0.9, 0.9) * 0.2 = 0.18
@@ -511,11 +518,15 @@ class TestTransitiveTrust:
         graph = {(e.source_did, e.target_did): e for e in edges}
 
         # With max_hops=2, should not reach E (4 hops away)
-        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=2, respect_delegation=False)
+        result = compute_transitive_trust(
+            "did:key:a", "did:key:e", graph, max_hops=2, respect_delegation=False
+        )
         assert result is None
 
         # With max_hops=4, should reach E
-        result = compute_transitive_trust("did:key:a", "did:key:e", graph, max_hops=4, respect_delegation=False)
+        result = compute_transitive_trust(
+            "did:key:a", "did:key:e", graph, max_hops=4, respect_delegation=False
+        )
         assert result is not None
 
 
@@ -1236,11 +1247,15 @@ class TestComputeTransitiveTrust:
         }
 
         # With respect_delegation=True (default), blocked
-        result_strict = compute_transitive_trust("did:key:alice", "did:key:carol", graph, respect_delegation=True)
+        result_strict = compute_transitive_trust(
+            "did:key:alice", "did:key:carol", graph, respect_delegation=True
+        )
         assert result_strict is None
 
         # With respect_delegation=False, allowed
-        result_permissive = compute_transitive_trust("did:key:alice", "did:key:carol", graph, respect_delegation=False)
+        result_permissive = compute_transitive_trust(
+            "did:key:alice", "did:key:carol", graph, respect_delegation=False
+        )
         assert result_permissive is not None
 
 
@@ -1470,7 +1485,9 @@ class TestDomainScopedTrustOverrides:
         assert global_edge.competence == 0.9
 
         # Personal query returns lower trust
-        personal_edge = service.get_trust("did:key:alice", "did:key:bob", domain="personal")
+        personal_edge = service.get_trust(
+            "did:key:alice", "did:key:bob", domain="personal"
+        )
         assert personal_edge.competence == 0.3
         assert personal_edge.domain == "personal"
 
@@ -1518,9 +1535,15 @@ class TestDomainScopedTrustOverrides:
         # Query each domain
         global_edge = service.get_trust("did:key:alice", "did:key:bob")
         work_edge = service.get_trust("did:key:alice", "did:key:bob", domain="work")
-        medical_edge = service.get_trust("did:key:alice", "did:key:bob", domain="medical")
-        finance_edge = service.get_trust("did:key:alice", "did:key:bob", domain="finance")
-        unknown_edge = service.get_trust("did:key:alice", "did:key:bob", domain="unknown")
+        medical_edge = service.get_trust(
+            "did:key:alice", "did:key:bob", domain="medical"
+        )
+        finance_edge = service.get_trust(
+            "did:key:alice", "did:key:bob", domain="finance"
+        )
+        unknown_edge = service.get_trust(
+            "did:key:alice", "did:key:bob", domain="unknown"
+        )
 
         # Verify correct edges returned
         assert global_edge.domain is None
@@ -1831,7 +1854,9 @@ class TestDelegatedTrustComputation:
         assert result.competence < 0.1
         assert result.integrity < 0.1
 
-    def test_multi_hop_delegation_compounds_decay(self, service, alice, bob, carol, dave):
+    def test_multi_hop_delegation_compounds_decay(
+        self, service, alice, bob, carol, dave
+    ):
         """Test that multi-hop delegation compounds decay at each hop."""
         # Alice -> Bob (delegatable)
         service.grant_trust(
@@ -1923,7 +1948,9 @@ class TestDelegatedTrustComputation:
         result_dave = service.compute_delegated_trust(alice, dave)
         assert result_dave is None
 
-    def test_delegation_depth_zero_means_unlimited(self, service, alice, bob, carol, dave):
+    def test_delegation_depth_zero_means_unlimited(
+        self, service, alice, bob, carol, dave
+    ):
         """Test that delegation_depth=0 means no limit."""
         # Alice -> Bob (unlimited delegation)
         service.grant_trust(
@@ -2085,7 +2112,9 @@ class TestDelegatedTrustComputation:
         assert result_medical is not None
         assert result_medical.domain == "medical"
 
-    def test_intermediate_hops_require_can_delegate(self, service, alice, bob, carol, dave):
+    def test_intermediate_hops_require_can_delegate(
+        self, service, alice, bob, carol, dave
+    ):
         """Test that intermediate hops must have can_delegate=True."""
         # Alice -> Bob (delegatable)
         service.grant_trust(
@@ -2248,7 +2277,9 @@ class TestFederationTrustEdge:
         """Test that self-trust is rejected."""
         from valence.privacy.trust import FederationTrustEdge
 
-        with pytest.raises(ValueError, match="Cannot create federation trust edge to self"):
+        with pytest.raises(
+            ValueError, match="Cannot create federation trust edge to self"
+        ):
             FederationTrustEdge(
                 source_federation="acme-corp",
                 target_federation="acme-corp",
@@ -2315,7 +2346,9 @@ class TestFederationTrustEdge:
             judgment=0.6,
         )
 
-        fed_edge = FederationTrustEdge.from_trust_edge(trust_edge, inheritance_factor=0.6)
+        fed_edge = FederationTrustEdge.from_trust_edge(
+            trust_edge, inheritance_factor=0.6
+        )
 
         assert fed_edge.source_federation == "acme-corp"
         assert fed_edge.target_federation == "globex-inc"
@@ -2572,7 +2605,9 @@ class TestFederationTrustService:
         assert global_result.competence == 0.5
 
         # Domain query
-        domain_result = service.get_federation_trust("acme-corp", "globex-inc", domain="research")
+        domain_result = service.get_federation_trust(
+            "acme-corp", "globex-inc", domain="research"
+        )
         assert domain_result.competence == 0.9
 
 

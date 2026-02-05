@@ -60,7 +60,9 @@ def get_config_from_env() -> dict[str, Any]:
         config["seed_id"] = core_config.seed_id
 
     if core_config.seed_peers:
-        config["known_seeds"] = [p.strip() for p in core_config.seed_peers.split(",") if p.strip()]
+        config["known_seeds"] = [
+            p.strip() for p in core_config.seed_peers.split(",") if p.strip()
+        ]
 
     return config
 
@@ -240,7 +242,9 @@ async def cmd_discover(args: argparse.Namespace) -> int:
     # Human-readable output
     routers = data.get("routers", [])
 
-    print(f"\n📡 Discovered {len(routers)} routers from {data.get('seed_id', 'unknown')}\n")
+    print(
+        f"\n📡 Discovered {len(routers)} routers from {data.get('seed_id', 'unknown')}\n"
+    )
 
     if not routers:
         print("No routers available matching your criteria.")

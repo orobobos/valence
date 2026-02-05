@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+
 from valence.federation.privacy import (
     # Constants
     DEFAULT_DAILY_DELTA_BUDGET,

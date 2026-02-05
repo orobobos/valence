@@ -150,7 +150,9 @@ class TestSignatureForgery:
         signature = sign_message(original_message, keypair.private_key_bytes)
 
         # Verify tampered message should fail
-        result = verify_signature(tampered_message, signature, keypair.public_key_multibase)
+        result = verify_signature(
+            tampered_message, signature, keypair.public_key_multibase
+        )
         assert result is False, "Tampered message must fail verification"
 
     def test_signature_algorithm_enforced(self):
@@ -185,8 +187,8 @@ class TestMaliciousPeerBehavior:
         """Nodes sending excessive beliefs must be rate limited."""
         from valence.federation.trust import TrustManager
 
-        manager = TrustManager()
-        node_id = uuid4()
+        TrustManager()
+        uuid4()
 
         # Simulate rapid belief submissions
         # Rate limiting should kick in
@@ -266,7 +268,12 @@ class TestProtocolManipulation:
 
         for msg in malicious_messages:
             # Parser should reject these
-            assert not isinstance(msg["type"], str) or ";" in msg["type"] or "\x00" in msg["type"] or isinstance(msg["type"], list)
+            assert (
+                not isinstance(msg["type"], str)
+                or ";" in msg["type"]
+                or "\x00" in msg["type"]
+                or isinstance(msg["type"], list)
+            )
 
     def test_deeply_nested_json_rejected(self):
         """Deeply nested JSON should be rejected to prevent stack overflow."""
@@ -311,7 +318,7 @@ class TestFederationNodeImpersonation:
 
         # Legitimate node's DID (different key)
         legitimate_keypair = generate_keypair()
-        legitimate_did = create_key_did(legitimate_keypair.public_key_multibase)
+        create_key_did(legitimate_keypair.public_key_multibase)
 
         # Attacker signs with their key but claims legitimate DID
         message = b"test message"
@@ -377,7 +384,9 @@ class TestBeliefIntegrity:
             "text": "This is a MODIFIED belief",
             "confidence": 0.9,
         }
-        assert not verify_belief_signature(modified_content, signature, keypair.public_key_multibase)
+        assert not verify_belief_signature(
+            modified_content, signature, keypair.public_key_multibase
+        )
 
     def test_federation_id_uniqueness(self):
         """Each federated belief must have a unique federation_id."""

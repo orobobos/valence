@@ -65,7 +65,9 @@ def create_server() -> Server:
             else:
                 result = {"success": False, "error": f"Unknown tool: {name}"}
 
-            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+            return [
+                TextContent(type="text", text=json.dumps(result, indent=2, default=str))
+            ]
 
         except ValidationException as e:
             logger.warning(f"Validation error in tool {name}: {e}")
@@ -167,7 +169,9 @@ def create_server() -> Server:
         ]
 
     @server.get_prompt()
-    async def get_prompt(name: str, arguments: dict[str, str] | None = None) -> GetPromptResult:
+    async def get_prompt(
+        name: str, arguments: dict[str, str] | None = None
+    ) -> GetPromptResult:
         """Get a prompt by name."""
         if name == "valence-context":
             return GetPromptResult(

@@ -173,7 +173,9 @@ class FederationNode:
                 name=body.get("name"),
             )
 
-            logger.info(f"[{self.name}] Received introduction from: {body.get('name', body['did'])}")
+            logger.info(
+                f"[{self.name}] Received introduction from: {body.get('name', body['did'])}"
+            )
 
             # Return our identity
             return JSONResponse(
@@ -273,7 +275,9 @@ class FederationNode:
             # Update peer trust
             self.peer_store.record_belief_received(sender_did)
 
-            logger.info(f"[{self.name}] Received belief from {peer.name or sender_did}: {belief.content[:50]}...")
+            logger.info(
+                f"[{self.name}] Received belief from {peer.name or sender_did}: {belief.content[:50]}..."
+            )
 
             return JSONResponse(
                 {
@@ -340,7 +344,9 @@ class FederationNode:
             # Sort by confidence
             results.sort(key=lambda x: x["confidence"], reverse=True)
 
-            logger.info(f"[{self.name}] Query '{query_text}' returned {len(results)} results")
+            logger.info(
+                f"[{self.name}] Query '{query_text}' returned {len(results)} results"
+            )
 
             return JSONResponse(
                 {
@@ -495,7 +501,9 @@ class FederationNode:
 
                 if result.get("success"):
                     self.peer_store.record_belief_sent(peer_did)
-                    logger.info(f"[{self.name}] Shared belief with {peer.name or peer_did}")
+                    logger.info(
+                        f"[{self.name}] Shared belief with {peer.name or peer_did}"
+                    )
 
                 return result
 
@@ -537,7 +545,9 @@ class FederationNode:
 
                 if result.get("success"):
                     self.peer_store.record_query(peer_did, "sent")
-                    logger.info(f"[{self.name}] Queried {peer.name or peer_did}: {len(result.get('results', []))} results")
+                    logger.info(
+                        f"[{self.name}] Queried {peer.name or peer_did}: {len(result.get('results', []))} results"
+                    )
 
                 return result
 

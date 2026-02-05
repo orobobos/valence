@@ -101,7 +101,9 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(f"  cat {token_file}")
     print()
     print("To use with Claude Code:")
-    print(f'  claude mcp add --transport http valence https://your-domain/mcp --header "Authorization: Bearer $(cat {token_file})"')
+    print(
+        f'  claude mcp add --transport http valence https://your-domain/mcp --header "Authorization: Bearer $(cat {token_file})"'
+    )
     print()
     print("IMPORTANT: Delete the token file after copying to a secure location.")
     print()
@@ -124,13 +126,19 @@ def cmd_list(args: argparse.Namespace) -> int:
     for token in tokens:
         created = datetime.fromtimestamp(token.created_at).strftime("%Y-%m-%d %H:%M")
         if token.expires_at:
-            expires = datetime.fromtimestamp(token.expires_at).strftime("%Y-%m-%d %H:%M")
+            expires = datetime.fromtimestamp(token.expires_at).strftime(
+                "%Y-%m-%d %H:%M"
+            )
             if token.is_expired():
                 expires += " (EXPIRED)"
         else:
             expires = "Never"
 
-        desc = token.description[:27] + "..." if len(token.description) > 30 else token.description
+        desc = (
+            token.description[:27] + "..."
+            if len(token.description) > 30
+            else token.description
+        )
         print(f"{token.client_id:<20} {desc:<30} {created:<20} {expires:<20}")
 
     print()

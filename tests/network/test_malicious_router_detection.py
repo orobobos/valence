@@ -15,6 +15,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from valence.network.discovery import RouterInfo
 from valence.network.messages import (
     MisbehaviorEvidence,
@@ -25,7 +26,9 @@ from valence.network.messages import (
 )
 from valence.network.node import NodeClient
 
-pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
+pytestmark = pytest.mark.skip(
+    reason="Needs update for NodeClient decomposition - see #167"
+)
 
 
 # =============================================================================
@@ -658,7 +661,7 @@ class TestSeedMisbehaviorHandling:
 
         # Check response
         assert response.status == 200
-        response_data = response.body.decode() if hasattr(response, "body") else "{}"
+        response.body.decode() if hasattr(response, "body") else "{}"
 
         # Check report was stored
         router_id = report_data["router_id"]

@@ -131,19 +131,26 @@ class RouterClient:
             return None
 
         # Filter to healthy connections
-        candidates = [conn for conn in connections.values() if not conn.websocket.closed]
+        candidates = [
+            conn for conn in connections.values() if not conn.websocket.closed
+        ]
 
         if not candidates:
             return None
 
         # Filter out routers under back-pressure if requested
         if exclude_back_pressured:
-            non_bp_candidates = [conn for conn in candidates if not conn.is_under_back_pressure]
+            non_bp_candidates = [
+                conn for conn in candidates if not conn.is_under_back_pressure
+            ]
 
             if non_bp_candidates:
                 candidates = non_bp_candidates
             elif candidates:
-                logger.warning(f"All {len(candidates)} routers under back-pressure, " "selecting least loaded")
+                logger.warning(
+                    f"All {len(candidates)} routers under back-pressure, "
+                    "selecting least loaded"
+                )
                 candidates.sort(key=lambda c: c.back_pressure_until)
 
         # Calculate weights using health scores
@@ -226,7 +233,11 @@ class RouterClient:
         await self.connection_manager.close_connection(router_id, conn)
 
         # Discover alternative routers
-        exclude_ids = [router_id] + [r_id for r_id, state in failover_states.items() if state.is_in_cooldown() and r_id != router_id]
+        exclude_ids = [router_id] + [
+            r_id
+            for r_id, state in failover_states.items()
+            if state.is_in_cooldown() and r_id != router_id
+        ]
         exclude_ids.extend(self.connection_manager.connections.keys())
 
         try:
@@ -261,7 +272,9 @@ class RouterClient:
                     timeout=self.config.failover_connect_timeout,
                 )
                 connected = True
-                logger.info(f"Failover successful: connected to {router.router_id[:16]}...")
+                logger.info(
+                    f"Failover successful: connected to {router.router_id[:16]}..."
+                )
                 break
             except (TimeoutError, Exception) as e:
                 logger.warning(f"Failover connection failed: {e}")
@@ -281,7 +294,10 @@ class RouterClient:
             self._disable_direct_mode()
 
         # Ensure minimum connections
-        if self.connection_manager.connection_count < self.connection_manager.config.min_connections:
+        if (
+            self.connection_manager.connection_count
+            < self.connection_manager.config.min_connections
+        ):
             await asyncio.sleep(self.config.reconnect_delay)
             await self.connection_manager.ensure_connections()
 
@@ -332,13 +348,18 @@ class RouterClient:
 
                 try:
                     await self.connection_manager.connect_to_router(router)
-                    logger.info(f"Rotation complete: {router_id[:16]}... -> {router.router_id[:16]}... " f"(reason: {reason})")
+                    logger.info(
+                        f"Rotation complete: {router_id[:16]}... -> {router.router_id[:16]}... "
+                        f"(reason: {reason})"
+                    )
                     return True
                 except Exception as e:
                     logger.debug(f"Failed to connect to rotation candidate: {e}")
                     continue
 
-            logger.warning(f"Could not find diverse replacement for {router_id[:16]}...")
+            logger.warning(
+                f"Could not find diverse replacement for {router_id[:16]}..."
+            )
             return False
 
         except Exception as e:
@@ -370,7 +391,10 @@ class RouterClient:
             conn.back_pressure_until = time.time() + (retry_after_ms / 1000)
             conn.back_pressure_retry_ms = retry_after_ms
 
-            logger.warning(f"Router {router_id[:16]}... signaled BACK-PRESSURE: " f"load={load_pct:.1f}%, retry_after={retry_after_ms}ms")
+            logger.warning(
+                f"Router {router_id[:16]}... signaled BACK-PRESSURE: "
+                f"load={load_pct:.1f}%, retry_after={retry_after_ms}ms"
+            )
         else:
             conn.back_pressure_active = False
             conn.back_pressure_until = 0.0
@@ -380,7 +404,10 @@ class RouterClient:
         """Enable direct mode as graceful degradation."""
         if not self.direct_mode:
             self.direct_mode = True
-            logger.warning("No routers available - enabling direct mode " "(will attempt P2P for known peers)")
+            logger.warning(
+                "No routers available - enabling direct mode "
+                "(will attempt P2P for known peers)"
+            )
 
     def _disable_direct_mode(self) -> None:
         """Disable direct mode when routers become available."""

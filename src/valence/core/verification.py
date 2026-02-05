@@ -239,7 +239,9 @@ class BeliefReference:
             "belief_id": str(self.belief_id),
             "holder_id": self.holder_id,
             "content_hash": self.content_hash,
-            "confidence_at_time": (self.confidence_at_time.to_dict() if self.confidence_at_time else None),
+            "confidence_at_time": (
+                self.confidence_at_time.to_dict() if self.confidence_at_time else None
+            ),
         }
 
     @classmethod
@@ -248,7 +250,11 @@ class BeliefReference:
         if data.get("confidence_at_time"):
             confidence = DimensionalConfidence.from_dict(data["confidence_at_time"])
         return cls(
-            belief_id=(UUID(data["belief_id"]) if isinstance(data["belief_id"], str) else data["belief_id"]),
+            belief_id=(
+                UUID(data["belief_id"])
+                if isinstance(data["belief_id"], str)
+                else data["belief_id"]
+            ),
             holder_id=data["holder_id"],
             content_hash=data["content_hash"],
             confidence_at_time=confidence,
@@ -490,7 +496,9 @@ class Stake:
 
     def __post_init__(self):
         if self.amount < 0:
-            raise ValidationException("Stake amount cannot be negative", "amount", self.amount)
+            raise ValidationException(
+                "Stake amount cannot be negative", "amount", self.amount
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -547,7 +555,9 @@ class Verification:
             "evidence": [e.to_dict() for e in self.evidence],
             "stake": self.stake.to_dict(),
             "reasoning": self.reasoning,
-            "result_details": (self.result_details.to_dict() if self.result_details else None),
+            "result_details": (
+                self.result_details.to_dict() if self.result_details else None
+            ),
             "status": self.status.value,
             "dispute_id": str(self.dispute_id) if self.dispute_id else None,
             "signature": self.signature.hex() if self.signature else None,
@@ -560,18 +570,30 @@ class Verification:
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
             verifier_id=data["verifier_id"],
-            belief_id=(UUID(data["belief_id"]) if isinstance(data["belief_id"], str) else data["belief_id"]),
+            belief_id=(
+                UUID(data["belief_id"])
+                if isinstance(data["belief_id"], str)
+                else data["belief_id"]
+            ),
             holder_id=data["holder_id"],
             result=VerificationResult(data["result"]),
             evidence=[Evidence.from_dict(e) for e in data["evidence"]],
             stake=Stake.from_dict(data["stake"]),
             reasoning=data.get("reasoning"),
-            result_details=(ResultDetails.from_dict(data["result_details"]) if data.get("result_details") else None),
+            result_details=(
+                ResultDetails.from_dict(data["result_details"])
+                if data.get("result_details")
+                else None
+            ),
             status=VerificationStatus(data.get("status", "pending")),
             dispute_id=UUID(data["dispute_id"]) if data.get("dispute_id") else None,
-            signature=(bytes.fromhex(data["signature"]) if data.get("signature") else None),
+            signature=(
+                bytes.fromhex(data["signature"]) if data.get("signature") else None
+            ),
             created_at=(
-                datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now())
+                datetime.fromisoformat(data["created_at"])
+                if isinstance(data.get("created_at"), str)
+                else data.get("created_at", datetime.now())
             ),
             accepted_at=(
                 datetime.fromisoformat(data["accepted_at"])
@@ -601,7 +623,11 @@ class Verification:
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
             verifier_id=row["verifier_id"],
-            belief_id=(row["belief_id"] if isinstance(row["belief_id"], UUID) else UUID(row["belief_id"])),
+            belief_id=(
+                row["belief_id"]
+                if isinstance(row["belief_id"], UUID)
+                else UUID(row["belief_id"])
+            ),
             holder_id=row["holder_id"],
             result=VerificationResult(row["result"]),
             evidence=[Evidence.from_dict(e) for e in evidence_data],
@@ -644,38 +670,56 @@ class Dispute:
             "stake": self.stake.to_dict(),
             "dispute_type": self.dispute_type.value,
             "reasoning": self.reasoning,
-            "proposed_result": (self.proposed_result.value if self.proposed_result else None),
+            "proposed_result": (
+                self.proposed_result.value if self.proposed_result else None
+            ),
             "status": self.status.value,
             "outcome": self.outcome.value if self.outcome else None,
             "resolution_reasoning": self.resolution_reasoning,
             "created_at": self.created_at.isoformat(),
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
-            "resolution_method": (self.resolution_method.value if self.resolution_method else None),
+            "resolution_method": (
+                self.resolution_method.value if self.resolution_method else None
+            ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Dispute:
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            verification_id=(UUID(data["verification_id"]) if isinstance(data["verification_id"], str) else data["verification_id"]),
+            verification_id=(
+                UUID(data["verification_id"])
+                if isinstance(data["verification_id"], str)
+                else data["verification_id"]
+            ),
             disputer_id=data["disputer_id"],
             counter_evidence=[Evidence.from_dict(e) for e in data["counter_evidence"]],
             stake=Stake.from_dict(data["stake"]),
             dispute_type=DisputeType(data["dispute_type"]),
             reasoning=data["reasoning"],
-            proposed_result=(VerificationResult(data["proposed_result"]) if data.get("proposed_result") else None),
+            proposed_result=(
+                VerificationResult(data["proposed_result"])
+                if data.get("proposed_result")
+                else None
+            ),
             status=DisputeStatus(data.get("status", "pending")),
             outcome=DisputeOutcome(data["outcome"]) if data.get("outcome") else None,
             resolution_reasoning=data.get("resolution_reasoning"),
             created_at=(
-                datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now())
+                datetime.fromisoformat(data["created_at"])
+                if isinstance(data.get("created_at"), str)
+                else data.get("created_at", datetime.now())
             ),
             resolved_at=(
                 datetime.fromisoformat(data["resolved_at"])
                 if data.get("resolved_at") and isinstance(data["resolved_at"], str)
                 else data.get("resolved_at")
             ),
-            resolution_method=(ResolutionMethod(data["resolution_method"]) if data.get("resolution_method") else None),
+            resolution_method=(
+                ResolutionMethod(data["resolution_method"])
+                if data.get("resolution_method")
+                else None
+            ),
         )
 
     @classmethod
@@ -691,19 +735,31 @@ class Dispute:
 
         return cls(
             id=row["id"] if isinstance(row["id"], UUID) else UUID(row["id"]),
-            verification_id=(row["verification_id"] if isinstance(row["verification_id"], UUID) else UUID(row["verification_id"])),
+            verification_id=(
+                row["verification_id"]
+                if isinstance(row["verification_id"], UUID)
+                else UUID(row["verification_id"])
+            ),
             disputer_id=row["disputer_id"],
             counter_evidence=[Evidence.from_dict(e) for e in evidence_data],
             stake=Stake.from_dict(stake_data),
             dispute_type=DisputeType(row["dispute_type"]),
             reasoning=row["reasoning"],
-            proposed_result=(VerificationResult(row["proposed_result"]) if row.get("proposed_result") else None),
+            proposed_result=(
+                VerificationResult(row["proposed_result"])
+                if row.get("proposed_result")
+                else None
+            ),
             status=DisputeStatus(row.get("status", "pending")),
             outcome=DisputeOutcome(row["outcome"]) if row.get("outcome") else None,
             resolution_reasoning=row.get("resolution_reasoning"),
             created_at=row["created_at"],
             resolved_at=row.get("resolved_at"),
-            resolution_method=(ResolutionMethod(row["resolution_method"]) if row.get("resolution_method") else None),
+            resolution_method=(
+                ResolutionMethod(row["resolution_method"])
+                if row.get("resolution_method")
+                else None
+            ),
         )
 
 
@@ -751,10 +807,14 @@ class ReputationScore:
             discrepancy_finds=int(data.get("discrepancy_finds", 0)),
             stake_at_risk=float(data.get("stake_at_risk", 0.0)),
             created_at=(
-                datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at", datetime.now())
+                datetime.fromisoformat(data["created_at"])
+                if isinstance(data.get("created_at"), str)
+                else data.get("created_at", datetime.now())
             ),
             modified_at=(
-                datetime.fromisoformat(data["modified_at"]) if isinstance(data.get("modified_at"), str) else data.get("modified_at", datetime.now())
+                datetime.fromisoformat(data["modified_at"])
+                if isinstance(data.get("modified_at"), str)
+                else data.get("modified_at", datetime.now())
             ),
         )
 
@@ -801,7 +861,9 @@ class ReputationUpdate:
             "new_value": self.new_value,
             "reason": self.reason,
             "dimension": self.dimension,
-            "verification_id": (str(self.verification_id) if self.verification_id else None),
+            "verification_id": (
+                str(self.verification_id) if self.verification_id else None
+            ),
             "dispute_id": str(self.dispute_id) if self.dispute_id else None,
             "created_at": self.created_at.isoformat(),
         }
@@ -818,7 +880,10 @@ class StakePosition:
     verification_id: UUID | None = None
     dispute_id: UUID | None = None
     locked_at: datetime = field(default_factory=datetime.now)
-    unlocks_at: datetime = field(default_factory=lambda: datetime.now() + timedelta(days=ReputationConstants.STAKE_LOCKUP_DAYS))
+    unlocks_at: datetime = field(
+        default_factory=lambda: datetime.now()
+        + timedelta(days=ReputationConstants.STAKE_LOCKUP_DAYS)
+    )
     status: str = "locked"  # 'locked', 'pending_return', 'forfeited', 'returned'
 
     def to_dict(self) -> dict[str, Any]:
@@ -827,7 +892,9 @@ class StakePosition:
             "identity_id": self.identity_id,
             "amount": self.amount,
             "type": self.type.value,
-            "verification_id": (str(self.verification_id) if self.verification_id else None),
+            "verification_id": (
+                str(self.verification_id) if self.verification_id else None
+            ),
             "dispute_id": str(self.dispute_id) if self.dispute_id else None,
             "locked_at": self.locked_at.isoformat(),
             "unlocks_at": self.unlocks_at.isoformat(),
@@ -947,7 +1014,13 @@ def calculate_bounty(
     confidence_premium = belief_confidence**2
     age_factor = min(2.0, 1.0 + days_since_creation / 30)
 
-    return holder_stake * ReputationConstants.BOUNTY_MULTIPLIER * confidence_premium * age_factor * domain_importance
+    return (
+        holder_stake
+        * ReputationConstants.BOUNTY_MULTIPLIER
+        * confidence_premium
+        * age_factor
+        * domain_importance
+    )
 
 
 # ============================================================================
@@ -1030,7 +1103,11 @@ def calculate_holder_confirmation_bonus(
     Returns:
         Reputation bonus for holder
     """
-    return 0.0005 * verifier_reputation * math.sqrt(stake / min_stake) if min_stake > 0 else 0.0
+    return (
+        0.0005 * verifier_reputation * math.sqrt(stake / min_stake)
+        if min_stake > 0
+        else 0.0
+    )
 
 
 def calculate_holder_contradiction_penalty(
@@ -1078,7 +1155,12 @@ def calculate_partial_reward(
     Returns:
         Reputation reward
     """
-    confirm_portion = calculate_confirmation_reward(stake, min_stake, belief_confidence, existing_confirmations) * accuracy_estimate
+    confirm_portion = (
+        calculate_confirmation_reward(
+            stake, min_stake, belief_confidence, existing_confirmations
+        )
+        * accuracy_estimate
+    )
 
     contradict_portion = calculate_contradiction_reward(
         stake,
@@ -1136,15 +1218,21 @@ def validate_verification_submission(
     belief_confidence = belief.get("confidence", {}).get("overall", 0.7)
     min_stake = calculate_min_stake(
         belief_confidence,
-        verifier_reputation.by_domain.get(belief.get("domain_path", ["general"])[0], 0.5),
+        verifier_reputation.by_domain.get(
+            belief.get("domain_path", ["general"])[0], 0.5
+        ),
     )
 
     if verification.stake.amount < min_stake:
-        errors.append(f"Stake {verification.stake.amount:.4f} below minimum {min_stake:.4f}")
+        errors.append(
+            f"Stake {verification.stake.amount:.4f} below minimum {min_stake:.4f}"
+        )
 
     max_stake = calculate_max_stake(verifier_reputation.overall)
     if verification.stake.amount > max_stake:
-        errors.append(f"Stake {verification.stake.amount:.4f} exceeds maximum {max_stake:.4f}")
+        errors.append(
+            f"Stake {verification.stake.amount:.4f} exceeds maximum {max_stake:.4f}"
+        )
 
     # Available reputation check
     if verification.stake.amount > verifier_reputation.available_stake():
@@ -1167,8 +1255,12 @@ def validate_evidence_requirements(
     """
     errors = []
 
-    supporting = [e for e in evidence if e.contribution == EvidenceContribution.SUPPORTS]
-    contradicting = [e for e in evidence if e.contribution == EvidenceContribution.CONTRADICTS]
+    supporting = [
+        e for e in evidence if e.contribution == EvidenceContribution.SUPPORTS
+    ]
+    contradicting = [
+        e for e in evidence if e.contribution == EvidenceContribution.CONTRADICTS
+    ]
 
     if result == VerificationResult.CONFIRMED:
         if len(supporting) < 1:
@@ -1212,11 +1304,15 @@ def validate_dispute_submission(
 
     # Verification status check
     if verification.status != VerificationStatus.ACCEPTED:
-        errors.append(f"Cannot dispute verification in {verification.status.value} status")
+        errors.append(
+            f"Cannot dispute verification in {verification.status.value} status"
+        )
 
     # Dispute window check (7 days from acceptance)
     if verification.accepted_at:
-        dispute_deadline = verification.accepted_at + timedelta(days=ReputationConstants.DISPUTE_WINDOW_DAYS)
+        dispute_deadline = verification.accepted_at + timedelta(
+            days=ReputationConstants.DISPUTE_WINDOW_DAYS
+        )
         if datetime.now() > dispute_deadline:
             errors.append("Dispute window has expired")
 
@@ -1227,7 +1323,9 @@ def validate_dispute_submission(
     # Stake requirements
     min_stake = calculate_dispute_min_stake(verification.stake.amount, is_holder)
     if dispute.stake.amount < min_stake:
-        errors.append(f"Dispute stake {dispute.stake.amount:.4f} below minimum {min_stake:.4f}")
+        errors.append(
+            f"Dispute stake {dispute.stake.amount:.4f} below minimum {min_stake:.4f}"
+        )
 
     # Available reputation check
     if dispute.stake.amount > disputer_reputation.available_stake():
@@ -1298,7 +1396,8 @@ class VerificationService:
         stake = Stake(
             amount=stake_amount,
             type=StakeType.STANDARD,
-            locked_until=datetime.now() + timedelta(days=ReputationConstants.STAKE_LOCKUP_DAYS),
+            locked_until=datetime.now()
+            + timedelta(days=ReputationConstants.STAKE_LOCKUP_DAYS),
             escrow_id=uuid4(),
         )
 
@@ -1323,7 +1422,9 @@ class VerificationService:
         existing = [v for v in self._verifications.values() if v.belief_id == belief_id]
 
         # Validate
-        errors = validate_verification_submission(verification, belief_info, verifier_rep, existing)
+        errors = validate_verification_submission(
+            verification, belief_info, verifier_rep, existing
+        )
 
         if errors:
             raise ValidationException("; ".join(errors))
@@ -1334,7 +1435,9 @@ class VerificationService:
         # Store verification
         self._verifications[verification.id] = verification
 
-        logger.info(f"Verification {verification.id} submitted by {verifier_id} for belief {belief_id}")
+        logger.info(
+            f"Verification {verification.id} submitted by {verifier_id} for belief {belief_id}"
+        )
 
         return verification
 
@@ -1348,7 +1451,9 @@ class VerificationService:
             raise NotFoundError("Verification", str(verification_id))
 
         if verification.status != VerificationStatus.PENDING:
-            raise ValidationException(f"Verification is not pending: {verification.status.value}")
+            raise ValidationException(
+                f"Verification is not pending: {verification.status.value}"
+            )
 
         verification.status = VerificationStatus.ACCEPTED
         verification.accepted_at = datetime.now()
@@ -1396,7 +1501,8 @@ class VerificationService:
         stake = Stake(
             amount=stake_amount,
             type=StakeType.CHALLENGE,
-            locked_until=datetime.now() + timedelta(days=ReputationConstants.RESOLUTION_TIMEOUT_DAYS),
+            locked_until=datetime.now()
+            + timedelta(days=ReputationConstants.RESOLUTION_TIMEOUT_DAYS),
             escrow_id=uuid4(),
         )
 
@@ -1417,7 +1523,9 @@ class VerificationService:
         is_holder = disputer_id == verification.holder_id
 
         # Validate
-        errors = validate_dispute_submission(dispute, verification, disputer_rep, is_holder)
+        errors = validate_dispute_submission(
+            dispute, verification, disputer_rep, is_holder
+        )
 
         if errors:
             raise ValidationException("; ".join(errors))
@@ -1432,7 +1540,9 @@ class VerificationService:
         # Store dispute
         self._disputes[dispute.id] = dispute
 
-        logger.info(f"Dispute {dispute.id} submitted by {disputer_id} for verification {verification_id}")
+        logger.info(
+            f"Dispute {dispute.id} submitted by {disputer_id} for verification {verification_id}"
+        )
 
         return dispute
 
@@ -1521,7 +1631,9 @@ class VerificationService:
             for v in accepted:
                 rep = self.get_or_create_reputation(v.verifier_id)
                 weight = rep.overall * v.stake.amount
-                result_scores[v.result.value] = result_scores.get(v.result.value, 0) + weight
+                result_scores[v.result.value] = (
+                    result_scores.get(v.result.value, 0) + weight
+                )
                 total_weight += weight
 
             if total_weight > 0:
@@ -1600,8 +1712,21 @@ class VerificationService:
 
         # Count existing verifications
         existing = self.get_verifications_for_belief(verification.belief_id)
-        existing_confirmations = len([v for v in existing if v.result == VerificationResult.CONFIRMED and v.id != verification.id])
-        existing_contradictions = len([v for v in existing if v.result == VerificationResult.CONTRADICTED and v.id != verification.id])
+        existing_confirmations = len(
+            [
+                v
+                for v in existing
+                if v.result == VerificationResult.CONFIRMED and v.id != verification.id
+            ]
+        )
+        existing_contradictions = len(
+            [
+                v
+                for v in existing
+                if v.result == VerificationResult.CONTRADICTED
+                and v.id != verification.id
+            ]
+        )
 
         min_stake = calculate_min_stake(belief_confidence, 0.5)
 
@@ -1615,7 +1740,9 @@ class VerificationService:
                 belief_confidence,
                 existing_confirmations,
             )
-            holder_delta = calculate_holder_confirmation_bonus(verifier_rep.overall, verification.stake.amount, min_stake)
+            holder_delta = calculate_holder_confirmation_bonus(
+                verifier_rep.overall, verification.stake.amount, min_stake
+            )
 
         elif verification.result == VerificationResult.CONTRADICTED:
             is_first = existing_contradictions == 0
@@ -1626,7 +1753,9 @@ class VerificationService:
                 is_first,
                 existing_contradictions,
             )
-            holder_delta = -calculate_holder_contradiction_penalty(belief_confidence, verifier_rep.overall)
+            holder_delta = -calculate_holder_contradiction_penalty(
+                belief_confidence, verifier_rep.overall
+            )
             verifier_rep.discrepancy_finds += 1
 
         elif verification.result == VerificationResult.UNCERTAIN:
@@ -1634,7 +1763,10 @@ class VerificationService:
 
         elif verification.result == VerificationResult.PARTIAL:
             accuracy = 0.5
-            if verification.result_details and verification.result_details.accuracy_estimate is not None:
+            if (
+                verification.result_details
+                and verification.result_details.accuracy_estimate is not None
+            ):
                 accuracy = verification.result_details.accuracy_estimate
 
             verifier_delta = calculate_partial_reward(
@@ -1647,9 +1779,15 @@ class VerificationService:
             )
 
             # Holder gets mixed effect
-            confirm_bonus = calculate_holder_confirmation_bonus(verifier_rep.overall, verification.stake.amount, min_stake)
-            contradict_penalty = calculate_holder_contradiction_penalty(belief_confidence, verifier_rep.overall)
-            holder_delta = confirm_bonus * accuracy - contradict_penalty * (1 - accuracy)
+            confirm_bonus = calculate_holder_confirmation_bonus(
+                verifier_rep.overall, verification.stake.amount, min_stake
+            )
+            contradict_penalty = calculate_holder_contradiction_penalty(
+                belief_confidence, verifier_rep.overall
+            )
+            holder_delta = confirm_bonus * accuracy - contradict_penalty * (
+                1 - accuracy
+            )
 
         # Apply updates
         self._apply_reputation_update(
@@ -1668,7 +1806,9 @@ class VerificationService:
 
         verifier_rep.verification_count += 1
 
-    def _process_dispute_resolution(self, dispute: Dispute, verification: Verification) -> None:
+    def _process_dispute_resolution(
+        self, dispute: Dispute, verification: Verification
+    ) -> None:
         """Process reputation updates after dispute resolution."""
         verifier_rep = self.get_or_create_reputation(verification.verifier_id)
         disputer_rep = self.get_or_create_reputation(dispute.disputer_id)
@@ -1687,7 +1827,9 @@ class VerificationService:
             )
 
             # Disputer loses stake
-            self._release_stake(dispute.disputer_id, dispute_id=dispute.id, forfeit=True)
+            self._release_stake(
+                dispute.disputer_id, dispute_id=dispute.id, forfeit=True
+            )
             self._apply_reputation_update(
                 disputer_rep,
                 -dispute.stake.amount,
@@ -1700,7 +1842,9 @@ class VerificationService:
             verification.status = VerificationStatus.OVERTURNED
 
             # Verifier loses stake and penalty
-            self._release_stake(verification.verifier_id, verification_id=verification.id, forfeit=True)
+            self._release_stake(
+                verification.verifier_id, verification_id=verification.id, forfeit=True
+            )
             self._apply_reputation_update(
                 verifier_rep,
                 -verification.stake.amount,
@@ -1710,12 +1854,16 @@ class VerificationService:
 
             # Disputer gets reward
             reward = verification.stake.amount * 0.8
-            self._apply_reputation_update(disputer_rep, reward, "Dispute won - reward", dispute_id=dispute.id)
+            self._apply_reputation_update(
+                disputer_rep, reward, "Dispute won - reward", dispute_id=dispute.id
+            )
             self._release_stake(dispute.disputer_id, dispute_id=dispute.id)
 
             # If verification was CONTRADICTED and now overturned, restore holder
             if verification.result == VerificationResult.CONTRADICTED:
-                restore_amount = calculate_holder_contradiction_penalty(0.7, verifier_rep.overall)
+                restore_amount = calculate_holder_contradiction_penalty(
+                    0.7, verifier_rep.overall
+                )
                 self._apply_reputation_update(
                     holder_rep,
                     restore_amount,
@@ -1727,7 +1875,9 @@ class VerificationService:
             # Partial resolution
             verification.status = VerificationStatus.ACCEPTED
             # Complex proportional logic would go here
-            self._release_stake(verification.verifier_id, verification_id=verification.id)
+            self._release_stake(
+                verification.verifier_id, verification_id=verification.id
+            )
             self._release_stake(dispute.disputer_id, dispute_id=dispute.id)
 
         elif dispute.outcome == DisputeOutcome.DISMISSED:
@@ -1744,8 +1894,12 @@ class VerificationService:
             )
 
             # Disputer loses stake + penalty
-            self._release_stake(dispute.disputer_id, dispute_id=dispute.id, forfeit=True)
-            penalty = dispute.stake.amount * (1 + ReputationConstants.FRIVOLOUS_DISPUTE_PENALTY)
+            self._release_stake(
+                dispute.disputer_id, dispute_id=dispute.id, forfeit=True
+            )
+            penalty = dispute.stake.amount * (
+                1 + ReputationConstants.FRIVOLOUS_DISPUTE_PENALTY
+            )
             self._apply_reputation_update(
                 disputer_rep,
                 -penalty,
@@ -1766,7 +1920,9 @@ class VerificationService:
         old_value = reputation.overall
 
         # Apply with bounds
-        new_value = max(ReputationConstants.REPUTATION_FLOOR, min(1.0, old_value + delta))
+        new_value = max(
+            ReputationConstants.REPUTATION_FLOOR, min(1.0, old_value + delta)
+        )
         reputation.overall = new_value
         reputation.modified_at = datetime.now()
 
@@ -1789,7 +1945,9 @@ class VerificationService:
         )
         self._reputation_events.append(event)
 
-        logger.info(f"Reputation update for {reputation.identity_id}: {old_value:.4f} -> {new_value:.4f} ({delta:+.4f}) - {reason}")
+        logger.info(
+            f"Reputation update for {reputation.identity_id}: {old_value:.4f} -> {new_value:.4f} ({delta:+.4f}) - {reason}"
+        )
 
         return event
 

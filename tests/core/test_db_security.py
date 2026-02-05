@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from valence.core.db import VALID_TABLES, count_rows
 
 
@@ -134,6 +135,8 @@ class TestSQLInjectionPrevention:
         query = second_call_args[0]
 
         # sql.Composed or sql.SQL objects are used with sql.Identifier
-        assert isinstance(query, (sql.SQL, sql.Composed)), f"Expected sql.SQL or sql.Composed, got {type(query)}"
+        assert isinstance(
+            query, (sql.SQL, sql.Composed)
+        ), f"Expected sql.SQL or sql.Composed, got {type(query)}"
 
         assert result == 42

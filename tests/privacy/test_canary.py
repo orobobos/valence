@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.canary import (
     ZERO_WIDTH_JOINER,
     ZERO_WIDTH_NON_JOINER,
@@ -238,7 +239,9 @@ class TestEmbedCanary:
         """Invisible embedding distributed across words."""
         content = "This is a longer piece of content with many words."
 
-        result = embed_canary(content, token, EmbeddingStrategy.INVISIBLE, "distributed")
+        result = embed_canary(
+            content, token, EmbeddingStrategy.INVISIBLE, "distributed"
+        )
 
         # Should contain invisible characters
         zero_width_chars = {ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER}
@@ -597,7 +600,9 @@ class TestIntegrationScenarios:
                 content=document,
                 metadata={"document_type": "financial"},
             )
-            shared_docs[recipient] = embed_canary(document, token, EmbeddingStrategy.INVISIBLE)
+            shared_docs[recipient] = embed_canary(
+                document, token, EmbeddingStrategy.INVISIBLE
+            )
 
         # Simulate leak detection
         leaked_content = shared_docs["bob"]  # Bob leaked the document
@@ -628,7 +633,9 @@ class TestIntegrationScenarios:
             recipient_id="external-partner",
             metadata={"visibility": "invisible"},
         )
-        external_doc = embed_canary(content, external_token, EmbeddingStrategy.INVISIBLE)
+        external_doc = embed_canary(
+            content, external_token, EmbeddingStrategy.INVISIBLE
+        )
 
         # Both should be detectable
         internal_detected = detect_canaries(internal_doc, registry.secret_key)

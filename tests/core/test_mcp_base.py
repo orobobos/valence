@@ -6,6 +6,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+
 from valence.core.exceptions import DatabaseException, ValidationException
 
 # ============================================================================

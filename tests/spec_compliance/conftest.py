@@ -206,7 +206,13 @@ def parse_create_table(sql: str, table_name: str) -> dict[str, str]:
 @pytest.fixture
 def schema_sql() -> str:
     """Load the schema.sql file."""
-    schema_path = Path(__file__).parent.parent.parent / "src" / "valence" / "substrate" / "schema.sql"
+    schema_path = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "valence"
+        / "substrate"
+        / "schema.sql"
+    )
     return schema_path.read_text()
 
 

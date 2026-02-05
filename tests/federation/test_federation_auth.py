@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.requests import Request
+
 from valence.server.federation_endpoints import (
     require_did_signature,
     verify_did_signature,
@@ -122,7 +123,7 @@ class TestDIDSignatureVerification:
         mock_did_doc = MagicMock()
         mock_did_doc.get_public_key.return_value = keypair.public_key_multibase
 
-        with patch("valence.federation.identity.parse_did") as mock_parse:
+        with patch("valence.federation.identity.parse_did"):
             with patch("valence.federation.identity.resolve_did_sync") as mock_resolve:
                 mock_resolve.return_value = mock_did_doc
 
@@ -199,7 +200,9 @@ class TestRequireDIDSignatureDecorator:
             mock_settings.return_value.federation_enabled = True
 
             with patch("valence.federation.identity.parse_did"):
-                with patch("valence.federation.identity.resolve_did_sync") as mock_resolve:
+                with patch(
+                    "valence.federation.identity.resolve_did_sync"
+                ) as mock_resolve:
                     mock_resolve.return_value = mock_did_doc
 
                     response = await test_handler(mock_request)
@@ -242,7 +245,10 @@ class TestFederationEndpointSecurity:
 
         # The actual test is that these functions don't check for DID signature
         # We can verify by checking they don't have the wrapper's behavior
-        assert not hasattr(vfp_node_metadata, "__wrapped__") or vfp_node_metadata.__name__ == "vfp_node_metadata"
+        assert (
+            not hasattr(vfp_node_metadata, "__wrapped__")
+            or vfp_node_metadata.__name__ == "vfp_node_metadata"
+        )
 
     def test_protocol_endpoint_requires_auth(self):
         """Protocol endpoint should require DID signature."""
@@ -277,7 +283,9 @@ class TestFederationEndpointSecurity:
         ]
 
         for handler in post_handlers:
-            assert hasattr(handler, "__wrapped__"), f"{handler.__name__} should be decorated with @require_did_signature"
+            assert hasattr(
+                handler, "__wrapped__"
+            ), f"{handler.__name__} should be decorated with @require_did_signature"
 
 
 class TestReplayProtection:

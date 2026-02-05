@@ -102,7 +102,9 @@ async def cmd_status(args: argparse.Namespace) -> int:
                     return 1
 
     except aiohttp.ClientConnectorError:
-        print(f"❌ Cannot connect to router at {args.host}:{args.port}", file=sys.stderr)
+        print(
+            f"❌ Cannot connect to router at {args.host}:{args.port}", file=sys.stderr
+        )
         return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)

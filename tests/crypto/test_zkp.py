@@ -7,6 +7,7 @@ for compliance verification use cases.
 from datetime import datetime, timedelta
 
 import pytest
+
 from valence.crypto.zkp import (
     ComplianceProof,
     # Types
@@ -607,7 +608,7 @@ class TestEndToEnd:
         """Test complete consent proof workflow."""
         # 1. Setup
         backend = MockZKPBackend()
-        params = backend.setup(ComplianceProofType.HAS_CONSENT)
+        backend.setup(ComplianceProofType.HAS_CONSENT)
 
         # 2. Prover generates proof
         prover = backend.create_prover(ComplianceProofType.HAS_CONSENT)
@@ -702,8 +703,12 @@ class TestEndToEnd:
         v2 = backend.create_verifier(ComplianceProofType.WITHIN_POLICY)
         v3 = backend.create_verifier(ComplianceProofType.NOT_REVOKED)
 
-        assert v1.verify(proofs["consent"], {"user_id": "alice", "action": "read"}).valid
-        assert v2.verify(proofs["policy"], {"policy_hash": "hash", "operation_type": "read"}).valid
+        assert v1.verify(
+            proofs["consent"], {"user_id": "alice", "action": "read"}
+        ).valid
+        assert v2.verify(
+            proofs["policy"], {"policy_hash": "hash", "operation_type": "read"}
+        ).valid
         assert v3.verify(
             proofs["revocation"],
             {"credential_commitment": "commit", "revocation_accumulator": "acc"},

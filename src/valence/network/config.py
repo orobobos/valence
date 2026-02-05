@@ -231,7 +231,9 @@ class TrafficAnalysisMitigationConfig:
     metrics_enabled: bool = True  # Track timing metrics
 
     @classmethod
-    def from_privacy_level(cls, level: PrivacyLevel) -> "TrafficAnalysisMitigationConfig":
+    def from_privacy_level(
+        cls, level: PrivacyLevel
+    ) -> "TrafficAnalysisMitigationConfig":
         """
         Create configuration from a privacy level preset.
 
@@ -347,9 +349,13 @@ class TrafficAnalysisMitigationConfig:
             max_delay_ms += self.jitter.max_delay_ms
             if self.jitter.distribution == "exponential":
                 # Exponential mean is roughly (max-min)/2
-                avg_delay_ms += (self.jitter.max_delay_ms - self.jitter.min_delay_ms) // 2
+                avg_delay_ms += (
+                    self.jitter.max_delay_ms - self.jitter.min_delay_ms
+                ) // 2
             else:
-                avg_delay_ms += (self.jitter.min_delay_ms + self.jitter.max_delay_ms) // 2
+                avg_delay_ms += (
+                    self.jitter.min_delay_ms + self.jitter.max_delay_ms
+                ) // 2
 
         # Constant rate delay (worst case: waiting for next slot)
         if self.constant_rate.enabled:
@@ -456,7 +462,9 @@ class TrafficAnalysisMitigationConfig:
 PRIVACY_LOW = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.LOW)
 PRIVACY_MEDIUM = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.MEDIUM)
 PRIVACY_HIGH = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.HIGH)
-PRIVACY_PARANOID = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.PARANOID)
+PRIVACY_PARANOID = TrafficAnalysisMitigationConfig.from_privacy_level(
+    PrivacyLevel.PARANOID
+)
 
 
 def get_recommended_config(
@@ -478,7 +486,9 @@ def get_recommended_config(
     if high_security and not latency_sensitive:
         if bandwidth_limited:
             # HIGH without constant-rate
-            config = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.HIGH)
+            config = TrafficAnalysisMitigationConfig.from_privacy_level(
+                PrivacyLevel.HIGH
+            )
             config.constant_rate.enabled = False
             return config
         else:
@@ -487,7 +497,9 @@ def get_recommended_config(
     elif latency_sensitive:
         if high_security:
             # MEDIUM with reduced delays
-            config = TrafficAnalysisMitigationConfig.from_privacy_level(PrivacyLevel.MEDIUM)
+            config = TrafficAnalysisMitigationConfig.from_privacy_level(
+                PrivacyLevel.MEDIUM
+            )
             config.jitter.max_delay_ms = 200
             config.batching.batch_interval_ms = 1000
             return config

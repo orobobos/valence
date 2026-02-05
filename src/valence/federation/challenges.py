@@ -61,8 +61,12 @@ class ReviewerConfig:
     min_verifications: int = 10  # Minimum verification history
 
     # Independence requirements
-    max_shared_federations: int = 0  # Reviewers cannot share federations with belief holder
-    min_independence_score: float = 0.6  # Minimum pairwise independence between reviewers
+    max_shared_federations: int = (
+        0  # Reviewers cannot share federations with belief holder
+    )
+    min_independence_score: float = (
+        0.6  # Minimum pairwise independence between reviewers
+    )
 
     # Timing
     review_deadline_days: int = 7  # Days to complete review
@@ -227,7 +231,9 @@ class Challenge:
         """Set review deadline if not set."""
         if self.review_deadline is None:
             config = DEFAULT_REVIEWER_CONFIG
-            self.review_deadline = self.created_at + timedelta(days=config.review_deadline_days)
+            self.review_deadline = self.created_at + timedelta(
+                days=config.review_deadline_days
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -242,10 +248,14 @@ class Challenge:
             "counter_evidence": self.counter_evidence,
             "status": self.status.value,
             "appeal_round": self.appeal_round,
-            "previous_challenge_id": (str(self.previous_challenge_id) if self.previous_challenge_id else None),
+            "previous_challenge_id": (
+                str(self.previous_challenge_id) if self.previous_challenge_id else None
+            ),
             "resolution": self.resolution.to_dict() if self.resolution else None,
             "created_at": self.created_at.isoformat(),
-            "review_deadline": (self.review_deadline.isoformat() if self.review_deadline else None),
+            "review_deadline": (
+                self.review_deadline.isoformat() if self.review_deadline else None
+            ),
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
         }
 
@@ -258,7 +268,11 @@ class Challenge:
 
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            target_belief_id=(UUID(data["target_belief_id"]) if isinstance(data["target_belief_id"], str) else data["target_belief_id"]),
+            target_belief_id=(
+                UUID(data["target_belief_id"])
+                if isinstance(data["target_belief_id"], str)
+                else data["target_belief_id"]
+            ),
             target_layer=data["target_layer"],
             challenger_did=data["challenger_did"],
             challenger_stake=float(data["challenger_stake"]),
@@ -267,11 +281,27 @@ class Challenge:
             counter_evidence=data.get("counter_evidence", []),
             status=ChallengeStatus(data["status"]),
             appeal_round=data.get("appeal_round", 0),
-            previous_challenge_id=(UUID(data["previous_challenge_id"]) if data.get("previous_challenge_id") else None),
+            previous_challenge_id=(
+                UUID(data["previous_challenge_id"])
+                if data.get("previous_challenge_id")
+                else None
+            ),
             resolution=resolution,
-            created_at=(datetime.fromisoformat(data["created_at"]) if isinstance(data["created_at"], str) else data["created_at"]),
-            review_deadline=(datetime.fromisoformat(data["review_deadline"]) if data.get("review_deadline") else None),
-            resolved_at=(datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None),
+            created_at=(
+                datetime.fromisoformat(data["created_at"])
+                if isinstance(data["created_at"], str)
+                else data["created_at"]
+            ),
+            review_deadline=(
+                datetime.fromisoformat(data["review_deadline"])
+                if data.get("review_deadline")
+                else None
+            ),
+            resolved_at=(
+                datetime.fromisoformat(data["resolved_at"])
+                if data.get("resolved_at")
+                else None
+            ),
         )
 
 
@@ -312,9 +342,13 @@ class ChallengeReview:
             "assigned_at": self.assigned_at.isoformat(),
             "decision": self.decision.value if self.decision else None,
             "reasoning": self.reasoning,
-            "confidence": (float(self.confidence) if self.confidence is not None else None),
+            "confidence": (
+                float(self.confidence) if self.confidence is not None else None
+            ),
             "stake": float(self.stake),
-            "completed_at": (self.completed_at.isoformat() if self.completed_at else None),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
         }
 
     @classmethod
@@ -322,16 +356,32 @@ class ChallengeReview:
         """Create from dictionary."""
         return cls(
             id=UUID(data["id"]) if isinstance(data["id"], str) else data["id"],
-            challenge_id=(UUID(data["challenge_id"]) if isinstance(data["challenge_id"], str) else data["challenge_id"]),
+            challenge_id=(
+                UUID(data["challenge_id"])
+                if isinstance(data["challenge_id"], str)
+                else data["challenge_id"]
+            ),
             reviewer_did=data["reviewer_did"],
             reviewer_reputation=float(data["reviewer_reputation"]),
             status=ReviewerStatus(data["status"]),
-            assigned_at=(datetime.fromisoformat(data["assigned_at"]) if isinstance(data["assigned_at"], str) else data["assigned_at"]),
+            assigned_at=(
+                datetime.fromisoformat(data["assigned_at"])
+                if isinstance(data["assigned_at"], str)
+                else data["assigned_at"]
+            ),
             decision=ReviewDecision(data["decision"]) if data.get("decision") else None,
             reasoning=data.get("reasoning"),
-            confidence=(float(data["confidence"]) if data.get("confidence") is not None else None),
+            confidence=(
+                float(data["confidence"])
+                if data.get("confidence") is not None
+                else None
+            ),
             stake=float(data.get("stake", 0)),
-            completed_at=(datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data.get("completed_at")
+                else None
+            ),
         )
 
 
@@ -385,7 +435,9 @@ class ChallengeResolution:
                 "challenger_reward": float(self.challenger_reward),
                 "challenger_penalty": float(self.challenger_penalty),
                 "belief_holder_penalty": float(self.belief_holder_penalty),
-                "reviewer_penalties": {k: float(v) for k, v in self.reviewer_penalties.items()},
+                "reviewer_penalties": {
+                    k: float(v) for k, v in self.reviewer_penalties.items()
+                },
             },
             "summary": self.summary,
             "resolved_by": self.resolved_by,
@@ -414,7 +466,11 @@ class ChallengeResolution:
             reviewer_penalties=reputation.get("reviewer_penalties", {}),
             summary=data.get("summary", ""),
             resolved_by=data.get("resolved_by", []),
-            resolved_at=(datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else datetime.now()),
+            resolved_at=(
+                datetime.fromisoformat(data["resolved_at"])
+                if data.get("resolved_at")
+                else datetime.now()
+            ),
         )
 
 
@@ -459,7 +515,9 @@ class ReviewerReputation:
             self.accuracy_rate = 1.0
         self.updated_at = datetime.now()
 
-    def record_review_outcome(self, was_upheld: bool, domain: str | None = None) -> None:
+    def record_review_outcome(
+        self, was_upheld: bool, domain: str | None = None
+    ) -> None:
         """Record the outcome of a review."""
         self.total_reviews += 1
         if was_upheld:
@@ -472,7 +530,9 @@ class ReviewerReputation:
                 self.domains.append(domain)
             # Update domain accuracy
             domain_total = self.domain_accuracy.get(f"{domain}_total", 0) + 1
-            domain_upheld = self.domain_accuracy.get(f"{domain}_upheld", 0) + (1 if was_upheld else 0)
+            domain_upheld = self.domain_accuracy.get(f"{domain}_upheld", 0) + (
+                1 if was_upheld else 0
+            )
             self.domain_accuracy[f"{domain}_total"] = domain_total
             self.domain_accuracy[f"{domain}_upheld"] = domain_upheld
             self.domain_accuracy[domain] = domain_upheld / domain_total
@@ -501,10 +561,16 @@ class ReviewerReputation:
             "eligibility": {
                 "is_eligible": self.is_eligible,
                 "ineligible_reason": self.ineligible_reason,
-                "ineligible_until": (self.ineligible_until.isoformat() if self.ineligible_until else None),
+                "ineligible_until": (
+                    self.ineligible_until.isoformat() if self.ineligible_until else None
+                ),
             },
-            "first_review_at": (self.first_review_at.isoformat() if self.first_review_at else None),
-            "last_review_at": (self.last_review_at.isoformat() if self.last_review_at else None),
+            "first_review_at": (
+                self.first_review_at.isoformat() if self.first_review_at else None
+            ),
+            "last_review_at": (
+                self.last_review_at.isoformat() if self.last_review_at else None
+            ),
             "updated_at": self.updated_at.isoformat(),
         }
 
@@ -567,7 +633,9 @@ class ReviewerSelector:
         exclude_dids.append(challenge.challenger_did)
 
         # Determine required reviewer count
-        required_count = self.config.get_appeal_reviewer_count(challenge.target_layer, challenge.appeal_round)
+        required_count = self.config.get_appeal_reviewer_count(
+            challenge.target_layer, challenge.appeal_round
+        )
 
         # Filter for eligibility
         eligible = self._filter_eligible(
@@ -577,7 +645,9 @@ class ReviewerSelector:
         )
 
         if len(eligible) < required_count:
-            raise InsufficientReviewersError(f"Need {required_count} reviewers but only {len(eligible)} eligible")
+            raise InsufficientReviewersError(
+                f"Need {required_count} reviewers but only {len(eligible)} eligible"
+            )
 
         # Select reviewers ensuring pairwise independence
         selected = self._select_independent_reviewers(
@@ -650,7 +720,9 @@ class ReviewerSelector:
             # Check independence with already selected reviewers
             is_independent = True
             for existing in selected:
-                independence = self._calculate_pairwise_independence(candidate, existing)
+                independence = self._calculate_pairwise_independence(
+                    candidate, existing
+                )
                 if independence < self.config.min_independence_score:
                     is_independent = False
                     break
@@ -673,7 +745,9 @@ class ReviewerSelector:
         shared_federations = set(a.federations) & set(b.federations)
         total_federations = set(a.federations) | set(b.federations)
         if total_federations:
-            federation_independence = 1.0 - len(shared_federations) / len(total_federations)
+            federation_independence = 1.0 - len(shared_federations) / len(
+                total_federations
+            )
         else:
             federation_independence = 1.0
 
@@ -756,17 +830,31 @@ class ChallengeResolver:
             resolution.challenger_reward = challenge.challenger_stake * 0.5
             resolution.belief_holder_penalty = challenge.challenger_stake * 0.25
             resolution.new_layer = self._demote_layer(challenge.target_layer)
-            resolution.summary = f"Challenge upheld by {uphold_votes}/{voting_reviewers} reviewers"
+            resolution.summary = (
+                f"Challenge upheld by {uphold_votes}/{voting_reviewers} reviewers"
+            )
         elif outcome == "rejected":
             resolution.challenger_penalty = challenge.challenger_stake * 0.5
-            resolution.summary = f"Challenge rejected by {reject_votes}/{voting_reviewers} reviewers"
+            resolution.summary = (
+                f"Challenge rejected by {reject_votes}/{voting_reviewers} reviewers"
+            )
         else:
-            resolution.summary = f"No consensus reached ({uphold_votes} uphold, {reject_votes} reject)"
+            resolution.summary = (
+                f"No consensus reached ({uphold_votes} uphold, {reject_votes} reject)"
+            )
 
         # Calculate reviewer penalties (those who voted against majority)
-        majority_decision = ReviewDecision.UPHOLD if uphold_votes > reject_votes else ReviewDecision.REJECT
+        majority_decision = (
+            ReviewDecision.UPHOLD
+            if uphold_votes > reject_votes
+            else ReviewDecision.REJECT
+        )
         for review in reviews:
-            if review.decision and review.decision != majority_decision and review.decision != ReviewDecision.ABSTAIN:
+            if (
+                review.decision
+                and review.decision != majority_decision
+                and review.decision != ReviewDecision.ABSTAIN
+            ):
                 # Penalty proportional to stake
                 resolution.reviewer_penalties[review.reviewer_did] = review.stake * 0.1
 
@@ -808,7 +896,9 @@ class AppealHandler:
             )
 
         if challenge.resolved_at:
-            deadline = challenge.resolved_at + timedelta(days=self.config.appeal_deadline_days)
+            deadline = challenge.resolved_at + timedelta(
+                days=self.config.appeal_deadline_days
+            )
             if datetime.now() > deadline:
                 return False, "Appeal deadline has passed"
 
@@ -837,7 +927,8 @@ class AppealHandler:
             target_belief_id=original_challenge.target_belief_id,
             target_layer=original_challenge.target_layer,
             challenger_did=original_challenge.challenger_did,
-            challenger_stake=original_challenge.challenger_stake * 1.5,  # Higher stake for appeal
+            challenger_stake=original_challenge.challenger_stake
+            * 1.5,  # Higher stake for appeal
             challenge_type=original_challenge.challenge_type,
             reasoning=f"APPEAL: {appeal_reasoning}\n\nOriginal: {original_challenge.reasoning}",
             counter_evidence=original_challenge.counter_evidence,
@@ -849,7 +940,10 @@ class AppealHandler:
         # Update original challenge status
         original_challenge.status = ChallengeStatus.APPEALED
 
-        logger.info(f"Appeal created: {appeal.id} (round {appeal.appeal_round}) " f"for challenge {original_challenge.id}")
+        logger.info(
+            f"Appeal created: {appeal.id} (round {appeal.appeal_round}) "
+            f"for challenge {original_challenge.id}"
+        )
 
         return appeal
 

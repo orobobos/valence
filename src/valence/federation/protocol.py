@@ -140,7 +140,9 @@ class AuthChallengeResponse(ProtocolMessage):
 
     type: MessageType = MessageType.AUTH_CHALLENGE_RESPONSE
     challenge: str = ""
-    expires_at: datetime = field(default_factory=lambda: datetime.now() + timedelta(minutes=5))
+    expires_at: datetime = field(
+        default_factory=lambda: datetime.now() + timedelta(minutes=5)
+    )
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
@@ -180,7 +182,9 @@ class AuthVerifyResponse(ProtocolMessage):
 
     type: MessageType = MessageType.AUTH_VERIFY_RESPONSE
     session_token: str = ""
-    expires_at: datetime = field(default_factory=lambda: datetime.now() + timedelta(hours=1))
+    expires_at: datetime = field(
+        default_factory=lambda: datetime.now() + timedelta(hours=1)
+    )
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
@@ -526,7 +530,9 @@ def handle_share_belief(
                 rejected += 1
                 belief_id = belief_data.get("federation_id", "unknown")
                 # result is str when not True (rejection reason)
-                rejection_reasons[str(belief_id)] = str(result) if result else "Unknown error"
+                rejection_reasons[str(belief_id)] = (
+                    str(result) if result else "Unknown error"
+                )
         except Exception as e:
             rejected += 1
             belief_id = belief_data.get("federation_id", "unknown")
@@ -604,7 +610,9 @@ def _process_incoming_belief(
         public_key = row["public_key_multibase"]
 
     # Verify signature
-    if not verify_belief_signature(signable_content, belief_data["origin_signature"], public_key):
+    if not verify_belief_signature(
+        signable_content, belief_data["origin_signature"], public_key
+    ):
         return "Invalid signature"
 
     # Check hop count limit
@@ -656,7 +664,9 @@ def _process_incoming_belief(
 
     # Adjust confidence based on sender trust
     adjusted_overall = confidence.overall * sender_trust
-    confidence = confidence.with_dimension(ConfidenceDimension.OVERALL, adjusted_overall, recalculate=False)
+    confidence = confidence.with_dimension(
+        ConfidenceDimension.OVERALL, adjusted_overall, recalculate=False
+    )
 
     with get_cursor() as cur:
         # Insert belief
@@ -958,7 +968,9 @@ def handle_sync_request(
                 change = SyncChange(
                     change_type=change_type,
                     belief=belief_dict,
-                    old_belief_id=(str(row["supersedes_id"]) if row.get("supersedes_id") else None),
+                    old_belief_id=(
+                        str(row["supersedes_id"]) if row.get("supersedes_id") else None
+                    ),
                     timestamp=row["modified_at"],
                 )
                 changes.append(change)
@@ -1147,7 +1159,9 @@ async def handle_message(
             # Try to look up sender by DID
             if sender_did:
                 with get_cursor() as cur:
-                    cur.execute("SELECT id FROM federation_nodes WHERE did = %s", (sender_did,))
+                    cur.execute(
+                        "SELECT id FROM federation_nodes WHERE did = %s", (sender_did,)
+                    )
                     row = cur.fetchone()
                     if row:
                         sender_node_id = row["id"]
@@ -1238,7 +1252,9 @@ def _handle_trust_attestation(
 
         # Get subject node
         with get_cursor() as cur:
-            cur.execute("SELECT id FROM federation_nodes WHERE did = %s", (subject_did,))
+            cur.execute(
+                "SELECT id FROM federation_nodes WHERE did = %s", (subject_did,)
+            )
             row = cur.fetchone()
             if not row:
                 return TrustAttestationResponse(

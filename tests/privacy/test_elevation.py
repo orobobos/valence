@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+
 from valence.privacy.elevation import (
     ElevationError,
     ElevationProposal,

@@ -29,8 +29,12 @@ def migrate_visibility(old_visibility: str) -> dict[str, Any]:
         Dictionary representation of SharePolicy for JSON storage
     """
     mapping = {
-        "private": SharePolicy(level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC),
-        "PRIVATE": SharePolicy(level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC),
+        "private": SharePolicy(
+            level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC
+        ),
+        "PRIVATE": SharePolicy(
+            level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC
+        ),
         "federated": SharePolicy(
             level=ShareLevel.BOUNDED,
             enforcement=EnforcementType.CRYPTOGRAPHIC,
@@ -43,15 +47,21 @@ def migrate_visibility(old_visibility: str) -> dict[str, Any]:
             enforcement=EnforcementType.CRYPTOGRAPHIC,
             propagation=PropagationRules(allowed_domains=["federation"]),
         ),
-        "public": SharePolicy(level=ShareLevel.PUBLIC, enforcement=EnforcementType.HONOR),
-        "PUBLIC": SharePolicy(level=ShareLevel.PUBLIC, enforcement=EnforcementType.HONOR),
+        "public": SharePolicy(
+            level=ShareLevel.PUBLIC, enforcement=EnforcementType.HONOR
+        ),
+        "PUBLIC": SharePolicy(
+            level=ShareLevel.PUBLIC, enforcement=EnforcementType.HONOR
+        ),
     }
 
     policy = mapping.get(old_visibility)
     if not policy:
         # Default to private for unknown values
         logger.warning(f"Unknown visibility '{old_visibility}', defaulting to private")
-        policy = SharePolicy(level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC)
+        policy = SharePolicy(
+            level=ShareLevel.PRIVATE, enforcement=EnforcementType.CRYPTOGRAPHIC
+        )
 
     return policy.to_dict()
 
@@ -98,7 +108,9 @@ async def migrate_all_beliefs(db_connection) -> dict[str, Any]:
     """
     # Count before migration
     total = await db_connection.fetchval("SELECT COUNT(*) FROM beliefs")
-    needs_migration = await db_connection.fetchval("SELECT COUNT(*) FROM beliefs WHERE share_policy IS NULL")
+    needs_migration = await db_connection.fetchval(
+        "SELECT COUNT(*) FROM beliefs WHERE share_policy IS NULL"
+    )
 
     if needs_migration == 0:
         logger.info("No beliefs need migration")
@@ -106,8 +118,7 @@ async def migrate_all_beliefs(db_connection) -> dict[str, Any]:
 
     # Batch migrate using CASE statement
     # This is more efficient than row-by-row updates
-    await db_connection.execute(
-        """
+    await db_connection.execute("""
         UPDATE beliefs
         SET share_policy = CASE visibility
             WHEN 'private' THEN '{"level": "private", "enforcement": "cryptographic", "recipients": null, "propagation": null}'::jsonb
@@ -119,11 +130,12 @@ async def migrate_all_beliefs(db_connection) -> dict[str, Any]:
             ELSE '{"level": "private", "enforcement": "cryptographic", "recipients": null, "propagation": null}'::jsonb
         END
         WHERE share_policy IS NULL
-    """
-    )
+    """)
 
     # Count after migration
-    migrated = await db_connection.fetchval("SELECT COUNT(*) FROM beliefs WHERE share_policy IS NOT NULL")
+    migrated = await db_connection.fetchval(
+        "SELECT COUNT(*) FROM beliefs WHERE share_policy IS NOT NULL"
+    )
 
     logger.info(f"Migration complete: {needs_migration} beliefs migrated")
 
@@ -154,8 +166,7 @@ def migrate_all_beliefs_sync(db_connection) -> dict[str, Any]:
             return {"total": total, "needed_migration": 0, "migrated": 0}
 
         # Batch migrate
-        cur.execute(
-            """
+        cur.execute("""
             UPDATE beliefs
             SET share_policy = CASE visibility
                 WHEN 'private' THEN '{"level": "private", "enforcement": "cryptographic", "recipients": null, "propagation": null}'::jsonb
@@ -167,8 +178,7 @@ def migrate_all_beliefs_sync(db_connection) -> dict[str, Any]:
                 ELSE '{"level": "private", "enforcement": "cryptographic", "recipients": null, "propagation": null}'::jsonb
             END
             WHERE share_policy IS NULL
-        """
-        )
+        """)
 
         db_connection.commit()
 

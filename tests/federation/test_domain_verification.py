@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.federation.domain_verification import (
     CHALLENGE_PREFIX,
     # Constants
@@ -366,7 +367,9 @@ class TestDomainChallenge:
 class TestDomainAttestation:
     """Tests for DomainAttestation dataclass."""
 
-    def test_create_attestation(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    def test_create_attestation(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test creating a domain attestation."""
         attestation = DomainAttestation(
             attestation_id="att-123",
@@ -382,7 +385,9 @@ class TestDomainAttestation:
         assert attestation.attestation_type == AttestationType.DIRECT
         assert attestation.is_valid is True
 
-    def test_attestation_expiration(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    def test_attestation_expiration(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test attestation expiration."""
         past_time = datetime.now() - timedelta(days=400)
         attestation = DomainAttestation(
@@ -396,7 +401,9 @@ class TestDomainAttestation:
 
         assert attestation.is_valid is False
 
-    def test_attestation_revocation(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    def test_attestation_revocation(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test attestation revocation."""
         attestation = DomainAttestation(
             attestation_id="rev-123",
@@ -413,7 +420,9 @@ class TestDomainAttestation:
 
         assert attestation.is_valid is False
 
-    def test_to_dict_and_from_dict(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    def test_to_dict_and_from_dict(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test serialization and deserialization."""
         original = DomainAttestation(
             attestation_id="serial-att-123",
@@ -439,7 +448,9 @@ class TestDomainAttestation:
 class TestChallengeStore:
     """Tests for ChallengeStore."""
 
-    def test_add_and_get(self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str):
+    def test_add_and_get(
+        self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str
+    ):
         """Test adding and retrieving challenges."""
         challenge = DomainChallenge(
             challenge_id="store-123",
@@ -454,7 +465,9 @@ class TestChallengeStore:
         assert retrieved is not None
         assert retrieved.challenge_id == "store-123"
 
-    def test_get_for_domain(self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str):
+    def test_get_for_domain(
+        self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str
+    ):
         """Test getting challenges by domain."""
         for i in range(3):
             challenge = DomainChallenge(
@@ -468,7 +481,9 @@ class TestChallengeStore:
         challenges = challenge_store.get_for_domain(test_domain)
         assert len(challenges) == 3
 
-    def test_update(self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str):
+    def test_update(
+        self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str
+    ):
         """Test updating a challenge."""
         challenge = DomainChallenge(
             challenge_id="update-123",
@@ -485,7 +500,9 @@ class TestChallengeStore:
         retrieved = challenge_store.get("update-123")
         assert retrieved.status == ChallengeStatus.VERIFIED
 
-    def test_remove(self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str):
+    def test_remove(
+        self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str
+    ):
         """Test removing a challenge."""
         challenge = DomainChallenge(
             challenge_id="remove-123",
@@ -499,7 +516,9 @@ class TestChallengeStore:
 
         assert challenge_store.get("remove-123") is None
 
-    def test_cleanup_expired(self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str):
+    def test_cleanup_expired(
+        self, challenge_store: ChallengeStore, test_domain: str, remote_fed_did: str
+    ):
         """Test cleaning up expired challenges."""
         # Add an expired challenge
         expired_time = datetime.now() - timedelta(hours=CHALLENGE_TTL_HOURS + 1)
@@ -602,7 +621,9 @@ class TestAttestationStore:
         attestation_store.add(attestation1)
         attestation_store.add(attestation2)
 
-        filtered = attestation_store.get_for_domain(test_domain, subject_did=remote_fed_did)
+        filtered = attestation_store.get_for_domain(
+            test_domain, subject_did=remote_fed_did
+        )
         assert len(filtered) == 1
         assert filtered[0].subject_did == remote_fed_did
 
@@ -681,7 +702,9 @@ class TestCreateChallenge:
         assert retrieved.challenge_id == challenge.challenge_id
 
     @pytest.mark.asyncio
-    async def test_create_challenge_dns_value_format(self, test_domain: str, remote_fed_did: str):
+    async def test_create_challenge_dns_value_format(
+        self, test_domain: str, remote_fed_did: str
+    ):
         """Test DNS TXT value format."""
         challenge = await create_challenge(test_domain, remote_fed_did)
 
@@ -735,7 +758,9 @@ class TestCheckChallenge:
         assert result.status == VerificationStatus.EXPIRED
 
     @pytest.mark.asyncio
-    async def test_check_already_verified_challenge(self, test_domain: str, remote_fed_did: str):
+    async def test_check_already_verified_challenge(
+        self, test_domain: str, remote_fed_did: str
+    ):
         """Test checking an already-verified challenge."""
         store = get_challenge_store()
         challenge = DomainChallenge(
@@ -754,7 +779,9 @@ class TestCheckChallenge:
         assert result.cached is True
 
     @pytest.mark.asyncio
-    async def test_check_challenge_dns_not_found(self, test_domain: str, remote_fed_did: str):
+    async def test_check_challenge_dns_not_found(
+        self, test_domain: str, remote_fed_did: str
+    ):
         """Test checking challenge when DNS record not found."""
         challenge = await create_challenge(test_domain, remote_fed_did)
 
@@ -779,12 +806,18 @@ class TestVerifyDomain:
     """Tests for verify_domain function."""
 
     @pytest.mark.asyncio
-    async def test_verify_domain_via_dns(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_via_dns(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification via DNS TXT record."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (True, f"valence-federation={remote_fed_did}", None)
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 result = await verify_domain(
@@ -801,12 +834,18 @@ class TestVerifyDomain:
                 assert result.evidence[0].method == DomainVerificationMethod.DNS_TXT
 
     @pytest.mark.asyncio
-    async def test_verify_domain_via_did_document(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_via_did_document(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification via DID document."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (False, None, "Not found")
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (True, f"https://{test_domain}", None)
 
                 result = await verify_domain(
@@ -821,22 +860,30 @@ class TestVerifyDomain:
                 assert result.method == DomainVerificationMethod.DID_DOCUMENT
 
     @pytest.mark.asyncio
-    async def test_verify_domain_via_attestation(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_via_attestation(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification via mutual attestation."""
         # Create an attestation
-        attestation = await create_attestation(
+        await create_attestation(
             domain=test_domain,
             subject_did=remote_fed_did,
             attester_did="did:vkb:web:trusted-attester",
         )
 
-        with patch("valence.federation.domain_verification.get_federation_trust") as mock_trust:
+        with patch(
+            "valence.federation.domain_verification.get_federation_trust"
+        ) as mock_trust:
             mock_trust.return_value = 0.8  # High trust
 
-            with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+            with patch(
+                "valence.federation.domain_verification.verify_dns_txt_record"
+            ) as mock_dns:
                 mock_dns.return_value = (False, None, "Not found")
 
-                with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+                with patch(
+                    "valence.federation.domain_verification.verify_did_document_claim"
+                ) as mock_did:
                     mock_did.return_value = (False, None, "Not found")
 
                     result = await verify_domain(
@@ -851,12 +898,18 @@ class TestVerifyDomain:
                     assert result.method == DomainVerificationMethod.MUTUAL_ATTESTATION
 
     @pytest.mark.asyncio
-    async def test_verify_domain_combined_methods(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_combined_methods(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification with multiple methods succeeding."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (True, f"valence-federation={remote_fed_did}", None)
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (True, f"https://{test_domain}", None)
 
                 result = await verify_domain(
@@ -875,12 +928,18 @@ class TestVerifyDomain:
                 assert len(result.evidence) == 2
 
     @pytest.mark.asyncio
-    async def test_verify_domain_require_all(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_require_all(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification requiring all methods to pass."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (True, f"valence-federation={remote_fed_did}", None)
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 result = await verify_domain(
@@ -899,12 +958,18 @@ class TestVerifyDomain:
                 assert result.verified is False
 
     @pytest.mark.asyncio
-    async def test_verify_domain_all_fail(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_verify_domain_all_fail(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test domain verification when all methods fail."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (False, None, "DNS error")
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "DID error")
 
                 result = await verify_domain(
@@ -922,12 +987,18 @@ class TestVerifyDomain:
                 assert result.status == VerificationStatus.FAILED
                 assert result.error is not None
 
-    def test_verify_domain_sync(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    def test_verify_domain_sync(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test synchronous domain verification."""
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (True, f"valence-federation={remote_fed_did}", None)
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 result = verify_domain_sync(
@@ -950,7 +1021,9 @@ class TestAttestationFunctions:
     """Tests for attestation-related functions."""
 
     @pytest.mark.asyncio
-    async def test_create_attestation(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_create_attestation(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test creating an attestation."""
         attestation = await create_attestation(
             domain=test_domain,
@@ -966,7 +1039,9 @@ class TestAttestationFunctions:
         assert attestation.is_valid is True
 
     @pytest.mark.asyncio
-    async def test_revoke_attestation(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_revoke_attestation(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test revoking an attestation."""
         attestation = await create_attestation(
             domain=test_domain,
@@ -1002,14 +1077,20 @@ class TestExternalAuthority:
     async def test_external_client_success(self, test_domain: str, remote_fed_did: str):
         """Test successful external authority verification."""
         mock_client = MagicMock(spec=ExternalAuthorityClient)
-        mock_client.verify_domain = AsyncMock(return_value=(True, {"verified": True, "authority": "test"}, None))
+        mock_client.verify_domain = AsyncMock(
+            return_value=(True, {"verified": True, "authority": "test"}, None)
+        )
 
         set_external_client(mock_client)
 
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (False, None, "Not found")
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 result = await verify_domain(
@@ -1026,14 +1107,20 @@ class TestExternalAuthority:
     async def test_external_client_failure(self, test_domain: str, remote_fed_did: str):
         """Test failed external authority verification."""
         mock_client = MagicMock(spec=ExternalAuthorityClient)
-        mock_client.verify_domain = AsyncMock(return_value=(False, None, "Authority rejected claim"))
+        mock_client.verify_domain = AsyncMock(
+            return_value=(False, None, "Authority rejected claim")
+        )
 
         set_external_client(mock_client)
 
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             mock_dns.return_value = (False, None, "Not found")
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 result = await verify_domain(
@@ -1063,7 +1150,9 @@ class TestBatchOperations:
             ("domain3.example.com", "did:vkb:web:fed3"),
         ]
 
-        with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+        with patch(
+            "valence.federation.domain_verification.verify_dns_txt_record"
+        ) as mock_dns:
             # First two succeed, third fails
             mock_dns.side_effect = [
                 (True, "record1", None),
@@ -1071,7 +1160,9 @@ class TestBatchOperations:
                 (False, None, "Error"),
             ]
 
-            with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+            with patch(
+                "valence.federation.domain_verification.verify_did_document_claim"
+            ) as mock_did:
                 mock_did.return_value = (False, None, "Not found")
 
                 results = await verify_multiple_domains(
@@ -1095,7 +1186,9 @@ class TestUtilityFunctions:
     """Tests for utility functions."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_expired_challenges(self, test_domain: str, remote_fed_did: str):
+    async def test_cleanup_expired_challenges(
+        self, test_domain: str, remote_fed_did: str
+    ):
         """Test cleaning up expired challenges."""
         store = get_challenge_store()
 
@@ -1134,11 +1227,15 @@ class TestUtilityFunctions:
         assert stats["verified"] == 0
 
     @pytest.mark.asyncio
-    async def test_get_attestation_stats(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_get_attestation_stats(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test getting attestation statistics."""
         # Create attestations
         await create_attestation(test_domain, remote_fed_did, local_fed_did)
-        att2 = await create_attestation("other.example.com", remote_fed_did, local_fed_did)
+        att2 = await create_attestation(
+            "other.example.com", remote_fed_did, local_fed_did
+        )
         await revoke_attestation(att2.attestation_id)
 
         stats = get_attestation_stats()
@@ -1165,7 +1262,7 @@ class TestIntegration:
         assert challenge.status == ChallengeStatus.PENDING
 
         # Step 2: Simulate DNS record being added by mocking the check
-        with patch("dns.resolver.Resolver") as MockResolver:
+        with patch("dns.resolver.Resolver") as MockResolver:  # noqa: N806
             mock_resolver_instance = MagicMock()
             MockResolver.return_value = mock_resolver_instance
 
@@ -1187,7 +1284,9 @@ class TestIntegration:
             assert updated.status == ChallengeStatus.VERIFIED
 
     @pytest.mark.asyncio
-    async def test_attestation_flow_complete(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_attestation_flow_complete(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test the complete attestation verification flow."""
         # Step 1: Trusted federation creates attestation
         trusted_fed = "did:vkb:web:highly-trusted-federation"
@@ -1198,13 +1297,19 @@ class TestIntegration:
         )
 
         # Step 2: Verify domain via attestation (with mock trust)
-        with patch("valence.federation.domain_verification.get_federation_trust") as mock_trust:
+        with patch(
+            "valence.federation.domain_verification.get_federation_trust"
+        ) as mock_trust:
             mock_trust.return_value = 0.9  # High trust
 
-            with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+            with patch(
+                "valence.federation.domain_verification.verify_dns_txt_record"
+            ) as mock_dns:
                 mock_dns.return_value = (False, None, "Not found")
 
-                with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+                with patch(
+                    "valence.federation.domain_verification.verify_did_document_claim"
+                ) as mock_did:
                     mock_did.return_value = (False, None, "Not found")
 
                     result = await verify_domain(
@@ -1223,13 +1328,19 @@ class TestIntegration:
         assert revoked is True
 
         # Step 4: Verification should now fail
-        with patch("valence.federation.domain_verification.get_federation_trust") as mock_trust:
+        with patch(
+            "valence.federation.domain_verification.get_federation_trust"
+        ) as mock_trust:
             mock_trust.return_value = 0.9
 
-            with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+            with patch(
+                "valence.federation.domain_verification.verify_dns_txt_record"
+            ) as mock_dns:
                 mock_dns.return_value = (False, None, "Not found")
 
-                with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+                with patch(
+                    "valence.federation.domain_verification.verify_did_document_claim"
+                ) as mock_did:
                     mock_did.return_value = (False, None, "Not found")
 
                     result = await verify_domain(
@@ -1243,7 +1354,9 @@ class TestIntegration:
                     assert result.verified is False
 
     @pytest.mark.asyncio
-    async def test_fallback_verification_chain(self, test_domain: str, remote_fed_did: str, local_fed_did: str):
+    async def test_fallback_verification_chain(
+        self, test_domain: str, remote_fed_did: str, local_fed_did: str
+    ):
         """Test verification trying multiple methods until one succeeds."""
         # DNS fails, DID fails, but attestation succeeds
         await create_attestation(
@@ -1252,13 +1365,19 @@ class TestIntegration:
             attester_did="did:vkb:web:trusted",
         )
 
-        with patch("valence.federation.domain_verification.get_federation_trust") as mock_trust:
+        with patch(
+            "valence.federation.domain_verification.get_federation_trust"
+        ) as mock_trust:
             mock_trust.return_value = 0.8
 
-            with patch("valence.federation.domain_verification.verify_dns_txt_record") as mock_dns:
+            with patch(
+                "valence.federation.domain_verification.verify_dns_txt_record"
+            ) as mock_dns:
                 mock_dns.return_value = (False, None, "DNS error")
 
-                with patch("valence.federation.domain_verification.verify_did_document_claim") as mock_did:
+                with patch(
+                    "valence.federation.domain_verification.verify_did_document_claim"
+                ) as mock_did:
                     mock_did.return_value = (False, None, "DID error")
 
                     result = await verify_domain(
@@ -1276,4 +1395,7 @@ class TestIntegration:
                     assert result.verified is True
                     # Only attestation should have evidence
                     assert len(result.evidence) == 1
-                    assert result.evidence[0].method == DomainVerificationMethod.MUTUAL_ATTESTATION
+                    assert (
+                        result.evidence[0].method
+                        == DomainVerificationMethod.MUTUAL_ATTESTATION
+                    )

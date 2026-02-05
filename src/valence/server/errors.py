@@ -92,7 +92,9 @@ def error_response(
     )
 
 
-def validation_error(message: str, code: str = VALIDATION_INVALID_VALUE) -> JSONResponse:
+def validation_error(
+    message: str, code: str = VALIDATION_INVALID_VALUE
+) -> JSONResponse:
     """Create a 400 validation error response."""
     return error_response(code, message, status_code=400)
 
@@ -119,12 +121,16 @@ def invalid_json_error() -> JSONResponse:
     return error_response(VALIDATION_INVALID_JSON, "Invalid JSON body", status_code=400)
 
 
-def auth_error(message: str = "Authentication failed", code: str = AUTH_INVALID_TOKEN) -> JSONResponse:
+def auth_error(
+    message: str = "Authentication failed", code: str = AUTH_INVALID_TOKEN
+) -> JSONResponse:
     """Create a 401 authentication error response."""
     return error_response(code, message, status_code=401)
 
 
-def forbidden_error(message: str = "Permission denied", code: str = FORBIDDEN_INSUFFICIENT_PERMISSION) -> JSONResponse:
+def forbidden_error(
+    message: str = "Permission denied", code: str = FORBIDDEN_INSUFFICIENT_PERMISSION
+) -> JSONResponse:
     """Create a 403 forbidden error response."""
     return error_response(code, message, status_code=403)
 
@@ -136,7 +142,9 @@ def not_found_error(resource: str, code: str = NOT_FOUND_RESOURCE) -> JSONRespon
 
 def feature_not_enabled_error(feature: str) -> JSONResponse:
     """Create a 404 error for disabled features."""
-    return error_response(FEATURE_NOT_ENABLED, f"{feature} not enabled", status_code=404)
+    return error_response(
+        FEATURE_NOT_ENABLED, f"{feature} not enabled", status_code=404
+    )
 
 
 def conflict_error(message: str, code: str = CONFLICT_ALREADY_EXISTS) -> JSONResponse:
@@ -151,4 +159,6 @@ def internal_error(message: str = "Internal server error") -> JSONResponse:
 
 def service_unavailable_error(service: str) -> JSONResponse:
     """Create a 503 service unavailable error response."""
-    return error_response(SERVICE_UNAVAILABLE, f"{service} not initialized", status_code=503)
+    return error_response(
+        SERVICE_UNAVAILABLE, f"{service} not initialized", status_code=503
+    )

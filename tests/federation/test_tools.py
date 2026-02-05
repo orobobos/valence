@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.models import (
     NodeStatus,
     ThreatLevel,
@@ -77,7 +78,9 @@ def sample_node():
         node.did = kwargs.get("did", "did:vkb:web:test.example.com")
         node.status = kwargs.get("status", NodeStatus.ACTIVE)
         node.trust_phase = kwargs.get("trust_phase", TrustPhase.CONTRIBUTOR)
-        node.federation_endpoint = kwargs.get("federation_endpoint", "https://test.example.com/federation")
+        node.federation_endpoint = kwargs.get(
+            "federation_endpoint", "https://test.example.com/federation"
+        )
         node.to_dict.return_value = {
             "id": str(node.id),
             "did": node.did,
@@ -205,7 +208,9 @@ class TestFederationNodeDiscover:
         with patch("valence.federation.tools.discover_node_sync") as mock_discover:
             mock_discover.return_value = did_doc
 
-            result = federation_node_discover("https://test.example.com", auto_register=False)
+            result = federation_node_discover(
+                "https://test.example.com", auto_register=False
+            )
 
             assert result["success"] is True
             assert result["discovered"] is True
@@ -254,7 +259,9 @@ class TestFederationNodeList:
 
     def test_list_nodes_with_filters(self, sample_node, sample_node_trust):
         """Test listing nodes with status/phase filters."""
-        nodes_with_trust = [(sample_node(status=NodeStatus.ACTIVE), sample_node_trust())]
+        nodes_with_trust = [
+            (sample_node(status=NodeStatus.ACTIVE), sample_node_trust())
+        ]
 
         with patch("valence.federation.tools.list_nodes_with_trust") as mock_list:
             mock_list.return_value = nodes_with_trust
@@ -341,17 +348,23 @@ class TestFederationBootstrap:
             sample_node(did="did:vkb:web:node2.example.com"),
         ]
 
-        with patch("valence.federation.tools.bootstrap_federation_sync") as mock_bootstrap:
+        with patch(
+            "valence.federation.tools.bootstrap_federation_sync"
+        ) as mock_bootstrap:
             mock_bootstrap.return_value = nodes
 
-            result = federation_bootstrap(["https://node1.example.com", "https://node2.example.com"])
+            result = federation_bootstrap(
+                ["https://node1.example.com", "https://node2.example.com"]
+            )
 
             assert result["success"] is True
             assert result["registered_count"] == 2
 
     def test_bootstrap_error(self):
         """Test bootstrap with error."""
-        with patch("valence.federation.tools.bootstrap_federation_sync") as mock_bootstrap:
+        with patch(
+            "valence.federation.tools.bootstrap_federation_sync"
+        ) as mock_bootstrap:
             mock_bootstrap.side_effect = Exception("Connection failed")
 
             result = federation_bootstrap(["https://node.example.com"])
@@ -423,7 +436,9 @@ class TestFederationTrustSetPreference:
             mock_mgr.get_effective_trust.return_value = 0.72
             mock_get_mgr.return_value = mock_mgr
 
-            result = federation_trust_set_preference(str(node_id), preference="elevated", reason="Known trusted source")
+            result = federation_trust_set_preference(
+                str(node_id), preference="elevated", reason="Known trusted source"
+            )
 
             assert result["success"] is True
             assert result["effective_trust"] == 0.72
@@ -440,7 +455,9 @@ class TestFederationTrustSetPreference:
             mock_mgr.get_effective_trust.return_value = 0.0
             mock_get_mgr.return_value = mock_mgr
 
-            result = federation_trust_set_preference(str(node_id), preference="blocked", reason="Suspicious behavior")
+            result = federation_trust_set_preference(
+                str(node_id), preference="blocked", reason="Suspicious behavior"
+            )
 
             assert result["success"] is True
             assert result["effective_trust"] == 0.0
@@ -454,7 +471,9 @@ class TestFederationTrustSetPreference:
             mock_mgr.set_user_preference.return_value = None
             mock_get_mgr.return_value = mock_mgr
 
-            result = federation_trust_set_preference(str(node_id), preference="elevated")
+            result = federation_trust_set_preference(
+                str(node_id), preference="elevated"
+            )
 
             assert result["success"] is False
 
@@ -523,7 +542,9 @@ class TestFederationBeliefShare:
         with patch("valence.federation.tools.queue_belief_for_sync") as mock_queue:
             mock_queue.return_value = True
 
-            result = federation_belief_share(str(belief_id), visibility="federated", share_level="belief_only")
+            result = federation_belief_share(
+                str(belief_id), visibility="federated", share_level="belief_only"
+            )
 
             assert result["success"] is True
             assert result["queued_for_sync"] is True
@@ -684,7 +705,9 @@ class TestFederationCorroborationCheck:
         # Need to mock the import inside the function
         import valence.core.corroboration
 
-        with patch.object(valence.core.corroboration, "get_corroboration", return_value=mock_corr):
+        with patch.object(
+            valence.core.corroboration, "get_corroboration", return_value=mock_corr
+        ):
             result = federation_corroboration_check(belief_id=str(belief_id))
 
             assert result["success"] is True
@@ -695,7 +718,9 @@ class TestFederationCorroborationCheck:
         """Test checking corroboration for non-existent belief."""
         import valence.core.corroboration
 
-        with patch.object(valence.core.corroboration, "get_corroboration", return_value=None):
+        with patch.object(
+            valence.core.corroboration, "get_corroboration", return_value=None
+        ):
             result = federation_corroboration_check(belief_id=str(uuid4()))
 
             assert result["success"] is False
@@ -800,6 +825,8 @@ class TestHandleFederationTool:
             mock_mgr.get_effective_trust.return_value = 0.5
             mock_get_mgr.return_value = mock_mgr
 
-            result = handle_federation_tool("federation_trust_get", {"node_id": str(uuid4())})
+            result = handle_federation_tool(
+                "federation_trust_get", {"node_id": str(uuid4())}
+            )
 
             assert result["success"] is True

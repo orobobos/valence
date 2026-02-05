@@ -408,14 +408,20 @@ class HealthGossip:
             "type": self.type,
             "source_node_id": self.source_node_id,
             "timestamp": self.timestamp,
-            "observations": [obs.to_dict() if hasattr(obs, "to_dict") else obs for obs in self.observations],
+            "observations": [
+                obs.to_dict() if hasattr(obs, "to_dict") else obs
+                for obs in self.observations
+            ],
             "ttl": self.ttl,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "HealthGossip":
         """Deserialize from dict."""
-        observations = [RouterHealthObservation.from_dict(obs) if isinstance(obs, dict) else obs for obs in data.get("observations", [])]
+        observations = [
+            RouterHealthObservation.from_dict(obs) if isinstance(obs, dict) else obs
+            for obs in data.get("observations", [])
+        ]
         return cls(
             source_node_id=data.get("source_node_id", ""),
             timestamp=data.get("timestamp", 0.0),
@@ -562,7 +568,9 @@ def generate_cover_content(target_bucket: int | None = None) -> bytes:
         # Random bucket selection weighted toward smaller (more common)
         # Use secrets.SystemRandom for security-sensitive cover traffic
         weights = [0.5, 0.3, 0.15, 0.05]  # Favor smaller buckets
-        target_bucket = _secure_random.choices(MESSAGE_SIZE_BUCKETS, weights=weights, k=1)[0]
+        target_bucket = _secure_random.choices(
+            MESSAGE_SIZE_BUCKETS, weights=weights, k=1
+        )[0]
 
     # Account for JSON overhead of CoverMessage (~150 bytes typical)
     # and padding overhead (1 byte marker)
@@ -1115,7 +1123,9 @@ class MisbehaviorReport:
         """Deserialize from dict."""
         evidence = [MisbehaviorEvidence.from_dict(e) for e in data.get("evidence", [])]
         metrics_data = data.get("metrics")
-        metrics = RouterBehaviorMetrics.from_dict(metrics_data) if metrics_data else None
+        metrics = (
+            RouterBehaviorMetrics.from_dict(metrics_data) if metrics_data else None
+        )
 
         report = cls(
             reporter_id=data.get("reporter_id", ""),
@@ -1166,12 +1176,18 @@ class NetworkBaseline:
     delivery_rate_stddev: float = 0.05
     latency_stddev_ms: float = 50.0
 
-    def is_delivery_rate_anomalous(self, rate: float, threshold_stddevs: float = 2.0) -> bool:
+    def is_delivery_rate_anomalous(
+        self, rate: float, threshold_stddevs: float = 2.0
+    ) -> bool:
         """Check if a delivery rate is anomalously low."""
-        threshold = self.avg_delivery_rate - (threshold_stddevs * self.delivery_rate_stddev)
+        threshold = self.avg_delivery_rate - (
+            threshold_stddevs * self.delivery_rate_stddev
+        )
         return rate < threshold
 
-    def is_latency_anomalous(self, latency_ms: float, threshold_stddevs: float = 2.0) -> bool:
+    def is_latency_anomalous(
+        self, latency_ms: float, threshold_stddevs: float = 2.0
+    ) -> bool:
         """Check if latency is anomalously high."""
         threshold = self.avg_latency_ms + (threshold_stddevs * self.latency_stddev_ms)
         return latency_ms > threshold
@@ -1283,7 +1299,9 @@ class SeedRevocation:
 
     def get_signable_bytes(self) -> bytes:
         """Get canonical bytes for signing."""
-        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(",", ":")).encode()
+        return json.dumps(
+            self.get_signable_data(), sort_keys=True, separators=(",", ":")
+        ).encode()
 
     def to_dict(self) -> dict:
         """Serialize to dict for transmission."""
@@ -1359,7 +1377,9 @@ class SeedRevocationList:
 
     def get_signable_bytes(self) -> bytes:
         """Get canonical bytes for signing."""
-        return json.dumps(self.get_signable_data(), sort_keys=True, separators=(",", ":")).encode()
+        return json.dumps(
+            self.get_signable_data(), sort_keys=True, separators=(",", ":")
+        ).encode()
 
     def to_dict(self) -> dict:
         """Serialize to dict."""

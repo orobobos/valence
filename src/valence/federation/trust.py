@@ -172,28 +172,36 @@ class TrustManager:
         if signal.signal_type == "corroboration":
             node_trust.beliefs_corroborated += 1
             if node_trust.belief_accuracy is not None:
-                node_trust.belief_accuracy = min(1.0, node_trust.belief_accuracy + weight)
+                node_trust.belief_accuracy = min(
+                    1.0, node_trust.belief_accuracy + weight
+                )
             else:
                 node_trust.belief_accuracy = 0.5 + weight
 
         elif signal.signal_type == "dispute":
             node_trust.beliefs_disputed += 1
             if node_trust.belief_accuracy is not None:
-                node_trust.belief_accuracy = max(0.0, node_trust.belief_accuracy + weight)
+                node_trust.belief_accuracy = max(
+                    0.0, node_trust.belief_accuracy + weight
+                )
             else:
                 node_trust.belief_accuracy = max(0.0, 0.5 + weight)
 
         elif signal.signal_type == "endorsement":
             node_trust.endorsements_received += 1
             if node_trust.endorsement_strength is not None:
-                node_trust.endorsement_strength = min(1.0, node_trust.endorsement_strength + weight)
+                node_trust.endorsement_strength = min(
+                    1.0, node_trust.endorsement_strength + weight
+                )
             else:
                 node_trust.endorsement_strength = weight
 
         elif signal.signal_type in ("sync_success", "sync_failure"):
             node_trust.sync_requests_served += 1
             if node_trust.uptime_reliability is not None:
-                node_trust.uptime_reliability = max(0.0, min(1.0, node_trust.uptime_reliability + weight))
+                node_trust.uptime_reliability = max(
+                    0.0, min(1.0, node_trust.uptime_reliability + weight)
+                )
             else:
                 base = 0.7 if signal.signal_type == "sync_success" else 0.3
                 node_trust.uptime_reliability = base
@@ -201,7 +209,9 @@ class TrustManager:
         elif signal.signal_type == "aggregation_participation":
             node_trust.aggregation_participations += 1
             if node_trust.contribution_consistency is not None:
-                node_trust.contribution_consistency = min(1.0, node_trust.contribution_consistency + weight)
+                node_trust.contribution_consistency = min(
+                    1.0, node_trust.contribution_consistency + weight
+                )
             else:
                 node_trust.contribution_consistency = 0.5 + weight
 
@@ -361,7 +371,9 @@ class TrustManager:
         assessment: dict[str, Any],
     ) -> bool:
         """Apply graduated response based on threat level."""
-        return self._threat_detector.apply_threat_response(node_id, threat_level, assessment)
+        return self._threat_detector.apply_threat_response(
+            node_id, threat_level, assessment
+        )
 
     # -------------------------------------------------------------------------
     # USER TRUST PREFERENCES (delegated to registry)
@@ -384,7 +396,9 @@ class TrustManager:
             domain_overrides=domain_overrides,
         )
 
-    def block_node(self, node_id: UUID, reason: str | None = None) -> UserNodeTrust | None:
+    def block_node(
+        self, node_id: UUID, reason: str | None = None
+    ) -> UserNodeTrust | None:
         """Block a node (user-level, not federation-level)."""
         return self.set_user_preference(
             node_id=node_id,

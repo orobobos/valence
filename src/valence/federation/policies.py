@@ -77,7 +77,10 @@ class ThresholdPolicy:
         if self.required_approvals < 1:
             raise ValueError("required_approvals must be at least 1")
         if self.required_approvals > len(self.admin_dids):
-            raise ValueError(f"required_approvals ({self.required_approvals}) cannot exceed " f"number of admins ({len(self.admin_dids)})")
+            raise ValueError(
+                f"required_approvals ({self.required_approvals}) cannot exceed "
+                f"number of admins ({len(self.admin_dids)})"
+            )
 
     def is_admin(self, did: str) -> bool:
         """Check if a DID is an authorized admin."""
@@ -187,7 +190,9 @@ class PolicyManager:
         """Get the policy for an operation."""
         return self._policies.get(operation)
 
-    def register_handler(self, operation: Operation, handler: Callable[[dict[str, Any]], Any]) -> None:
+    def register_handler(
+        self, operation: Operation, handler: Callable[[dict[str, Any]], Any]
+    ) -> None:
         """Register an execution handler for an operation.
 
         Args:

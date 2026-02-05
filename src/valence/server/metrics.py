@@ -60,12 +60,16 @@ class MetricsCollector:
         self._request_counts: dict[tuple[str, str, int], int] = defaultdict(int)
 
         # Latency histogram: {(method, path): HistogramData}
-        self._latency_histograms: dict[tuple[str, str], HistogramData] = defaultdict(HistogramData)
+        self._latency_histograms: dict[tuple[str, str], HistogramData] = defaultdict(
+            HistogramData
+        )
 
         # Active connections gauge
         self._active_connections: int = 0
 
-    def record_request(self, method: str, path: str, status_code: int, duration_seconds: float) -> None:
+    def record_request(
+        self, method: str, path: str, status_code: int, duration_seconds: float
+    ) -> None:
         """Record a completed request.
 
         Args:
@@ -79,7 +83,9 @@ class MetricsCollector:
 
         with self._lock:
             self._request_counts[(method, normalized_path, status_code)] += 1
-            self._latency_histograms[(method, normalized_path)].observe(duration_seconds)
+            self._latency_histograms[(method, normalized_path)].observe(
+                duration_seconds
+            )
 
     def _normalize_path(self, path: str) -> str:
         """Normalize path to prevent label cardinality explosion.
@@ -133,7 +139,9 @@ class MetricsCollector:
 
             # Latency histogram
             lines.append("")
-            lines.append("# HELP valence_http_request_duration_seconds HTTP request latency")
+            lines.append(
+                "# HELP valence_http_request_duration_seconds HTTP request latency"
+            )
             lines.append("# TYPE valence_http_request_duration_seconds histogram")
             for (method, path), histogram in sorted(self._latency_histograms.items()):
                 base_labels = f'method="{method}",path="{path}"'
@@ -142,10 +150,14 @@ class MetricsCollector:
                 for bucket in LATENCY_BUCKETS:
                     cumulative += histogram.buckets.get(bucket, 0)
                     bucket_metric = "valence_http_request_duration_seconds_bucket"
-                    lines.append(f'{bucket_metric}{{{base_labels},le="{bucket}"}} {cumulative}')
+                    lines.append(
+                        f'{bucket_metric}{{{base_labels},le="{bucket}"}} {cumulative}'
+                    )
                 # +Inf bucket
                 bucket_metric = "valence_http_request_duration_seconds_bucket"
-                lines.append(f'{bucket_metric}{{{base_labels},le="+Inf"}} {histogram.count}')
+                lines.append(
+                    f'{bucket_metric}{{{base_labels},le="+Inf"}} {histogram.count}'
+                )
                 # Sum and count
                 sum_metric = "valence_http_request_duration_seconds_sum"
                 lines.append(f"{sum_metric}{{{base_labels}}} {histogram.sum:.6f}")
@@ -154,7 +166,9 @@ class MetricsCollector:
 
             # Active connections gauge
             lines.append("")
-            lines.append("# HELP valence_active_connections Currently active HTTP connections")
+            lines.append(
+                "# HELP valence_active_connections Currently active HTTP connections"
+            )
             lines.append("# TYPE valence_active_connections gauge")
             lines.append(f"valence_active_connections {self._active_connections}")
 
@@ -230,7 +244,9 @@ class MetricsCollector:
             peers = registry.list_peers()
 
             lines.append("")
-            lines.append("# HELP valence_federation_peers_total Trusted federation peers")
+            lines.append(
+                "# HELP valence_federation_peers_total Trusted federation peers"
+            )
             lines.append("# TYPE valence_federation_peers_total gauge")
             lines.append(f"valence_federation_peers_total {len(peers)}")
 
@@ -240,30 +256,44 @@ class MetricsCollector:
             low_trust = sum(1 for p in peers if p.trust_level < 0.5)
 
             lines.append("")
-            lines.append("# HELP valence_federation_peers_by_trust Peers by trust level")
+            lines.append(
+                "# HELP valence_federation_peers_by_trust Peers by trust level"
+            )
             lines.append("# TYPE valence_federation_peers_by_trust gauge")
-            lines.append(f'valence_federation_peers_by_trust{{level="high"}} {high_trust}')
-            lines.append(f'valence_federation_peers_by_trust{{level="medium"}} {medium_trust}')
-            lines.append(f'valence_federation_peers_by_trust{{level="low"}} {low_trust}')
+            lines.append(
+                f'valence_federation_peers_by_trust{{level="high"}} {high_trust}'
+            )
+            lines.append(
+                f'valence_federation_peers_by_trust{{level="medium"}} {medium_trust}'
+            )
+            lines.append(
+                f'valence_federation_peers_by_trust{{level="low"}} {low_trust}'
+            )
 
             # Total beliefs exchanged with peers
             total_received = sum(p.beliefs_received for p in peers)
             total_sent = sum(p.beliefs_sent for p in peers)
 
             lines.append("")
-            lines.append("# HELP valence_federation_beliefs_received_total Beliefs from peers")
+            lines.append(
+                "# HELP valence_federation_beliefs_received_total Beliefs from peers"
+            )
             lines.append("# TYPE valence_federation_beliefs_received_total counter")
             lines.append(f"valence_federation_beliefs_received_total {total_received}")
 
             lines.append("")
-            lines.append("# HELP valence_federation_beliefs_sent_total Beliefs sent to peers")
+            lines.append(
+                "# HELP valence_federation_beliefs_sent_total Beliefs sent to peers"
+            )
             lines.append("# TYPE valence_federation_beliefs_sent_total counter")
             lines.append(f"valence_federation_beliefs_sent_total {total_sent}")
 
         except Exception as e:
             logger.debug(f"Could not collect federation metrics: {e}")
             lines.append("")
-            lines.append("# HELP valence_federation_peers_total Trusted federation peers")
+            lines.append(
+                "# HELP valence_federation_peers_total Trusted federation peers"
+            )
             lines.append("# TYPE valence_federation_peers_total gauge")
             lines.append("valence_federation_peers_total 0")
 

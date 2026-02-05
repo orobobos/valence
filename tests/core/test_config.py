@@ -12,6 +12,7 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
+
 from valence.core.config import (
     CoreSettings,
     FederationConfig,

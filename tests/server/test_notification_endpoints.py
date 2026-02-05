@@ -15,6 +15,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.testclient import TestClient
+
 from valence.server.notification_endpoints import (
     _notification_to_dict,
     acknowledge_notification_endpoint,
@@ -74,7 +75,9 @@ class TestListNotificationsEndpoint:
         mock_notification.created_at = "2024-01-15T10:30:00Z"
         mock_notification.acknowledged_at = None
 
-        mock_sharing_service.get_pending_notifications = AsyncMock(return_value=[mock_notification])
+        mock_sharing_service.get_pending_notifications = AsyncMock(
+            return_value=[mock_notification]
+        )
 
         response = client.get(
             "/api/v1/notifications",
@@ -123,7 +126,9 @@ class TestListNotificationsEndpoint:
             n.acknowledged_at = None
             mock_notifications.append(n)
 
-        mock_sharing_service.get_pending_notifications = AsyncMock(return_value=mock_notifications)
+        mock_sharing_service.get_pending_notifications = AsyncMock(
+            return_value=mock_notifications
+        )
 
         response = client.get(
             "/api/v1/notifications",
@@ -138,7 +143,9 @@ class TestListNotificationsEndpoint:
         assert data["count"] == 3
         assert len(data["notifications"]) == 3
 
-    def test_list_notifications_missing_recipient_did(self, client, mock_sharing_service):
+    def test_list_notifications_missing_recipient_did(
+        self, client, mock_sharing_service
+    ):
         """Missing recipient_did returns 400."""
         response = client.get("/api/v1/notifications")
 
@@ -161,7 +168,9 @@ class TestListNotificationsEndpoint:
 
     def test_list_notifications_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
-        mock_sharing_service.get_pending_notifications = AsyncMock(side_effect=Exception("Database error"))
+        mock_sharing_service.get_pending_notifications = AsyncMock(
+            side_effect=Exception("Database error")
+        )
 
         response = client.get(
             "/api/v1/notifications",
@@ -234,7 +243,9 @@ class TestAcknowledgeNotificationEndpoint:
 
     def test_acknowledge_permission_denied(self, client, mock_sharing_service):
         """Permission denied returns 403."""
-        mock_sharing_service.acknowledge_notification = AsyncMock(side_effect=PermissionError("Not the notification recipient"))
+        mock_sharing_service.acknowledge_notification = AsyncMock(
+            side_effect=PermissionError("Not the notification recipient")
+        )
 
         response = client.post(
             "/api/v1/notifications/notif-001/acknowledge",
@@ -260,7 +271,9 @@ class TestAcknowledgeNotificationEndpoint:
 
     def test_acknowledge_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
-        mock_sharing_service.acknowledge_notification = AsyncMock(side_effect=Exception("Database error"))
+        mock_sharing_service.acknowledge_notification = AsyncMock(
+            side_effect=Exception("Database error")
+        )
 
         response = client.post(
             "/api/v1/notifications/notif-001/acknowledge",
@@ -371,7 +384,9 @@ class TestNotificationIntegration:
         mock_notification.created_at = "2024-01-15T10:30:00Z"
         mock_notification.acknowledged_at = None
 
-        mock_sharing_service.get_pending_notifications = AsyncMock(return_value=[mock_notification])
+        mock_sharing_service.get_pending_notifications = AsyncMock(
+            return_value=[mock_notification]
+        )
         mock_sharing_service.acknowledge_notification = AsyncMock(return_value=True)
 
         # Step 1: List notifications
@@ -422,7 +437,9 @@ class TestNotificationIntegration:
             n.acknowledged_at = None
             mock_notifications.append(n)
 
-        mock_sharing_service.get_pending_notifications = AsyncMock(return_value=mock_notifications)
+        mock_sharing_service.get_pending_notifications = AsyncMock(
+            return_value=mock_notifications
+        )
 
         response = client.get(
             "/api/v1/notifications",

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from valence.consensus.models import (
     AttestationType,
     IdentityAttestation,
@@ -256,11 +257,15 @@ class TestSelectionWeight:
         sample_candidate.tenure_epochs = 0
 
         # Perfect performance
-        sample_candidate.last_epoch_performance = ValidatorPerformance(participation_rate=1.0)
+        sample_candidate.last_epoch_performance = ValidatorPerformance(
+            participation_rate=1.0
+        )
         weight_perfect = compute_selection_weight(sample_candidate)
 
         # Poor performance
-        sample_candidate.last_epoch_performance = ValidatorPerformance(participation_rate=0.0)
+        sample_candidate.last_epoch_performance = ValidatorPerformance(
+            participation_rate=0.0
+        )
         weight_poor = compute_selection_weight(sample_candidate)
 
         assert weight_perfect == 1.1  # 0.9 + 0.2 * 1.0
@@ -384,7 +389,9 @@ class TestDiversityConstraints:
         )
 
         # Count validators from dominant federation
-        dominant_count = sum(1 for v in validators if "dominant_fed" in v.federation_membership)
+        dominant_count = sum(
+            1 for v in validators if "dominant_fed" in v.federation_membership
+        )
 
         max_allowed = int(31 * 0.20)
         assert dominant_count <= max_allowed + 1  # Allow small margin for edge cases
@@ -422,10 +429,14 @@ class TestDiversityConstraints:
             previous_validators=previous_validators,
         )
 
-        returning_count = sum(1 for v in validators if v.agent_id in previous_validators)
+        returning_count = sum(
+            1 for v in validators if v.agent_id in previous_validators
+        )
 
         max_returning = int(31 * 0.60)
-        assert returning_count <= max_returning + 2  # Allow margin for forcing new validators
+        assert (
+            returning_count <= max_returning + 2
+        )  # Allow margin for forcing new validators
 
 
 # =============================================================================

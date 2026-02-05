@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.server.unified_server import (
     SERVER_NAME,
     SERVER_VERSION,
@@ -141,7 +142,9 @@ class TestToolDefinitions:
     def test_tool_descriptions_have_behavioral_conditioning(self):
         """Test that key tools have behavioral hints."""
         belief_query = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_query")
-        assert "MUST" in belief_query.description or "CRITICAL" in belief_query.description
+        assert (
+            "MUST" in belief_query.description or "CRITICAL" in belief_query.description
+        )
 
         belief_create = next(t for t in SUBSTRATE_TOOLS if t.name == "belief_create")
         assert "PROACTIVELY" in belief_create.description
@@ -331,8 +334,12 @@ class TestIntegration:
 
         for tool in all_tools:
             assert tool.inputSchema is not None, f"Tool {tool.name} missing inputSchema"
-            assert "type" in tool.inputSchema, f"Tool {tool.name} inputSchema missing type"
-            assert tool.inputSchema["type"] == "object", f"Tool {tool.name} inputSchema type should be object"
+            assert (
+                "type" in tool.inputSchema
+            ), f"Tool {tool.name} inputSchema missing type"
+            assert (
+                tool.inputSchema["type"] == "object"
+            ), f"Tool {tool.name} inputSchema type should be object"
 
     def test_all_tools_have_descriptions(self):
         """Test that all tools have descriptions."""

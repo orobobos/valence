@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import numpy as np
 import pytest
+
 from valence.federation.privacy import (
     DEFAULT_DELTA,
     DEFAULT_EPSILON,
@@ -226,7 +227,9 @@ class TestPrivacyBudget:
             queries_this_hour=20,
         )
 
-        can_query, result = budget.check_budget(1.0, 1e-6, "topic", requester_id=requester)
+        can_query, result = budget.check_budget(
+            1.0, 1e-6, "topic", requester_id=requester
+        )
         assert can_query is False
         assert result == BudgetCheckResult.REQUESTER_RATE_LIMITED
 
@@ -257,7 +260,9 @@ class TestPrivacyBudget:
         budget.consume(1.0, 1e-6, topic)
         budget.consume(1.0, 1e-6, topic)
 
-        assert budget.topic_queries_remaining(topic) == MAX_QUERIES_PER_TOPIC_PER_DAY - 2
+        assert (
+            budget.topic_queries_remaining(topic) == MAX_QUERIES_PER_TOPIC_PER_DAY - 2
+        )
 
 
 # =============================================================================
@@ -277,7 +282,9 @@ class TestNoiseMechanisms:
         epsilon = 1.0
 
         # Generate many samples
-        samples = [add_laplace_noise(true_value, sensitivity, epsilon) for _ in range(10000)]
+        samples = [
+            add_laplace_noise(true_value, sensitivity, epsilon) for _ in range(10000)
+        ]
 
         # Mean should be close to true value
         assert abs(np.mean(samples) - true_value) < 0.5
@@ -296,7 +303,10 @@ class TestNoiseMechanisms:
         delta = 1e-5
 
         # Generate samples
-        samples = [add_gaussian_noise(true_value, sensitivity, epsilon, delta) for _ in range(10000)]
+        samples = [
+            add_gaussian_noise(true_value, sensitivity, epsilon, delta)
+            for _ in range(10000)
+        ]
 
         # Mean should be close to true value
         assert abs(np.mean(samples) - true_value) < 0.5
@@ -336,10 +346,14 @@ class TestNoiseMechanisms:
         sensitivity = 1.0
 
         # High privacy (low epsilon)
-        high_privacy_samples = [add_laplace_noise(true_value, sensitivity, 0.1) for _ in range(1000)]
+        high_privacy_samples = [
+            add_laplace_noise(true_value, sensitivity, 0.1) for _ in range(1000)
+        ]
 
         # Low privacy (high epsilon)
-        low_privacy_samples = [add_laplace_noise(true_value, sensitivity, 2.0) for _ in range(1000)]
+        low_privacy_samples = [
+            add_laplace_noise(true_value, sensitivity, 2.0) for _ in range(1000)
+        ]
 
         # High privacy should have higher variance
         high_var = np.var(high_privacy_samples)
@@ -602,7 +616,9 @@ class TestPrivateAggregate:
         """Create a standard config."""
         return PrivacyConfig()
 
-    def test_insufficient_contributors_returns_none(self, config: PrivacyConfig) -> None:
+    def test_insufficient_contributors_returns_none(
+        self, config: PrivacyConfig
+    ) -> None:
         """Test aggregate returns None when k-anonymity not satisfied."""
         # Only 3 contributors, need 5
         confidences = [0.5, 0.6, 0.7]
@@ -611,7 +627,9 @@ class TestPrivateAggregate:
 
         assert result is None
 
-    def test_sufficient_contributors_returns_result(self, config: PrivacyConfig) -> None:
+    def test_sufficient_contributors_returns_result(
+        self, config: PrivacyConfig
+    ) -> None:
         """Test aggregate returns result when k-anonymity satisfied."""
         confidences = [0.5, 0.6, 0.7, 0.8, 0.9]  # 5 contributors
 
@@ -729,7 +747,9 @@ class TestPrivacyIntegration:
         topic_hash = compute_topic_hash(["tech", "programming"])
 
         # Check budget
-        can_query, result = budget.check_budget(config.epsilon, config.delta, topic_hash)
+        can_query, result = budget.check_budget(
+            config.epsilon, config.delta, topic_hash
+        )
         assert can_query is True
 
         # Simulate aggregation

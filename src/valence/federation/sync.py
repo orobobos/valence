@@ -383,13 +383,11 @@ class SyncManager:
         """Process the outbound sync queue."""
         # Get all active nodes
         with get_cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT id, did, federation_endpoint
                 FROM federation_nodes
                 WHERE status = 'active'
-            """
-            )
+            """)
             active_nodes = cur.fetchall()
 
         for node_row in active_nodes:
@@ -497,7 +495,9 @@ class SyncManager:
 
                         update_sync_state(
                             node_id,
-                            beliefs_sent_delta=result.get("accepted", len(beliefs_data)),
+                            beliefs_sent_delta=result.get(
+                                "accepted", len(beliefs_data)
+                            ),
                             clear_error=True,
                         )
                         mark_node_active(node_id)
@@ -552,7 +552,9 @@ class SyncManager:
         embedding_type = row.get("embedding_type")
         dimensions = row.get("dimensions")
 
-        if is_federation_compatible(embedding_type, dimensions) and row.get("embedding_384"):
+        if is_federation_compatible(embedding_type, dimensions) and row.get(
+            "embedding_384"
+        ):
             # Use existing compatible embedding
             embedding = row["embedding_384"]
             if hasattr(embedding, "tolist"):
@@ -563,7 +565,9 @@ class SyncManager:
             try:
                 result["embedding"] = generate_embedding(row["content"])
             except Exception as e:
-                logger.warning(f"Failed to generate embedding for belief {row['id']}: {e}")
+                logger.warning(
+                    f"Failed to generate embedding for belief {row['id']}: {e}"
+                )
                 # Continue without embedding - receiver can regenerate
 
         # Add embedding metadata
@@ -594,15 +598,13 @@ class SyncManager:
     async def _sync_with_peers(self):
         """Pull sync updates from active peers."""
         with get_cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT fn.*, ss.last_received_cursor, ss.last_sync_at
                 FROM federation_nodes fn
                 JOIN sync_state ss ON fn.id = ss.node_id
                 WHERE fn.status = 'active'
                   AND (ss.next_sync_scheduled IS NULL OR ss.next_sync_scheduled <= NOW())
-            """
-            )
+            """)
             nodes = cur.fetchall()
 
         for node_row in nodes:
@@ -664,7 +666,9 @@ class SyncManager:
 
                         if changes:
                             # Process changes
-                            beliefs_received = await self._process_sync_changes(node_id, trust_level, changes)
+                            beliefs_received = await self._process_sync_changes(
+                                node_id, trust_level, changes
+                            )
 
                             update_sync_state(
                                 node_id,
@@ -869,8 +873,7 @@ def get_sync_status() -> dict[str, Any]:
     """
     try:
         with get_cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT
                     COUNT(*) as total_nodes,
                     COUNT(*) FILTER (WHERE ss.status = 'syncing') as syncing,
@@ -881,8 +884,7 @@ def get_sync_status() -> dict[str, Any]:
                 FROM federation_nodes fn
                 LEFT JOIN sync_state ss ON fn.id = ss.node_id
                 WHERE fn.status = 'active'
-            """
-            )
+            """)
             row = cur.fetchone()
 
             return {

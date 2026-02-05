@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from valence.federation.protocol import (
     AuthChallengeRequest,
     AuthChallengeResponse,

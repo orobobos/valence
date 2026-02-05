@@ -13,6 +13,7 @@ import argparse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.cli.router import (
     _print_status,
     async_main,
@@ -343,7 +344,11 @@ class TestCmdStatus:
 
         mock_session_ctx = AsyncMock()
         mock_session = AsyncMock()
-        mock_session.get = MagicMock(side_effect=aiohttp.ClientConnectorError(connection_key=MagicMock(), os_error=OSError("Connection refused")))
+        mock_session.get = MagicMock(
+            side_effect=aiohttp.ClientConnectorError(
+                connection_key=MagicMock(), os_error=OSError("Connection refused")
+            )
+        )
         mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
@@ -375,7 +380,9 @@ class TestAsyncMain:
             verbose=False,
         )
 
-        with patch("valence.cli.router.cmd_status", new_callable=AsyncMock) as mock_status:
+        with patch(
+            "valence.cli.router.cmd_status", new_callable=AsyncMock
+        ) as mock_status:
             mock_status.return_value = 0
             result = await async_main(args)
 

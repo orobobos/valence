@@ -110,7 +110,9 @@ class Watermark:
         return WATERMARK_MAGIC + ts_bytes + recipient_len + recipient_bytes + hash_bytes
 
     @classmethod
-    def from_bytes(cls, data: bytes, secret_key: bytes | None = None) -> Optional["Watermark"]:
+    def from_bytes(
+        cls, data: bytes, secret_key: bytes | None = None
+    ) -> Optional["Watermark"]:
         """Deserialize watermark from binary format.
 
         Args:
@@ -241,7 +243,9 @@ class WatermarkCodec:
     def decode_whitespace(text: str) -> bytes:
         """Decode whitespace pattern back to bytes."""
         # Extract only spaces and tabs
-        whitespace = "".join(c for c in text if c in (SINGLE_SPACE, TAB_SPACE, "\u00a0"))
+        whitespace = "".join(
+            c for c in text if c in (SINGLE_SPACE, TAB_SPACE, "\u00a0")
+        )
         # Normalize non-breaking spaces
         whitespace = whitespace.replace("\u00a0", SINGLE_SPACE)
 
@@ -352,7 +356,11 @@ class WatermarkCodec:
     def decode_zerowidth(text: str) -> bytes:
         """Decode bytes from zero-width characters."""
         # Extract zero-width characters
-        zw_chars = "".join(c for c in text if c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER))
+        zw_chars = "".join(
+            c
+            for c in text
+            if c in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER)
+        )
 
         if not zw_chars:
             return b""
@@ -512,7 +520,12 @@ def strip_watermarks(content: str) -> str:
         Content with watermarks removed
     """
     # Remove zero-width characters
-    result = "".join(c for c in content if c not in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, WORD_JOINER))
+    result = "".join(
+        c
+        for c in content
+        if c
+        not in (ZERO_WIDTH_SPACE, ZERO_WIDTH_NON_JOINER, ZERO_WIDTH_JOINER, WORD_JOINER)
+    )
 
     # Normalize homoglyphs back to ASCII
     normalized = []
@@ -570,7 +583,10 @@ class WatermarkRegistry:
             ValueError: If secret_key is less than 16 bytes (insecure)
         """
         if len(secret_key) < 16:
-            raise ValueError("secret_key must be at least 16 bytes for security. " "Use secrets.token_bytes(32) to generate a secure key.")
+            raise ValueError(
+                "secret_key must be at least 16 bytes for security. "
+                "Use secrets.token_bytes(32) to generate a secure key."
+            )
         # Store as private attribute but expose via property
         # This makes it slightly harder to accidentally log/serialize
         self._secret_key = secret_key
@@ -590,7 +606,10 @@ class WatermarkRegistry:
 
     def __repr__(self) -> str:
         """Safe repr that doesn't expose the secret key."""
-        return f"WatermarkRegistry(tokens={len(self._watermarks)}, " f"content_hashes={len(self._content_hashes)})"
+        return (
+            f"WatermarkRegistry(tokens={len(self._watermarks)}, "
+            f"content_hashes={len(self._content_hashes)})"
+        )
 
     def create_watermark(
         self,

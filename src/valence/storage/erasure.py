@@ -211,7 +211,10 @@ class ErasureCodec:
         padded_data = data + bytes(padded_len - data_len)
 
         # Split into data shards
-        data_chunks = [padded_data[i * shard_size : (i + 1) * shard_size] for i in range(self.data_shards)]
+        data_chunks = [
+            padded_data[i * shard_size : (i + 1) * shard_size]
+            for i in range(self.data_shards)
+        ]
 
         # Create all shards (data + parity)
         shards: list[StorageShard | None] = []
@@ -223,7 +226,9 @@ class ErasureCodec:
                 is_parity = False
             else:
                 # Parity shard - matrix multiplication
-                shard_data = self._compute_parity_shard(data_chunks, shard_idx - self.data_shards)
+                shard_data = self._compute_parity_shard(
+                    data_chunks, shard_idx - self.data_shards
+                )
                 is_parity = True
 
             # Create metadata
@@ -317,7 +322,9 @@ class ErasureCodec:
 
         # Check if we have all data shards (fast path)
         data_shard_indices = set(range(self.data_shards))
-        available_data_indices = set(s.index for s in shards_to_use if s.index < self.data_shards)
+        available_data_indices = set(
+            s.index for s in shards_to_use if s.index < self.data_shards
+        )
 
         if available_data_indices == data_shard_indices:
             # All data shards present - just concatenate
@@ -335,7 +342,10 @@ class ErasureCodec:
 
         # Verify checksum
         actual_checksum = hashlib.sha256(recovered).hexdigest()
-        if shard_set.original_checksum and actual_checksum != shard_set.original_checksum:
+        if (
+            shard_set.original_checksum
+            and actual_checksum != shard_set.original_checksum
+        ):
             return RecoveryResult(
                 success=False,
                 shards_used=len(shards_to_use),
@@ -388,7 +398,9 @@ class ErasureCodec:
                     break
 
             if pivot_row is None:
-                raise ErasureCodingError(f"Matrix is singular, cannot recover from indices {indices}")
+                raise ErasureCodingError(
+                    f"Matrix is singular, cannot recover from indices {indices}"
+                )
 
             # Swap rows if needed (same operation on both matrices)
             if pivot_row != col:
@@ -460,10 +472,14 @@ class ErasureCodec:
         # First, recover the original data
         result = self.decode(shard_set)
         if not result.success or result.data is None:
-            raise InsufficientShardsError(result.error_message or "Cannot repair: insufficient valid shards")
+            raise InsufficientShardsError(
+                result.error_message or "Cannot repair: insufficient valid shards"
+            )
 
         # Re-encode to get complete shard set
-        new_set = self.encode(result.data, str(shard_set.belief_id) if shard_set.belief_id else None)
+        new_set = self.encode(
+            result.data, str(shard_set.belief_id) if shard_set.belief_id else None
+        )
 
         # Preserve original metadata
         new_set.set_id = shard_set.set_id

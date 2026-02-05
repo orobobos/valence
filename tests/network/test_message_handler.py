@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from valence.network.config import (
     BatchingConfig,
     TimingJitterConfig,
@@ -355,7 +356,9 @@ class TestQueueProcessing:
     """Tests for message queue processing."""
 
     @pytest.mark.asyncio
-    async def test_process_queue_empty(self, message_handler, mock_router_selector, mock_send_via_router):
+    async def test_process_queue_empty(
+        self, message_handler, mock_router_selector, mock_send_via_router
+    ):
         """Test processing empty queue."""
         count = await message_handler.process_queue(
             router_selector=mock_router_selector,
@@ -404,14 +407,16 @@ class TestMessageHandlerIntegration:
     """Integration tests for MessageHandler."""
 
     @pytest.mark.asyncio
-    async def test_send_message_no_router(self, message_handler, x25519_keypair, mock_send_via_router):
+    async def test_send_message_no_router(
+        self, message_handler, x25519_keypair, mock_send_via_router
+    ):
         """Test sending message when no router available."""
         _, pub_key = x25519_keypair
 
         def no_router_selector():
             return None
 
-        message_id = await message_handler.send_message(
+        await message_handler.send_message(
             recipient_id="recipient123",
             recipient_public_key=pub_key,
             content=b"test content",
@@ -425,7 +430,9 @@ class TestMessageHandlerIntegration:
         assert len(message_handler.message_queue) == 1
 
     @pytest.mark.asyncio
-    async def test_send_message_queue_full(self, message_handler, x25519_keypair, mock_send_via_router):
+    async def test_send_message_queue_full(
+        self, message_handler, x25519_keypair, mock_send_via_router
+    ):
         """Test sending message when queue is full."""
         from valence.network.node import NoRoutersAvailableError, PendingMessage
 
@@ -479,7 +486,7 @@ class TestMessageHandlerIntegration:
             ),
         )
 
-        start = time.time()
+        time.time()
         await message_handler.send_message(
             recipient_id="recipient123",
             recipient_public_key=pub_key,

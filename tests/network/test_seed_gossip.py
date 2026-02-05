@@ -17,6 +17,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from valence.network.seed import (
     RouterRecord,
     SeedConfig,
@@ -336,7 +337,7 @@ class TestRouterMerging:
     def test_dedup_newer_wins(self, seed_node, peer_manager, fresh_router):
         """When deduplicating, newer router should win."""
         seed_node.router_registry[fresh_router.router_id] = fresh_router
-        old_last_seen = fresh_router.health["last_seen"]
+        fresh_router.health["last_seen"]
 
         # Receive newer version
         now = time.time()
@@ -390,7 +391,9 @@ class TestRouterMerging:
         router = seed_node.router_registry[fresh_router.router_id]
         assert router.endpoints == original_endpoints
 
-    def test_merge_preserves_original_source(self, seed_node, peer_manager, fresh_router):
+    def test_merge_preserves_original_source(
+        self, seed_node, peer_manager, fresh_router
+    ):
         """Merging should preserve original source_ip."""
         fresh_router.source_ip = "original-source"
         seed_node.router_registry[fresh_router.router_id] = fresh_router
@@ -436,7 +439,9 @@ class TestGossipExchangeEndpoint:
     """Tests for /gossip/exchange HTTP endpoint."""
 
     @pytest.mark.asyncio
-    async def test_handle_gossip_exchange_basic(self, seed_node, peer_manager, fresh_router):
+    async def test_handle_gossip_exchange_basic(
+        self, seed_node, peer_manager, fresh_router
+    ):
         """Gossip exchange should accept and return routers."""
         seed_node.router_registry[fresh_router.router_id] = fresh_router
         seed_node.health_monitor.record_heartbeat(fresh_router.router_id)
@@ -472,7 +477,9 @@ class TestGossipExchangeEndpoint:
         assert "z6MkIncomingRouter123" in seed_node.router_registry
 
     @pytest.mark.asyncio
-    async def test_handle_gossip_exchange_returns_our_routers(self, seed_node, peer_manager, fresh_router):
+    async def test_handle_gossip_exchange_returns_our_routers(
+        self, seed_node, peer_manager, fresh_router
+    ):
         """Gossip exchange should return our routers."""
         seed_node.router_registry[fresh_router.router_id] = fresh_router
         seed_node.health_monitor.record_heartbeat(fresh_router.router_id)
@@ -541,7 +548,9 @@ class TestPeerStateTracking:
         """Peer stats should include all peer info."""
         # Simulate some exchanges
         peer_manager._update_peer_state("http://seed2.test:8470", success=True)
-        peer_manager._update_peer_state("http://seed3.test:8470", success=False, error="refused")
+        peer_manager._update_peer_state(
+            "http://seed3.test:8470", success=False, error="refused"
+        )
 
         stats = peer_manager.get_peer_stats()
 
@@ -562,7 +571,9 @@ class TestGossipRound:
     """Tests for full gossip round execution."""
 
     @pytest.mark.asyncio
-    async def test_exchange_with_peer_success(self, seed_node, peer_manager, fresh_router):
+    async def test_exchange_with_peer_success(
+        self, seed_node, peer_manager, fresh_router
+    ):
         """Successful peer exchange should merge routers."""
         seed_node.router_registry[fresh_router.router_id] = fresh_router
         seed_node.health_monitor.record_heartbeat(fresh_router.router_id)
@@ -594,7 +605,9 @@ class TestGossipRound:
 
             mock_session_instance = MagicMock()
             mock_session_instance.post = MagicMock(return_value=mock_ctx)
-            mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+            mock_session_instance.__aenter__ = AsyncMock(
+                return_value=mock_session_instance
+            )
             mock_session_instance.__aexit__ = AsyncMock()
 
             mock_session.return_value = mock_session_instance
@@ -631,7 +644,9 @@ class TestGossipRound:
         peer_url = "http://down-peer.test:8470"
 
         # Simulate what happens on connection error
-        peer_manager._update_peer_state(peer_url, success=False, error="Connection refused")
+        peer_manager._update_peer_state(
+            peer_url, success=False, error="Connection refused"
+        )
 
         state = peer_manager._peer_states[peer_url]
         assert state["failed_exchanges"] == 1
@@ -804,14 +819,16 @@ class TestGossipIntegrationScenarios:
 
         # Simulate exchange: seed1 sends to seed2
         routers_from_seed1 = seed1.peer_manager._select_routers_for_gossip()
-        merged_at_seed2 = seed2.peer_manager._merge_routers(routers_from_seed1, "seed-1")
+        merged_at_seed2 = seed2.peer_manager._merge_routers(
+            routers_from_seed1, "seed-1"
+        )
 
         assert merged_at_seed2 == 1
         assert router1.router_id in seed2.router_registry
 
         # Simulate exchange: seed2 sends to seed1
         routers_from_seed2 = seed2.peer_manager._select_routers_for_gossip()
-        merged_at_seed1 = seed1.peer_manager._merge_routers(routers_from_seed2, "seed-2")
+        seed1.peer_manager._merge_routers(routers_from_seed2, "seed-2")
 
         # Note: seed2 now has router1, so it might send it back
         # seed1 should have both routers now

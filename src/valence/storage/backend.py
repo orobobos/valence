@@ -180,7 +180,9 @@ class StorageBackend(ABC):
         except Exception:
             return False
 
-    async def store_shard_set(self, shard_set: ShardSet, indices: list[int] | None = None) -> dict[int, str]:
+    async def store_shard_set(
+        self, shard_set: ShardSet, indices: list[int] | None = None
+    ) -> dict[int, str]:
         """Store multiple shards from a shard set.
 
         Args:
@@ -205,7 +207,9 @@ class StorageBackend(ABC):
 
         return locations
 
-    async def retrieve_shard_set(self, locations: dict[int, str], shard_set_template: ShardSet) -> ShardSet:
+    async def retrieve_shard_set(
+        self, locations: dict[int, str], shard_set_template: ShardSet
+    ) -> ShardSet:
         """Retrieve shards and reconstruct a shard set.
 
         Args:
@@ -328,7 +332,10 @@ class LocalFileBackend(StorageBackend):
             quota_bytes: Optional storage quota
         """
         self._base_path = Path(base_path)
-        self._id = backend_id or f"local-{hashlib.md5(str(base_path).encode()).hexdigest()[:8]}"
+        self._id = (
+            backend_id
+            or f"local-{hashlib.md5(str(base_path).encode()).hexdigest()[:8]}"
+        )
         self._quota_bytes = quota_bytes
 
         # Create base directory if it doesn't exist
@@ -365,7 +372,9 @@ class LocalFileBackend(StorageBackend):
         if self._quota_bytes:
             stats = await self.get_stats()
             if stats.total_bytes + len(shard.data) > self._quota_bytes:
-                raise StorageQuotaExceededError(f"Storage quota exceeded: {stats.total_bytes} + {len(shard.data)} > {self._quota_bytes}")
+                raise StorageQuotaExceededError(
+                    f"Storage quota exceeded: {stats.total_bytes} + {len(shard.data)} > {self._quota_bytes}"
+                )
 
         # Create subdirectories
         shard_path = self._shard_path(location)
@@ -546,7 +555,9 @@ class BackendRegistry:
             health[backend_id] = await backend.health_check()
         return health
 
-    async def distribute_shard_set(self, shard_set: ShardSet, distribution: dict[int, str] | None = None) -> dict[int, tuple[str, str]]:
+    async def distribute_shard_set(
+        self, shard_set: ShardSet, distribution: dict[int, str] | None = None
+    ) -> dict[int, tuple[str, str]]:
         """Distribute shards across backends.
 
         Args:
@@ -581,7 +592,9 @@ class BackendRegistry:
 
         return result
 
-    async def retrieve_distributed(self, locations: dict[int, tuple[str, str]], shard_set_template: ShardSet) -> ShardSet:
+    async def retrieve_distributed(
+        self, locations: dict[int, tuple[str, str]], shard_set_template: ShardSet
+    ) -> ShardSet:
         """Retrieve shards distributed across backends.
 
         Args:

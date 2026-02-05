@@ -16,6 +16,7 @@ from datetime import timedelta
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from valence.federation.groups import (
     EpochSecrets,
     GroupMember,
@@ -102,7 +103,9 @@ def creator_key_package(creator_keypair, creator_did) -> tuple[KeyPackage, bytes
 
 
 @pytest.fixture
-def new_member_key_package(new_member_keypair, new_member_did) -> tuple[KeyPackage, bytes]:
+def new_member_key_package(
+    new_member_keypair, new_member_did
+) -> tuple[KeyPackage, bytes]:
     """New member's KeyPackage and init private key."""
     private_key, _ = new_member_keypair
     return KeyPackage.generate(new_member_did, private_key)
@@ -844,14 +847,14 @@ class TestMemberOnboardingFlow:
         )
 
         # New member now has the tree secret to derive their epoch secrets
-        new_member_secrets = EpochSecrets.derive(
+        EpochSecrets.derive(
             epoch=welcome.epoch,
             init_secret=tree_secret,
         )
 
         # Step 3: Existing member (creator) processes commit
         old_secrets = test_group.current_secrets
-        creator_new_secrets = process_commit(
+        process_commit(
             commit,
             creator_did,
             creator_init_private,
@@ -943,7 +946,7 @@ class TestMemberOnboardingFlow:
 
         # Derive new member's view of epoch secrets
         # In the simplified model, new member derives from tree_secret
-        new_member_secrets = EpochSecrets.derive(
+        EpochSecrets.derive(
             epoch=updated_group.epoch,
             init_secret=tree_secret,
         )

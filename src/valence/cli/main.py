@@ -115,7 +115,14 @@ def compute_confidence_score(belief: dict) -> float:
         # Geometric mean with spec weights
         # w_sr=0.25, w_mq=0.20, w_ic=0.15, w_tf=0.15, w_cor=0.15, w_da=0.10
         try:
-            score = (src**0.25) * (meth**0.20) * (cons**0.15) * (fresh**0.15) * (corr**0.15) * (app**0.10)
+            score = (
+                (src**0.25)
+                * (meth**0.20)
+                * (cons**0.15)
+                * (fresh**0.15)
+                * (corr**0.15)
+                * (app**0.10)
+            )
             return min(1.0, max(0.0, score))
         except (ValueError, ZeroDivisionError):
             pass
@@ -204,7 +211,11 @@ def multi_signal_rank(
         recency = compute_recency_score(created_at) if created_at else 0.5
 
         # Final score
-        final_score = semantic_weight * semantic + confidence_weight * confidence + recency_weight * recency
+        final_score = (
+            semantic_weight * semantic
+            + confidence_weight * confidence
+            + recency_weight * recency
+        )
 
         r["final_score"] = final_score
 
@@ -288,14 +299,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         cur = conn.cursor()
 
         # Check if beliefs table exists
-        cur.execute(
-            """
+        cur.execute("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_name = 'beliefs'
             )
-        """
-        )
+        """)
         exists = cur.fetchone()["exists"]
 
         if exists and not args.force:
@@ -313,7 +322,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"  createdb -h {db_host} -p {db_port} -U {db_user} {db_name}")
         print("  # Or with Docker:")
         print(f"  docker run -d --name valence-db -e POSTGRES_USER={db_user} \\")
-        print(f"    -e POSTGRES_PASSWORD={db_pass or 'valence'} -e POSTGRES_DB={db_name} \\")
+        print(
+            f"    -e POSTGRES_PASSWORD={db_pass or 'valence'} -e POSTGRES_DB={db_name} \\"
+        )
         print(f"    -p {db_port}:5432 pgvector/pgvector:pg16")
         return 1
 
@@ -333,8 +344,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
         # Create core tables if they don't exist
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS sources (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 type TEXT NOT NULL,
@@ -345,11 +355,9 @@ def cmd_init(args: argparse.Namespace) -> int:
                 metadata JSONB DEFAULT '{}',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS beliefs (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 content TEXT NOT NULL,
@@ -379,11 +387,9 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 modified_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS entities (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name TEXT NOT NULL,
@@ -394,19 +400,15 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 modified_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """
-        )
+        """)
 
         # Partial unique index for non-aliased entities
-        cur.execute(
-            """
+        cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name_type_unique
             ON entities(name, type) WHERE canonical_id IS NULL
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS belief_entities (
                 belief_id UUID REFERENCES beliefs(id) ON DELETE CASCADE,
                 entity_id UUID REFERENCES entities(id) ON DELETE CASCADE,
@@ -414,11 +416,9 @@ def cmd_init(args: argparse.Namespace) -> int:
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (belief_id, entity_id)
             )
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS tensions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 belief_a_id UUID REFERENCES beliefs(id) ON DELETE CASCADE,
@@ -431,11 +431,9 @@ def cmd_init(args: argparse.Namespace) -> int:
                 resolved_at TIMESTAMPTZ,
                 detected_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS belief_derivations (
                 belief_id UUID PRIMARY KEY REFERENCES beliefs(id) ON DELETE CASCADE,
                 derivation_type TEXT NOT NULL DEFAULT 'assumption',
@@ -443,11 +441,9 @@ def cmd_init(args: argparse.Namespace) -> int:
                 confidence_rationale TEXT,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
-        """
-        )
+        """)
 
-        cur.execute(
-            """
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS derivation_sources (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 belief_id UUID NOT NULL REFERENCES beliefs(id) ON DELETE CASCADE,
@@ -456,27 +452,34 @@ def cmd_init(args: argparse.Namespace) -> int:
                 contribution_type TEXT DEFAULT 'primary',
                 weight REAL DEFAULT 1.0
             )
-        """
-        )
+        """)
 
         # Create indexes
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
+        )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_status ON beliefs(status)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_domain ON beliefs USING GIN(domain_path)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_created ON beliefs(created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_derivation_sources_belief ON derivation_sources(belief_id)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_beliefs_domain ON beliefs USING GIN(domain_path)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_beliefs_created ON beliefs(created_at DESC)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_derivation_sources_belief ON derivation_sources(belief_id)"
+        )
 
         # Create text search
-        cur.execute(
-            """
+        cur.execute("""
             DO $$ BEGIN
                 ALTER TABLE beliefs ADD COLUMN content_tsv tsvector
                     GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
             EXCEPTION WHEN duplicate_column THEN NULL;
             END $$
-        """
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_beliefs_tsv ON beliefs USING GIN(content_tsv)"
         )
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_beliefs_tsv ON beliefs USING GIN(content_tsv)")
 
         conn.commit()
         print("✅ Schema created successfully!")
@@ -731,7 +734,9 @@ def cmd_query(args: argparse.Namespace) -> int:
 
         # Domain filter
         if args.domain:
-            results = [r for r in results if args.domain in (r.get("domain_path") or [])]
+            results = [
+                r for r in results if args.domain in (r.get("domain_path") or [])
+            ]
 
         # Apply multi-signal ranking
         results = multi_signal_rank(
@@ -752,7 +757,9 @@ def cmd_query(args: argparse.Namespace) -> int:
 
         print(f"🔍 Found {len(results)} belief(s) for: {query}")
         if explain:
-            print(f"   Weights: semantic={semantic_weight:.2f}, confidence={confidence_weight:.2f}, recency={recency_weight:.2f}")
+            print(
+                f"   Weights: semantic={semantic_weight:.2f}, confidence={confidence_weight:.2f}, recency={recency_weight:.2f}"
+            )
         print()
 
         for i, r in enumerate(results, 1):
@@ -767,7 +774,9 @@ def cmd_query(args: argparse.Namespace) -> int:
             conf_score = compute_confidence_score(r)
             created_at = r.get("created_at")
             age_str = format_age(created_at) if created_at else "unknown"
-            print(f"    ID: {str(r['id'])[:8]}  Score: {final_score:.0%}  Confidence: {conf_score:.0%}  Semantic: {sim:.0%}  Age: {age_str}")
+            print(
+                f"    ID: {str(r['id'])[:8]}  Score: {final_score:.0%}  Confidence: {conf_score:.0%}  Semantic: {sim:.0%}  Age: {age_str}"
+            )
 
             if r.get("domain_path"):
                 print(f"    Domains: {', '.join(r['domain_path'])}")
@@ -776,16 +785,22 @@ def cmd_query(args: argparse.Namespace) -> int:
             if explain and r.get("score_breakdown"):
                 bd = r["score_breakdown"]
                 print("    ┌─ Score Breakdown:")
-                print(f"    │  Semantic:   {bd['semantic']['value']:.2f} × {bd['semantic']['weight']:.2f} = {bd['semantic']['contribution']:.3f}")
+                print(
+                    f"    │  Semantic:   {bd['semantic']['value']:.2f} × {bd['semantic']['weight']:.2f} = {bd['semantic']['contribution']:.3f}"
+                )
                 print(
                     f"    │  Confidence: {bd['confidence']['value']:.2f} × {bd['confidence']['weight']:.2f} = {bd['confidence']['contribution']:.3f}"
                 )
-                print(f"    │  Recency:    {bd['recency']['value']:.2f} × {bd['recency']['weight']:.2f} = {bd['recency']['contribution']:.3f}")
+                print(
+                    f"    │  Recency:    {bd['recency']['value']:.2f} × {bd['recency']['weight']:.2f} = {bd['recency']['contribution']:.3f}"
+                )
                 print(f"    │  Final:      {bd['final']:.3f}")
                 print("    └─")
 
             # === DERIVATION CHAIN ===
-            derivation_type = r.get("derivation_type") or r.get("extraction_method") or "unknown"
+            derivation_type = (
+                r.get("derivation_type") or r.get("extraction_method") or "unknown"
+            )
             print(f"    ┌─ Derivation: {derivation_type}")
 
             if r.get("method_description"):
@@ -806,7 +821,9 @@ def cmd_query(args: argparse.Namespace) -> int:
                         )
                         src_row = cur.fetchone()
                         src_content = src_row["content"][:50] if src_row else "?"
-                        print(f"    │  ← Derived from ({src.get('contribution_type', 'primary')}): {src_content}...")
+                        print(
+                            f"    │  ← Derived from ({src.get('contribution_type', 'primary')}): {src_content}..."
+                        )
                     elif src.get("external_ref"):
                         print(f"    │  ← External: {src['external_ref']}")
 
@@ -896,7 +913,9 @@ def cmd_query_federated(args: argparse.Namespace) -> int:
                 # Show original vs weighted confidence
                 original = r.confidence.get("_original_overall")
                 if original:
-                    print(f"       Original confidence: {original:.0%} → weighted: {r.effective_confidence:.0%}")
+                    print(
+                        f"       Original confidence: {original:.0%} → weighted: {r.effective_confidence:.0%}"
+                    )
 
         print(f"{'─' * 60}")
 
@@ -950,16 +969,24 @@ def cmd_list(args: argparse.Namespace) -> int:
             print("📭 No beliefs found")
             return 0
 
-        print(f"📚 {len(results)} belief(s)" + (f" in domain '{args.domain}'" if args.domain else "") + "\n")
+        print(
+            f"📚 {len(results)} belief(s)"
+            + (f" in domain '{args.domain}'" if args.domain else "")
+            + "\n"
+        )
 
         for r in results:
             conf = format_confidence(r.get("confidence", {}))
             age = format_age(r.get("created_at"))
             deriv_raw = r.get("derivation_type") or "?"
             deriv = deriv_raw[:6] if deriv_raw else "?"
-            content = r["content"][:55] + "..." if len(r["content"]) > 55 else r["content"]
+            content = (
+                r["content"][:55] + "..." if len(r["content"]) > 55 else r["content"]
+            )
 
-            print(f"  {str(r['id'])[:8]}  [{conf:>4}] [{age:>3}] [{deriv:>6}]  {content}")
+            print(
+                f"  {str(r['id'])[:8]}  [{conf:>4}] [{age:>3}] [{deriv:>6}]  {content}"
+            )
 
         return 0
 
@@ -1093,7 +1120,9 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
             ]
 
             for pos, neg in opposites:
-                if (pos in content_a and neg in content_b) or (neg in content_a and pos in content_b):
+                if (pos in content_a and neg in content_b) or (
+                    neg in content_a and pos in content_b
+                ):
                     conflict_signal += 0.3
                     reason.append(f"opposite: {pos}/{neg}")
                     break
@@ -1103,7 +1132,8 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
                 conflicts.append(
                     {
                         **pair,
-                        "conflict_score": conflict_signal + (pair["similarity"] - threshold) * 0.5,
+                        "conflict_score": conflict_signal
+                        + (pair["similarity"] - threshold) * 0.5,
                         "reason": ", ".join(reason) if reason else "high similarity",
                     }
                 )
@@ -1119,7 +1149,9 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
 
         for i, c in enumerate(conflicts[:10], 1):
             print(f"{'═' * 60}")
-            print(f"Conflict #{i} (similarity: {c['similarity']:.1%}, signal: {c['conflict_score']:.2f})")
+            print(
+                f"Conflict #{i} (similarity: {c['similarity']:.1%}, signal: {c['conflict_score']:.2f})"
+            )
             print(f"Reason: {c['reason']}")
             print()
             print(f"  A [{str(c['id_a'])[:8]}] {c['content_a'][:70]}...")
@@ -1179,17 +1211,25 @@ def cmd_stats(args: argparse.Namespace) -> int:
         cur.execute("SELECT COUNT(*) as total FROM beliefs")
         total = cur.fetchone()["total"]
 
-        cur.execute("SELECT COUNT(*) as active FROM beliefs WHERE status = 'active' AND superseded_by_id IS NULL")
+        cur.execute(
+            "SELECT COUNT(*) as active FROM beliefs WHERE status = 'active' AND superseded_by_id IS NULL"
+        )
         active = cur.fetchone()["active"]
 
-        cur.execute("SELECT COUNT(*) as with_emb FROM beliefs WHERE embedding IS NOT NULL")
+        cur.execute(
+            "SELECT COUNT(*) as with_emb FROM beliefs WHERE embedding IS NOT NULL"
+        )
         with_embedding = cur.fetchone()["with_emb"]
 
-        cur.execute("SELECT COUNT(*) as tensions FROM tensions WHERE status = 'detected'")
+        cur.execute(
+            "SELECT COUNT(*) as tensions FROM tensions WHERE status = 'detected'"
+        )
         tensions = cur.fetchone()["tensions"]
 
         try:
-            cur.execute("SELECT COUNT(DISTINCT d) as count FROM beliefs, LATERAL unnest(domain_path) as d")
+            cur.execute(
+                "SELECT COUNT(DISTINCT d) as count FROM beliefs, LATERAL unnest(domain_path) as d"
+            )
             domains = cur.fetchone()["count"]
         except (Exception,) as e:
             logger.debug(f"Could not count domains (column may not exist): {e}")
@@ -1200,10 +1240,14 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
         # Count federated beliefs
         try:
-            cur.execute("SELECT COUNT(*) as federated FROM beliefs WHERE is_local = FALSE")
+            cur.execute(
+                "SELECT COUNT(*) as federated FROM beliefs WHERE is_local = FALSE"
+            )
             federated = cur.fetchone()["federated"]
         except (Exception,) as e:
-            logger.debug(f"Could not count federated beliefs (column may not exist): {e}")
+            logger.debug(
+                f"Could not count federated beliefs (column may not exist): {e}"
+            )
             federated = 0
 
         print("📊 Valence Statistics")
@@ -1276,7 +1320,9 @@ def cmd_peer_list(args: argparse.Namespace) -> int:
         print(f"👥 {len(peers)} trusted peer(s)\n")
 
         for p in peers:
-            trust_bar = "█" * int(p.trust_level * 10) + "░" * (10 - int(p.trust_level * 10))
+            trust_bar = "█" * int(p.trust_level * 10) + "░" * (
+                10 - int(p.trust_level * 10)
+            )
             name_str = f" ({p.name})" if p.name else ""
             last_sync = format_age(p.last_sync_at) if p.last_sync_at else "never"
 
@@ -1365,7 +1411,9 @@ def cmd_export(args: argparse.Namespace) -> int:
             if package.recipient_did:
                 print(f"   To:      {package.recipient_did}")
             if package.domain_summary:
-                print(f"   Domains: {', '.join(f'{k}({v})' for k,v in package.domain_summary.items())}")
+                print(
+                    f"   Domains: {', '.join(f'{k}({v})' for k,v in package.domain_summary.items())}"
+                )
 
         return 0
 
@@ -1406,7 +1454,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         # Determine source DID
         from_did = args.source or package.exporter_did
         if not from_did:
-            print("❌ Source DID required (use --from or ensure exporter_did in package)")
+            print(
+                "❌ Source DID required (use --from or ensure exporter_did in package)"
+            )
             return 1
 
         # Check trust
@@ -1492,13 +1542,17 @@ Federation (Week 2):
 
     # init
     init_parser = subparsers.add_parser("init", help="Initialize database schema")
-    init_parser.add_argument("--force", "-f", action="store_true", help="Recreate schema even if exists")
+    init_parser.add_argument(
+        "--force", "-f", action="store_true", help="Recreate schema even if exists"
+    )
 
     # add
     add_parser = subparsers.add_parser("add", help="Add a new belief")
     add_parser.add_argument("content", help="Belief content")
     add_parser.add_argument("--confidence", "-c", help="Confidence (JSON or float 0-1)")
-    add_parser.add_argument("--domain", "-d", action="append", help="Domain tag (repeatable)")
+    add_parser.add_argument(
+        "--domain", "-d", action="append", help="Domain tag (repeatable)"
+    )
     add_parser.add_argument(
         "--derivation-type",
         "-t",
@@ -1514,16 +1568,24 @@ Federation (Week 2):
         default="observation",
         help="How this belief was derived",
     )
-    add_parser.add_argument("--derived-from", help="UUID of source belief this was derived from")
+    add_parser.add_argument(
+        "--derived-from", help="UUID of source belief this was derived from"
+    )
     add_parser.add_argument("--method", "-m", help="Method description for derivation")
 
     # query
-    query_parser = subparsers.add_parser("query", help="Search beliefs with multi-signal ranking")
+    query_parser = subparsers.add_parser(
+        "query", help="Search beliefs with multi-signal ranking"
+    )
     query_parser.add_argument("query", help="Search query")
     query_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
-    query_parser.add_argument("--threshold", "-t", type=float, default=0.3, help="Min semantic similarity")
+    query_parser.add_argument(
+        "--threshold", "-t", type=float, default=0.3, help="Min semantic similarity"
+    )
     query_parser.add_argument("--domain", "-d", help="Filter by domain")
-    query_parser.add_argument("--chain", action="store_true", help="Show full supersession chains")
+    query_parser.add_argument(
+        "--chain", action="store_true", help="Show full supersession chains"
+    )
     query_parser.add_argument(
         "--scope",
         "-s",
@@ -1559,7 +1621,9 @@ Federation (Week 2):
     list_parser.add_argument("--domain", "-d", help="Filter by domain")
 
     # conflicts
-    conflicts_parser = subparsers.add_parser("conflicts", help="Detect contradicting beliefs")
+    conflicts_parser = subparsers.add_parser(
+        "conflicts", help="Detect contradicting beliefs"
+    )
     conflicts_parser.add_argument(
         "--threshold",
         "-t",
@@ -1581,7 +1645,9 @@ Federation (Week 2):
     # DISCOVER command (Network bootstrap)
     # ========================================================================
 
-    discover_parser = subparsers.add_parser("discover", help="Discover network routers via seeds")
+    discover_parser = subparsers.add_parser(
+        "discover", help="Discover network routers via seeds"
+    )
     discover_parser.add_argument(
         "--seed",
         "-s",
@@ -1604,10 +1670,18 @@ Federation (Week 2):
         dest="features",
         help="Required feature (repeatable)",
     )
-    discover_parser.add_argument("--refresh", action="store_true", help="Force refresh (bypass cache)")
-    discover_parser.add_argument("--no-verify", action="store_true", help="Skip router signature verification")
-    discover_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    discover_parser.add_argument("--stats", action="store_true", help="Show discovery statistics")
+    discover_parser.add_argument(
+        "--refresh", action="store_true", help="Force refresh (bypass cache)"
+    )
+    discover_parser.add_argument(
+        "--no-verify", action="store_true", help="Skip router signature verification"
+    )
+    discover_parser.add_argument(
+        "--json", "-j", action="store_true", help="Output as JSON"
+    )
+    discover_parser.add_argument(
+        "--stats", action="store_true", help="Show discovery statistics"
+    )
 
     # ========================================================================
     # PEER commands (Week 2 Federation)
@@ -1617,8 +1691,12 @@ Federation (Week 2):
     peer_subparsers = peer_parser.add_subparsers(dest="peer_command", required=True)
 
     # peer add
-    peer_add_parser = peer_subparsers.add_parser("add", help="Add or update a trusted peer")
-    peer_add_parser.add_argument("did", help="Peer DID (e.g., did:vkb:web:alice.example.com)")
+    peer_add_parser = peer_subparsers.add_parser(
+        "add", help="Add or update a trusted peer"
+    )
+    peer_add_parser.add_argument(
+        "did", help="Peer DID (e.g., did:vkb:web:alice.example.com)"
+    )
     peer_add_parser.add_argument(
         "--trust",
         type=float,
@@ -1642,9 +1720,15 @@ Federation (Week 2):
     export_parser = subparsers.add_parser("export", help="Export beliefs for sharing")
     export_parser.add_argument("--to", dest="to", help="Recipient DID (for filtering)")
     export_parser.add_argument("--output", "-o", help="Output file (default: stdout)")
-    export_parser.add_argument("--domain", "-d", action="append", help="Filter by domain")
-    export_parser.add_argument("--min-confidence", type=float, default=0.0, help="Minimum confidence threshold")
-    export_parser.add_argument("--limit", "-n", type=int, default=1000, help="Max beliefs")
+    export_parser.add_argument(
+        "--domain", "-d", action="append", help="Filter by domain"
+    )
+    export_parser.add_argument(
+        "--min-confidence", type=float, default=0.0, help="Minimum confidence threshold"
+    )
+    export_parser.add_argument(
+        "--limit", "-n", type=int, default=1000, help="Max beliefs"
+    )
     export_parser.add_argument(
         "--include-federated",
         action="store_true",
@@ -1657,8 +1741,12 @@ Federation (Week 2):
 
     import_parser = subparsers.add_parser("import", help="Import beliefs from a peer")
     import_parser.add_argument("file", help="Import file (JSON) or - for stdin")
-    import_parser.add_argument("--from", dest="source", help="Source peer DID (overrides package)")
-    import_parser.add_argument("--trust", type=float, help="Override trust level (otherwise uses registry)")
+    import_parser.add_argument(
+        "--from", dest="source", help="Source peer DID (overrides package)"
+    )
+    import_parser.add_argument(
+        "--trust", type=float, help="Override trust level (otherwise uses registry)"
+    )
 
     # ========================================================================
     # TRUST commands
@@ -1668,8 +1756,12 @@ Federation (Week 2):
     trust_subparsers = trust_parser.add_subparsers(dest="trust_command", required=True)
 
     # trust check
-    trust_check_parser = trust_subparsers.add_parser("check", help="Check for trust concentration issues")
-    trust_check_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    trust_check_parser = trust_subparsers.add_parser(
+        "check", help="Check for trust concentration issues"
+    )
+    trust_check_parser.add_argument(
+        "--json", "-j", action="store_true", help="Output as JSON"
+    )
     trust_check_parser.add_argument(
         "--single-threshold",
         type=float,
@@ -1844,7 +1936,11 @@ def cmd_trust_check(args: argparse.Namespace) -> int:
         print(f"   Top node share:   {report.top_node_share:.1%}")
         print(f"   Top 3 share:      {report.top_3_share:.1%}")
         if report.gini_coefficient is not None:
-            gini_desc = "equal" if report.gini_coefficient < 0.3 else ("moderate" if report.gini_coefficient < 0.5 else "concentrated")
+            gini_desc = (
+                "equal"
+                if report.gini_coefficient < 0.3
+                else ("moderate" if report.gini_coefficient < 0.5 else "concentrated")
+            )
             print(f"   Gini coefficient: {report.gini_coefficient:.2f} ({gini_desc})")
 
         # Warnings
@@ -1896,24 +1992,20 @@ def cmd_migrate_visibility(args: argparse.Namespace) -> int:
 
         # Check if share_policy column exists
         cur = conn.cursor()
-        cur.execute(
-            """
+        cur.execute("""
             SELECT EXISTS (
                 SELECT FROM information_schema.columns
                 WHERE table_name = 'beliefs' AND column_name = 'share_policy'
             )
-        """
-        )
+        """)
         has_column = cur.fetchone()["exists"]
 
         if not has_column:
             print("⚠️  share_policy column not found. Adding it...")
-            cur.execute(
-                """
+            cur.execute("""
                 ALTER TABLE beliefs
                 ADD COLUMN IF NOT EXISTS share_policy JSONB
-            """
-            )
+            """)
             conn.commit()
             print("✅ share_policy column added")
 

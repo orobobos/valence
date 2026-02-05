@@ -17,6 +17,7 @@ import time
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from valence.network.messages import (
     MESSAGE_SIZE_BUCKETS,
     CoverMessage,
@@ -31,7 +32,9 @@ from valence.network.node import (
     NodeClient,
 )
 
-pytestmark = pytest.mark.skip(reason="Needs update for NodeClient decomposition - see #167")
+pytestmark = pytest.mark.skip(
+    reason="Needs update for NodeClient decomposition - see #167"
+)
 
 
 # =============================================================================
@@ -401,7 +404,11 @@ class TestNodeClientCoverTraffic:
     def test_is_idle_after_threshold(self, node_client_with_cover_traffic):
         """Node becomes idle after threshold."""
         # Set last message time to past the threshold
-        node_client_with_cover_traffic._last_real_message_time = time.time() - node_client_with_cover_traffic.cover_traffic.idle_threshold_seconds - 1
+        node_client_with_cover_traffic._last_real_message_time = (
+            time.time()
+            - node_client_with_cover_traffic.cover_traffic.idle_threshold_seconds
+            - 1
+        )
         assert node_client_with_cover_traffic._is_idle() is True
 
     def test_is_idle_disabled_returns_false(self, node_client):
@@ -413,7 +420,9 @@ class TestNodeClientCoverTraffic:
         peers = ["peer1", "peer2", "peer3"]
         node_client_with_cover_traffic.cover_traffic.target_peers = peers
 
-        targets = [node_client_with_cover_traffic._get_cover_target() for _ in range(10)]
+        targets = [
+            node_client_with_cover_traffic._get_cover_target() for _ in range(10)
+        ]
         for target in targets:
             assert target in peers
 
@@ -468,7 +477,9 @@ class TestCoverTrafficFlow:
     """Tests for cover traffic message flow."""
 
     @pytest.mark.asyncio
-    async def test_generate_cover_message_no_connections(self, node_client_with_cover_traffic):
+    async def test_generate_cover_message_no_connections(
+        self, node_client_with_cover_traffic
+    ):
         """Cover message generation handles no connections gracefully."""
         # No connections - should not crash
         assert len(node_client_with_cover_traffic.connections) == 0
@@ -478,7 +489,9 @@ class TestCoverTrafficFlow:
         assert node_client_with_cover_traffic._stats["cover_messages_sent"] == 0
 
     @pytest.mark.asyncio
-    async def test_cover_traffic_loop_cancellation(self, node_client_with_cover_traffic):
+    async def test_cover_traffic_loop_cancellation(
+        self, node_client_with_cover_traffic
+    ):
         """Cover traffic loop can be cancelled cleanly."""
         node_client_with_cover_traffic._running = True
 
@@ -508,7 +521,7 @@ class TestCoverTrafficFlow:
 
     def test_stats_include_cover_traffic(self, node_client_with_cover_traffic):
         """Node stats include cover traffic counters."""
-        stats = node_client_with_cover_traffic.get_stats()
+        node_client_with_cover_traffic.get_stats()
 
         assert "cover_messages_sent" in node_client_with_cover_traffic._stats
         assert "cover_messages_received" in node_client_with_cover_traffic._stats

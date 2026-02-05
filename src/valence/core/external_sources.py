@@ -193,7 +193,9 @@ class TrustedDomain:
 
             # Check allowed paths
             if self.allowed_paths:
-                return any(re.match(pattern, parsed.path) for pattern in self.allowed_paths)
+                return any(
+                    re.match(pattern, parsed.path) for pattern in self.allowed_paths
+                )
 
             return True
         except Exception:
@@ -261,38 +263,76 @@ class TrustedSourceRegistry:
     def _load_defaults(self):
         """Load default trusted sources."""
         # Academic/Research
-        self.register_domain(TrustedDomain(domain="doi.org", category=SourceCategory.ACADEMIC_JOURNAL))
-        self.register_domain(TrustedDomain(domain="arxiv.org", category=SourceCategory.ACADEMIC_PREPRINT))
+        self.register_domain(
+            TrustedDomain(domain="doi.org", category=SourceCategory.ACADEMIC_JOURNAL)
+        )
+        self.register_domain(
+            TrustedDomain(domain="arxiv.org", category=SourceCategory.ACADEMIC_PREPRINT)
+        )
         self.register_domain(
             TrustedDomain(
                 domain="pubmed.ncbi.nlm.nih.gov",
                 category=SourceCategory.ACADEMIC_JOURNAL,
             )
         )
-        self.register_domain(TrustedDomain(domain="scholar.google.com", category=SourceCategory.ACADEMIC_JOURNAL))
-        self.register_domain(TrustedDomain(domain="ncbi.nlm.nih.gov", category=SourceCategory.ACADEMIC_JOURNAL))
-        self.register_domain(TrustedDomain(domain="semanticscholar.org", category=SourceCategory.ACADEMIC_JOURNAL))
+        self.register_domain(
+            TrustedDomain(
+                domain="scholar.google.com", category=SourceCategory.ACADEMIC_JOURNAL
+            )
+        )
+        self.register_domain(
+            TrustedDomain(
+                domain="ncbi.nlm.nih.gov", category=SourceCategory.ACADEMIC_JOURNAL
+            )
+        )
+        self.register_domain(
+            TrustedDomain(
+                domain="semanticscholar.org", category=SourceCategory.ACADEMIC_JOURNAL
+            )
+        )
 
         # Government
-        self.register_domain(TrustedDomain(domain=".gov", category=SourceCategory.GOVERNMENT))
-        self.register_domain(TrustedDomain(domain=".gov.uk", category=SourceCategory.GOVERNMENT))
-        self.register_domain(TrustedDomain(domain="europa.eu", category=SourceCategory.GOVERNMENT))
+        self.register_domain(
+            TrustedDomain(domain=".gov", category=SourceCategory.GOVERNMENT)
+        )
+        self.register_domain(
+            TrustedDomain(domain=".gov.uk", category=SourceCategory.GOVERNMENT)
+        )
+        self.register_domain(
+            TrustedDomain(domain="europa.eu", category=SourceCategory.GOVERNMENT)
+        )
 
         # Technical documentation
-        self.register_domain(TrustedDomain(domain="rfc-editor.org", category=SourceCategory.TECHNICAL_DOCS))
-        self.register_domain(TrustedDomain(domain="w3.org", category=SourceCategory.TECHNICAL_DOCS))
-        self.register_domain(TrustedDomain(domain="ietf.org", category=SourceCategory.TECHNICAL_DOCS))
+        self.register_domain(
+            TrustedDomain(
+                domain="rfc-editor.org", category=SourceCategory.TECHNICAL_DOCS
+            )
+        )
+        self.register_domain(
+            TrustedDomain(domain="w3.org", category=SourceCategory.TECHNICAL_DOCS)
+        )
+        self.register_domain(
+            TrustedDomain(domain="ietf.org", category=SourceCategory.TECHNICAL_DOCS)
+        )
 
         # Encyclopedia
-        self.register_domain(TrustedDomain(domain="wikipedia.org", category=SourceCategory.ENCYCLOPEDIA))
-        self.register_domain(TrustedDomain(domain="britannica.com", category=SourceCategory.ENCYCLOPEDIA))
+        self.register_domain(
+            TrustedDomain(domain="wikipedia.org", category=SourceCategory.ENCYCLOPEDIA)
+        )
+        self.register_domain(
+            TrustedDomain(domain="britannica.com", category=SourceCategory.ENCYCLOPEDIA)
+        )
 
         # News (major)
         for domain in ["reuters.com", "apnews.com", "bbc.com", "bbc.co.uk"]:
-            self.register_domain(TrustedDomain(domain=domain, category=SourceCategory.NEWS_MAJOR))
+            self.register_domain(
+                TrustedDomain(domain=domain, category=SourceCategory.NEWS_MAJOR)
+            )
 
         # DOI prefixes (major academic publishers)
-        self.register_doi_prefix(DOIPrefix(prefix="10.1038", publisher="Nature Publishing Group"))
+        self.register_doi_prefix(
+            DOIPrefix(prefix="10.1038", publisher="Nature Publishing Group")
+        )
         self.register_doi_prefix(DOIPrefix(prefix="10.1126", publisher="Science/AAAS"))
         self.register_doi_prefix(DOIPrefix(prefix="10.1016", publisher="Elsevier"))
         self.register_doi_prefix(DOIPrefix(prefix="10.1371", publisher="PLOS"))
@@ -309,7 +349,9 @@ class TrustedSourceRegistry:
     def register_domain(self, domain: TrustedDomain) -> None:
         """Register a trusted domain."""
         self._domains[domain.domain] = domain
-        logger.info(f"Registered trusted domain: {domain.domain} ({domain.category.value})")
+        logger.info(
+            f"Registered trusted domain: {domain.domain} ({domain.category.value})"
+        )
 
     def unregister_domain(self, domain: str) -> bool:
         """Unregister a domain. Returns True if it existed."""
@@ -377,7 +419,9 @@ class TrustedSourceRegistry:
             return self._doi_prefixes.get(prefix)
         return None
 
-    def classify_source(self, url: str | None = None, doi: str | None = None) -> SourceCategory:
+    def classify_source(
+        self, url: str | None = None, doi: str | None = None
+    ) -> SourceCategory:
         """Classify an external source's category."""
         if doi:
             prefix_info = self.get_doi_prefix_info(doi)
@@ -405,7 +449,9 @@ class TrustedSourceRegistry:
 
         return SourceCategory.UNKNOWN
 
-    def get_source_reliability(self, url: str | None = None, doi: str | None = None) -> float:
+    def get_source_reliability(
+        self, url: str | None = None, doi: str | None = None
+    ) -> float:
         """Get reliability score for a source."""
         if doi:
             prefix_info = self.get_doi_prefix_info(doi)
@@ -559,11 +605,15 @@ class DOIVerificationResult:
             "is_valid": self.is_valid,
             "title": self.title,
             "authors": self.authors,
-            "publication_date": (self.publication_date.isoformat() if self.publication_date else None),
+            "publication_date": (
+                self.publication_date.isoformat() if self.publication_date else None
+            ),
             "journal": self.journal,
             "abstract": self.abstract,
             "retracted": self.retracted,
-            "retraction_date": (self.retraction_date.isoformat() if self.retraction_date else None),
+            "retraction_date": (
+                self.retraction_date.isoformat() if self.retraction_date else None
+            ),
             "retraction_reason": self.retraction_reason,
             "publisher_reliability": self.publisher_reliability,
             "verified_at": self.verified_at.isoformat(),
@@ -680,8 +730,12 @@ class ExternalSourceVerification:
             "status": self.status.value,
             "is_verified": self.is_verified,
             "liveness": self.liveness.to_dict() if self.liveness else None,
-            "content_match": (self.content_match.to_dict() if self.content_match else None),
-            "doi_verification": (self.doi_verification.to_dict() if self.doi_verification else None),
+            "content_match": (
+                self.content_match.to_dict() if self.content_match else None
+            ),
+            "doi_verification": (
+                self.doi_verification.to_dict() if self.doi_verification else None
+            ),
             "reliability": self.reliability.to_dict() if self.reliability else None,
             "category": self.category.value,
             "content_hash": self.content_hash,
@@ -824,7 +878,9 @@ class ExternalSourceVerificationService:
             self._verifications_by_belief[belief_id] = []
         self._verifications_by_belief[belief_id].append(verification.id)
 
-        logger.info(f"Created source verification {verification.id} for belief {belief_id}")
+        logger.info(
+            f"Created source verification {verification.id} for belief {belief_id}"
+        )
         return verification
 
     def check_liveness(
@@ -851,7 +907,9 @@ class ExternalSourceVerificationService:
         if use_cache and source_key in self._liveness_cache:
             cached = self._liveness_cache[source_key]
             cache_age = datetime.now() - cached.checked_at
-            if cache_age < timedelta(hours=ExternalSourceConstants.LIVENESS_CACHE_TTL_HOURS):
+            if cache_age < timedelta(
+                hours=ExternalSourceConstants.LIVENESS_CACHE_TTL_HOURS
+            ):
                 verification.liveness = cached
                 return cached
 
@@ -869,7 +927,9 @@ class ExternalSourceVerificationService:
 
         return result
 
-    def _simulate_liveness_check(self, verification: ExternalSourceVerification) -> LivenessCheckResult:
+    def _simulate_liveness_check(
+        self, verification: ExternalSourceVerification
+    ) -> LivenessCheckResult:
         """Simulate a liveness check (for testing without network)."""
         # Default to live for testing
         # In production: actual HTTP/API calls
@@ -960,7 +1020,14 @@ class ExternalSourceVerificationService:
         # Simple keyword overlap for simulation
         # In production: embedding-based semantic similarity
         belief_words = set(belief_content.lower().split())
-        content_words = set((fetched_content or "simulated content relevant to belief scientific research findings").lower().split())
+        content_words = set(
+            (
+                fetched_content
+                or "simulated content relevant to belief scientific research findings"
+            )
+            .lower()
+            .split()
+        )
 
         if not belief_words:
             similarity = 0.0
@@ -1006,7 +1073,9 @@ class ExternalSourceVerificationService:
                 category_score = prefix_info.reliability
 
         # Liveness score
-        liveness_score = 1.0 if verification.liveness and verification.liveness.is_live else 0.0
+        liveness_score = (
+            1.0 if verification.liveness and verification.liveness.is_live else 0.0
+        )
 
         # Content match score
         content_match_score = 0.0
@@ -1026,12 +1095,21 @@ class ExternalSourceVerificationService:
 
         # Redirect penalty
         redirect_penalty = 0.0
-        if verification.liveness and verification.liveness.status == SourceLivenessStatus.REDIRECT:
+        if (
+            verification.liveness
+            and verification.liveness.status == SourceLivenessStatus.REDIRECT
+        ):
             redirect_penalty = 0.1
 
         # Compute overall (weighted combination)
         overall = (
-            (0.25 * category_score + 0.20 * liveness_score + 0.35 * content_match_score + 0.10 * freshness_score + 0.10 * (1.0 + registry_bonus))
+            (
+                0.25 * category_score
+                + 0.20 * liveness_score
+                + 0.35 * content_match_score
+                + 0.10 * freshness_score
+                + 0.10 * (1.0 + registry_bonus)
+            )
             - staleness_penalty
             - redirect_penalty
         )
@@ -1102,11 +1180,14 @@ class ExternalSourceVerificationService:
         # All checks passed
         verification.status = SourceVerificationStatus.VERIFIED
         verification.verified_at = datetime.now()
-        verification.expires_at = datetime.now() + timedelta(hours=ExternalSourceConstants.LIVENESS_CACHE_TTL_HOURS * 7)
+        verification.expires_at = datetime.now() + timedelta(
+            hours=ExternalSourceConstants.LIVENESS_CACHE_TTL_HOURS * 7
+        )
         verification.content_hash = hashlib.sha256(belief_content.encode()).hexdigest()
 
         logger.info(
-            f"Source {verification.source_identifier} verified for belief {verification.belief_id} " f"(reliability: {reliability.overall:.2f})"
+            f"Source {verification.source_identifier} verified for belief {verification.belief_id} "
+            f"(reliability: {reliability.overall:.2f})"
         )
 
         return verification
@@ -1131,14 +1212,21 @@ class ExternalSourceVerificationService:
         verifications = [self._verifications[vid] for vid in verification_ids]
 
         result.total_sources = len(verifications)
-        result.has_external_sources = result.total_sources >= ExternalSourceConstants.MIN_EXTERNAL_SOURCES_FOR_L4
+        result.has_external_sources = (
+            result.total_sources >= ExternalSourceConstants.MIN_EXTERNAL_SOURCES_FOR_L4
+        )
 
         if not result.has_external_sources:
-            result.issues.append(f"Insufficient external sources: {result.total_sources} < " f"{ExternalSourceConstants.MIN_EXTERNAL_SOURCES_FOR_L4}")
+            result.issues.append(
+                f"Insufficient external sources: {result.total_sources} < "
+                f"{ExternalSourceConstants.MIN_EXTERNAL_SOURCES_FOR_L4}"
+            )
             return result
 
         # Count verified vs failed
-        verified = [v for v in verifications if v.status == SourceVerificationStatus.VERIFIED]
+        verified = [
+            v for v in verifications if v.status == SourceVerificationStatus.VERIFIED
+        ]
         failed = [v for v in verifications if v.status.value.startswith("failed")]
 
         result.verified_sources = len(verified)
@@ -1158,7 +1246,10 @@ class ExternalSourceVerificationService:
             if v.reliability and v.reliability.overall > best_reliability:
                 best_reliability = v.reliability.overall
                 best_source = v
-            if v.content_match and v.content_match.similarity_score > best_content_match:
+            if (
+                v.content_match
+                and v.content_match.similarity_score > best_content_match
+            ):
                 best_content_match = v.content_match.similarity_score
 
         result.best_reliability_score = best_reliability
@@ -1167,14 +1258,24 @@ class ExternalSourceVerificationService:
             result.best_source_id = best_source.id
 
         # Check thresholds
-        result.meets_reliability_threshold = best_reliability >= ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY
-        result.meets_content_match_threshold = best_content_match >= ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE
+        result.meets_reliability_threshold = (
+            best_reliability >= ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY
+        )
+        result.meets_content_match_threshold = (
+            best_content_match >= ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE
+        )
 
         if not result.meets_reliability_threshold:
-            result.issues.append(f"Best source reliability {best_reliability:.2f} < " f"{ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY}")
+            result.issues.append(
+                f"Best source reliability {best_reliability:.2f} < "
+                f"{ExternalSourceConstants.MIN_VERIFIED_SOURCE_RELIABILITY}"
+            )
 
         if not result.meets_content_match_threshold:
-            result.issues.append(f"Best content match {best_content_match:.2f} < " f"{ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE}")
+            result.issues.append(
+                f"Best content match {best_content_match:.2f} < "
+                f"{ExternalSourceConstants.MIN_CONTENT_MATCH_SCORE}"
+            )
 
         # All requirements met?
         result.all_requirements_met = (
@@ -1186,18 +1287,28 @@ class ExternalSourceVerificationService:
 
         return result
 
-    def get_verification(self, verification_id: UUID) -> ExternalSourceVerification | None:
+    def get_verification(
+        self, verification_id: UUID
+    ) -> ExternalSourceVerification | None:
         """Get a verification by ID."""
         return self._verifications.get(verification_id)
 
-    def get_verifications_for_belief(self, belief_id: UUID) -> list[ExternalSourceVerification]:
+    def get_verifications_for_belief(
+        self, belief_id: UUID
+    ) -> list[ExternalSourceVerification]:
         """Get all verifications for a belief."""
         ids = self._verifications_by_belief.get(belief_id, [])
         return [self._verifications[vid] for vid in ids if vid in self._verifications]
 
-    def get_verified_sources_for_belief(self, belief_id: UUID) -> list[ExternalSourceVerification]:
+    def get_verified_sources_for_belief(
+        self, belief_id: UUID
+    ) -> list[ExternalSourceVerification]:
         """Get only verified sources for a belief."""
-        return [v for v in self.get_verifications_for_belief(belief_id) if v.status == SourceVerificationStatus.VERIFIED]
+        return [
+            v
+            for v in self.get_verifications_for_belief(belief_id)
+            if v.status == SourceVerificationStatus.VERIFIED
+        ]
 
 
 # =============================================================================

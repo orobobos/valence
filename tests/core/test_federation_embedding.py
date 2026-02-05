@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 
 import pytest
+
 from valence.core.federation_embedding import (
     FEDERATION_EMBEDDING_DIMS,
     FEDERATION_EMBEDDING_MODEL,

@@ -114,7 +114,11 @@ class CircuitState:
     def cleanup_expired(self) -> int:
         """Remove expired circuits. Returns count removed."""
         now = time.time()
-        expired = [cid for cid, state in self.circuits.items() if now - state.created_at > self.circuit_timeout]
+        expired = [
+            cid
+            for cid, state in self.circuits.items()
+            if now - state.created_at > self.circuit_timeout
+        ]
         for cid in expired:
             del self.circuits[cid]
         return len(expired)
@@ -182,7 +186,9 @@ class RouterNode:
     features: list[str] = field(default_factory=list)
 
     # Regional location (for geographic routing preference)
-    region: str | None = None  # ISO 3166-1 alpha-2 country code (e.g., "US", "DE", "JP")
+    region: str | None = (
+        None  # ISO 3166-1 alpha-2 country code (e.g., "US", "DE", "JP")
+    )
     coordinates: tuple[float, float] | None = None  # (latitude, longitude)
 
     # Ed25519 identity keypair (generated on init if not provided)
@@ -279,11 +285,17 @@ class RouterNode:
             Load percentage from 0.0 to 100.0
         """
         # Connection-based load
-        conn_load = (len(self.connections) / self.max_connections * 100) if self.max_connections > 0 else 0
+        conn_load = (
+            (len(self.connections) / self.max_connections * 100)
+            if self.max_connections > 0
+            else 0
+        )
 
         # Queue-based load (total messages across all queues)
         total_queued = sum(len(q) for q in self.offline_queues.values())
-        queue_load = (total_queued / self.MAX_QUEUE_SIZE * 100) if self.MAX_QUEUE_SIZE > 0 else 0
+        queue_load = (
+            (total_queued / self.MAX_QUEUE_SIZE * 100) if self.MAX_QUEUE_SIZE > 0 else 0
+        )
 
         # Combined load: weighted average (connections are more critical)
         return (conn_load * 0.7) + (queue_load * 0.3)
@@ -295,7 +307,10 @@ class RouterNode:
         if not self._back_pressure_active and load_pct >= self.back_pressure_threshold:
             # Activate back-pressure
             await self._activate_back_pressure(load_pct)
-        elif self._back_pressure_active and load_pct <= self.back_pressure_release_threshold:
+        elif (
+            self._back_pressure_active
+            and load_pct <= self.back_pressure_release_threshold
+        ):
             # Release back-pressure
             await self._release_back_pressure(load_pct)
 
@@ -306,7 +321,10 @@ class RouterNode:
             load_pct: Current load percentage for the notification
         """
         self._back_pressure_active = True
-        logger.warning(f"Back-pressure ACTIVATED at {load_pct:.1f}% load " f"(threshold: {self.back_pressure_threshold}%)")
+        logger.warning(
+            f"Back-pressure ACTIVATED at {load_pct:.1f}% load "
+            f"(threshold: {self.back_pressure_threshold}%)"
+        )
 
         # Notify all connected nodes
         message = {
@@ -327,7 +345,10 @@ class RouterNode:
             load_pct: Current load percentage for the notification
         """
         self._back_pressure_active = False
-        logger.info(f"Back-pressure RELEASED at {load_pct:.1f}% load " f"(threshold: {self.back_pressure_release_threshold}%)")
+        logger.info(
+            f"Back-pressure RELEASED at {load_pct:.1f}% load "
+            f"(threshold: {self.back_pressure_release_threshold}%)"
+        )
 
         # Notify nodes that were previously notified of back-pressure
         message = {
@@ -345,7 +366,9 @@ class RouterNode:
                     conn = self.connections[node_id]
                     await conn.websocket.send_json(message)
                 except Exception as e:
-                    logger.debug(f"Failed to send back-pressure release to {node_id}: {e}")
+                    logger.debug(
+                        f"Failed to send back-pressure release to {node_id}: {e}"
+                    )
 
         self._back_pressure_nodes.clear()
 
@@ -429,9 +452,13 @@ class RouterNode:
 
             # Safety limit to avoid infinite loop in tests with high difficulty
             if nonce > 10_000_000:
-                raise RuntimeError(f"PoW generation exceeded limit at difficulty {difficulty}")
+                raise RuntimeError(
+                    f"PoW generation exceeded limit at difficulty {difficulty}"
+                )
 
-    async def handle_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
+    async def handle_websocket(
+        self, request: web.Request
+    ) -> web.WebSocketResponse | web.Response:
         """Handle incoming WebSocket connections from nodes."""
         if len(self.connections) >= self.max_connections:
             logger.warning("Max connections reached, rejecting new connection")
@@ -488,7 +515,9 @@ class RouterNode:
 
         return ws
 
-    async def _handle_identify(self, data: dict[str, Any], ws: web.WebSocketResponse) -> str | None:
+    async def _handle_identify(
+        self, data: dict[str, Any], ws: web.WebSocketResponse
+    ) -> str | None:
         """Handle node identification message.
 
         Enhanced with reconnection tracking (Issue #111):
@@ -506,7 +535,9 @@ class RouterNode:
             old_conn = self.connections[node_id]
             if not old_conn.websocket.closed:
                 # Existing connection still active - reject new one
-                await ws.send_json({"type": "error", "message": "Node already connected"})
+                await ws.send_json(
+                    {"type": "error", "message": "Node already connected"}
+                )
                 return None
 
         now = time.time()
@@ -521,7 +552,11 @@ class RouterNode:
             history.connection_count += 1
             self.reconnections_total += 1
 
-            logger.info(f"Node reconnected: {node_id[:16]}... " f"(away for {history.time_since_disconnect():.1f}s, " f"queued: {queued_count})")
+            logger.info(
+                f"Node reconnected: {node_id[:16]}... "
+                f"(away for {history.time_since_disconnect():.1f}s, "
+                f"queued: {queued_count})"
+            )
         else:
             # New node - create history entry
             self.connection_history[node_id] = NodeConnectionHistory(
@@ -584,7 +619,8 @@ class RouterNode:
             for node_id, history in self.connection_history.items()
             if (now - history.last_connected) > self.history_max_age
             and node_id not in self.connections  # Don't remove active connections
-            and node_id not in self.offline_queues  # Don't remove nodes with queued messages
+            and node_id
+            not in self.offline_queues  # Don't remove nodes with queued messages
         ]
 
         for node_id in to_remove:
@@ -813,9 +849,13 @@ class RouterNode:
         registration["signature"] = self._sign(registration)
 
         try:
-            timeout = aiohttp.ClientTimeout(total=30)  # Longer timeout for PoW verification
+            timeout = aiohttp.ClientTimeout(
+                total=30
+            )  # Longer timeout for PoW verification
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(registration_url, json=registration) as response:
+                async with session.post(
+                    registration_url, json=registration
+                ) as response:
                     result = await response.json()
 
                     if result.get("status") == "accepted":
@@ -875,7 +915,11 @@ class RouterNode:
         heartbeat_url = f"{self.seed_url.rstrip('/')}/heartbeat"
 
         # Calculate load percentage based on connections
-        connection_load = (len(self.connections) / self.max_connections) * 100 if self.max_connections > 0 else 0
+        connection_load = (
+            (len(self.connections) / self.max_connections) * 100
+            if self.max_connections > 0
+            else 0
+        )
 
         # Calculate queue depth (total messages across all offline queues)
         queue_depth = sum(len(q) for q in self.offline_queues.values())
@@ -889,7 +933,9 @@ class RouterNode:
 
         elapsed = now - self._last_heartbeat_time
         if elapsed > 0:
-            messages_per_sec = (self.messages_relayed - self._last_messages_relayed) / elapsed
+            messages_per_sec = (
+                self.messages_relayed - self._last_messages_relayed
+            ) / elapsed
         else:
             messages_per_sec = 0.0
 
@@ -920,9 +966,14 @@ class RouterNode:
                     if response.status == 200:
                         result = await response.json()
                         health_status = result.get("health_status", "unknown")
-                        next_interval = result.get("next_heartbeat_in", self.heartbeat_interval)
+                        next_interval = result.get(
+                            "next_heartbeat_in", self.heartbeat_interval
+                        )
 
-                        logger.debug(f"Heartbeat acknowledged: status={health_status}, " f"next_in={next_interval}s")
+                        logger.debug(
+                            f"Heartbeat acknowledged: status={health_status}, "
+                            f"next_in={next_interval}s"
+                        )
                         return True
                     else:
                         text = await response.text()
@@ -1041,7 +1092,9 @@ class RouterNode:
             our_public = our_private.public_key()
 
             # Derive shared key
-            sender_ephemeral = X25519PublicKey.from_public_bytes(bytes.fromhex(sender_ephemeral_hex))
+            sender_ephemeral = X25519PublicKey.from_public_bytes(
+                bytes.fromhex(sender_ephemeral_hex)
+            )
             shared_secret = our_private.exchange(sender_ephemeral)
 
             # Derive circuit key using HKDF
@@ -1082,7 +1135,9 @@ class RouterNode:
                 # 3. Send circuit_create to next hop
                 # 4. Include their response in our response
                 # For now, we just note the next hop
-                logger.debug(f"Circuit {circuit_id[:8]}... will extend to {next_hop[:16]}...")
+                logger.debug(
+                    f"Circuit {circuit_id[:8]}... will extend to {next_hop[:16]}..."
+                )
 
             # Send response
             await ws.send_json(
@@ -1144,14 +1199,18 @@ class RouterNode:
 
             if direction == "forward":
                 # Peel one layer
-                inner_payload, routing_next_hop = self._peel_onion_layer(payload, hop_state.shared_key)
+                inner_payload, routing_next_hop = self._peel_onion_layer(
+                    payload, hop_state.shared_key
+                )
 
                 if hop_state.is_exit() or not routing_next_hop:
                     # We're the exit node - deliver to final recipient
                     await self._deliver_circuit_payload(inner_payload, hop_state)
                 else:
                     # Forward to next hop
-                    await self._forward_circuit_relay(circuit_id, inner_payload, routing_next_hop, "forward")
+                    await self._forward_circuit_relay(
+                        circuit_id, inner_payload, routing_next_hop, "forward"
+                    )
 
             else:  # backward
                 # Add one layer for backward direction
@@ -1159,7 +1218,9 @@ class RouterNode:
 
                 # Forward back to previous hop
                 if hop_state.prev_hop:
-                    await self._forward_circuit_relay(circuit_id, outer_payload, hop_state.prev_hop, "backward")
+                    await self._forward_circuit_relay(
+                        circuit_id, outer_payload, hop_state.prev_hop, "backward"
+                    )
 
         except Exception as e:
             logger.warning(f"Circuit relay failed: {e}")
@@ -1236,12 +1297,17 @@ class RouterNode:
                     {
                         "type": "deliver",
                         "message_id": message_id,
-                        "payload": json.loads(bytes.fromhex(message_payload_hex).decode()),
+                        "payload": json.loads(
+                            bytes.fromhex(message_payload_hex).decode()
+                        ),
                         "ttl": 1,
                     }
                 )
                 self.messages_delivered += 1
-                logger.debug(f"Delivered circuit message {message_id[:8] if message_id else 'unknown'}... " f"to {recipient_id[:16]}...")
+                logger.debug(
+                    f"Delivered circuit message {message_id[:8] if message_id else 'unknown'}... "
+                    f"to {recipient_id[:16]}..."
+                )
             else:
                 # Queue for offline delivery
                 self._queue_message(
@@ -1253,7 +1319,9 @@ class RouterNode:
                         ttl=1,
                     ),
                 )
-                logger.debug(f"Queued circuit message for offline node {recipient_id[:16]}...")
+                logger.debug(
+                    f"Queued circuit message for offline node {recipient_id[:16]}..."
+                )
 
         except Exception as e:
             logger.warning(f"Failed to deliver circuit payload: {e}")

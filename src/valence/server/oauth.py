@@ -101,7 +101,9 @@ async def register_client(request: Request) -> JSONResponse:
         rpm_limit=settings.rate_limit_rpm,
     )
     if not rate_limit_result.allowed:
-        logger.warning(f"OAuth register endpoint rate limited: key={rate_limit_result.key}")
+        logger.warning(
+            f"OAuth register endpoint rate limited: key={rate_limit_result.key}"
+        )
         return rate_limit_response()
 
     try:
@@ -197,7 +199,9 @@ async def authorize(request: Request) -> Response:
 
     # Validate required parameters
     if response_type != "code":
-        return _auth_error_response(redirect_uri, state, "unsupported_response_type", "Only 'code' is supported")
+        return _auth_error_response(
+            redirect_uri, state, "unsupported_response_type", "Only 'code' is supported"
+        )
 
     if not client_id:
         return HTMLResponse(_error_page("Missing client_id"), status_code=400)
@@ -206,7 +210,9 @@ async def authorize(request: Request) -> Response:
         return HTMLResponse(_error_page("Missing redirect_uri"), status_code=400)
 
     if not code_challenge:
-        return _auth_error_response(redirect_uri, state, "invalid_request", "PKCE code_challenge required")
+        return _auth_error_response(
+            redirect_uri, state, "invalid_request", "PKCE code_challenge required"
+        )
 
     if code_challenge_method != "S256":
         return _auth_error_response(
@@ -223,7 +229,9 @@ async def authorize(request: Request) -> Response:
         return HTMLResponse(_error_page("Unknown client_id"), status_code=400)
 
     if not store.validate_redirect_uri(client_id, redirect_uri):
-        return HTMLResponse(_error_page("Invalid redirect_uri for this client"), status_code=400)
+        return HTMLResponse(
+            _error_page("Invalid redirect_uri for this client"), status_code=400
+        )
 
     # Check if this is a POST (form submission) or GET (show login)
     if request.method == "POST":
@@ -263,10 +271,15 @@ async def _handle_authorize_post(
     password = str(password_raw) if password_raw else ""
 
     # Validate credentials using constant-time comparison to prevent timing attacks
-    if not (secrets.compare_digest(username, settings.oauth_username or "") and secrets.compare_digest(password, settings.oauth_password or "")):
+    if not (
+        secrets.compare_digest(username, settings.oauth_username or "")
+        and secrets.compare_digest(password, settings.oauth_password or "")
+    ):
         # Re-show login with error
         params = dict(request.query_params)
-        return HTMLResponse(_login_page(params, "Valence", error="Invalid username or password"))
+        return HTMLResponse(
+            _login_page(params, "Valence", error="Invalid username or password")
+        )
 
     # Check if OAuth password is configured
     if not settings.oauth_password:
@@ -346,7 +359,9 @@ async def token(request: Request) -> JSONResponse:
         rpm_limit=settings.rate_limit_rpm,
     )
     if not rate_limit_result.allowed:
-        logger.warning(f"OAuth token endpoint rate limited: key={rate_limit_result.key}")
+        logger.warning(
+            f"OAuth token endpoint rate limited: key={rate_limit_result.key}"
+        )
         return rate_limit_response()
 
     if grant_type == "authorization_code":
@@ -408,7 +423,9 @@ async def _handle_authorization_code_grant(form: Any) -> JSONResponse:
         )
 
     # Verify PKCE
-    if not verify_pkce(code_verifier, auth_code.code_challenge, auth_code.code_challenge_method):
+    if not verify_pkce(
+        code_verifier, auth_code.code_challenge, auth_code.code_challenge_method
+    ):
         return JSONResponse(
             {"error": "invalid_grant", "error_description": "PKCE verification failed"},
             status_code=400,
@@ -496,7 +513,9 @@ async def _handle_refresh_token_grant(form: Any) -> JSONResponse:
 # ============================================================================
 
 
-def _login_page(params: dict[str, Any], client_name: str, error: str | None = None) -> str:
+def _login_page(
+    params: dict[str, Any], client_name: str, error: str | None = None
+) -> str:
     """Generate the login page HTML."""
     # Preserve query params for form submission
     query_string = urllib.parse.urlencode(params)
