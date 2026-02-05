@@ -194,6 +194,11 @@ from .privacy import (
     TopicBudget,
     RequesterBudget,
     PrivacyBudget,
+    # Budget storage (Issue #144 - Persist privacy budget)
+    BudgetStore,
+    InMemoryBudgetStore,
+    FileBudgetStore,
+    DatabaseBudgetStore,
     # Temporal smoothing
     MembershipEvent,
     TemporalSmoother,
@@ -569,6 +574,11 @@ __all__ = [
     "TopicBudget",
     "RequesterBudget",
     "PrivacyBudget",
+    # Budget storage (Issue #144 - Persist privacy budget)
+    "BudgetStore",
+    "InMemoryBudgetStore",
+    "FileBudgetStore",
+    "DatabaseBudgetStore",
     "MembershipEvent",
     "TemporalSmoother",
     "add_laplace_noise",

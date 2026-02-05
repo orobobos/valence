@@ -444,6 +444,371 @@ class FileBudgetStore:
         return [f.stem for f in self._base_path.glob("*.json") if not f.name.endswith(".tmp")]
 
 
+class DatabaseBudgetStore:
+    """PostgreSQL-based budget store for persistent storage.
+
+    Stores privacy budgets in the privacy_budgets table.
+    Requires migration 014-privacy-budget.sql to be applied.
+
+    This is the recommended store for production deployments as it:
+    - Survives process restarts
+    - Works in multi-process environments
+    - Integrates with existing Valence database infrastructure
+
+    Example:
+        import asyncpg
+
+        pool = await asyncpg.create_pool(database_url)
+        store = DatabaseBudgetStore(pool)
+        budget = PrivacyBudget.load_or_create(federation_id, store=store)
+    """
+
+    def __init__(self, pool: Any) -> None:
+        """Initialize database budget store.
+
+        Args:
+            pool: asyncpg connection pool or compatible async pool
+        """
+        self._pool = pool
+        self._sync_mode = False
+
+    @classmethod
+    def from_sync_connection(cls, conn: Any) -> "DatabaseBudgetStore":
+        """Create store from a synchronous connection (psycopg2 or similar).
+
+        Args:
+            conn: Synchronous database connection
+
+        Returns:
+            DatabaseBudgetStore configured for sync operations
+        """
+        store = cls(conn)
+        store._sync_mode = True
+        return store
+
+    def save(self, federation_id: str, data: dict[str, Any]) -> None:
+        """Save budget data to database.
+
+        Note: This method is sync for compatibility with BudgetStore protocol.
+        For async contexts, use save_async().
+        """
+        import asyncio
+
+        if self._sync_mode:
+            self._save_sync(federation_id, data)
+        else:
+            # Run async save in event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # If in async context, schedule as task
+                loop.create_task(self.save_async(federation_id, data))
+            except RuntimeError:
+                # No running loop, run synchronously
+                asyncio.run(self.save_async(federation_id, data))
+
+    async def save_async(self, federation_id: str, data: dict[str, Any]) -> None:
+        """Save budget data to database (async version)."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO privacy_budgets (
+                    federation_id,
+                    daily_epsilon_budget,
+                    daily_delta_budget,
+                    budget_period_hours,
+                    spent_epsilon,
+                    spent_delta,
+                    queries_today,
+                    period_start,
+                    topic_budgets,
+                    requester_budgets,
+                    schema_version
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT (federation_id) DO UPDATE SET
+                    daily_epsilon_budget = EXCLUDED.daily_epsilon_budget,
+                    daily_delta_budget = EXCLUDED.daily_delta_budget,
+                    budget_period_hours = EXCLUDED.budget_period_hours,
+                    spent_epsilon = EXCLUDED.spent_epsilon,
+                    spent_delta = EXCLUDED.spent_delta,
+                    queries_today = EXCLUDED.queries_today,
+                    period_start = EXCLUDED.period_start,
+                    topic_budgets = EXCLUDED.topic_budgets,
+                    requester_budgets = EXCLUDED.requester_budgets,
+                    schema_version = EXCLUDED.schema_version
+                """,
+                federation_id,
+                data.get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET),
+                data.get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET),
+                data.get("budget_period_hours", 24),
+                data.get("spent_epsilon", 0.0),
+                data.get("spent_delta", 0.0),
+                data.get("queries_today", 0),
+                datetime.fromisoformat(data["period_start"])
+                if "period_start" in data
+                else datetime.utcnow(),
+                json.dumps(data.get("topic_budgets", {})),
+                json.dumps(data.get("requester_budgets", {})),
+                data.get("_version", 1),
+            )
+
+    def _save_sync(self, federation_id: str, data: dict[str, Any]) -> None:
+        """Save budget data synchronously (for psycopg2)."""
+        cursor = self._pool.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO privacy_budgets (
+                    federation_id,
+                    daily_epsilon_budget,
+                    daily_delta_budget,
+                    budget_period_hours,
+                    spent_epsilon,
+                    spent_delta,
+                    queries_today,
+                    period_start,
+                    topic_budgets,
+                    requester_budgets,
+                    schema_version
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (federation_id) DO UPDATE SET
+                    daily_epsilon_budget = EXCLUDED.daily_epsilon_budget,
+                    daily_delta_budget = EXCLUDED.daily_delta_budget,
+                    budget_period_hours = EXCLUDED.budget_period_hours,
+                    spent_epsilon = EXCLUDED.spent_epsilon,
+                    spent_delta = EXCLUDED.spent_delta,
+                    queries_today = EXCLUDED.queries_today,
+                    period_start = EXCLUDED.period_start,
+                    topic_budgets = EXCLUDED.topic_budgets,
+                    requester_budgets = EXCLUDED.requester_budgets,
+                    schema_version = EXCLUDED.schema_version
+                """,
+                (
+                    federation_id,
+                    data.get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET),
+                    data.get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET),
+                    data.get("budget_period_hours", 24),
+                    data.get("spent_epsilon", 0.0),
+                    data.get("spent_delta", 0.0),
+                    data.get("queries_today", 0),
+                    datetime.fromisoformat(data["period_start"])
+                    if "period_start" in data
+                    else datetime.utcnow(),
+                    json.dumps(data.get("topic_budgets", {})),
+                    json.dumps(data.get("requester_budgets", {})),
+                    data.get("_version", 1),
+                ),
+            )
+            self._pool.commit()
+        finally:
+            cursor.close()
+
+    def load(self, federation_id: str) -> dict[str, Any] | None:
+        """Load budget data from database.
+
+        Note: This method is sync for compatibility with BudgetStore protocol.
+        For async contexts, use load_async().
+        """
+        import asyncio
+
+        if self._sync_mode:
+            return self._load_sync(federation_id)
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                # Can't await here, return None and rely on async usage
+                return None
+            except RuntimeError:
+                return asyncio.run(self.load_async(federation_id))
+
+    async def load_async(self, federation_id: str) -> dict[str, Any] | None:
+        """Load budget data from database (async version)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    federation_id,
+                    daily_epsilon_budget,
+                    daily_delta_budget,
+                    budget_period_hours,
+                    spent_epsilon,
+                    spent_delta,
+                    queries_today,
+                    period_start,
+                    topic_budgets,
+                    requester_budgets,
+                    schema_version
+                FROM privacy_budgets
+                WHERE federation_id = $1
+                """,
+                federation_id,
+            )
+
+            if row is None:
+                return None
+
+            return self._row_to_dict(row)
+
+    def _load_sync(self, federation_id: str) -> dict[str, Any] | None:
+        """Load budget data synchronously (for psycopg2)."""
+        cursor = self._pool.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT
+                    federation_id,
+                    daily_epsilon_budget,
+                    daily_delta_budget,
+                    budget_period_hours,
+                    spent_epsilon,
+                    spent_delta,
+                    queries_today,
+                    period_start,
+                    topic_budgets,
+                    requester_budgets,
+                    schema_version
+                FROM privacy_budgets
+                WHERE federation_id = %s
+                """,
+                (federation_id,),
+            )
+            row = cursor.fetchone()
+
+            if row is None:
+                return None
+
+            # Convert tuple to dict-like for _row_to_dict
+            columns = [
+                "federation_id",
+                "daily_epsilon_budget",
+                "daily_delta_budget",
+                "budget_period_hours",
+                "spent_epsilon",
+                "spent_delta",
+                "queries_today",
+                "period_start",
+                "topic_budgets",
+                "requester_budgets",
+                "schema_version",
+            ]
+            row_dict = dict(zip(columns, row))
+            return self._row_to_dict(row_dict)
+        finally:
+            cursor.close()
+
+    def _row_to_dict(self, row: Any) -> dict[str, Any]:
+        """Convert database row to serialized dict format."""
+        # Handle both asyncpg Record and dict-like objects
+        if hasattr(row, "get"):
+            get = row.get
+        else:
+            get = lambda k, d=None: getattr(row, k, d)
+
+        # Parse JSONB fields
+        topic_budgets = get("topic_budgets", {})
+        if isinstance(topic_budgets, str):
+            topic_budgets = json.loads(topic_budgets)
+
+        requester_budgets = get("requester_budgets", {})
+        if isinstance(requester_budgets, str):
+            requester_budgets = json.loads(requester_budgets)
+
+        period_start = get("period_start")
+        if isinstance(period_start, datetime):
+            period_start_str = period_start.isoformat()
+        else:
+            period_start_str = str(period_start)
+
+        return {
+            "federation_id": get("federation_id"),
+            "daily_epsilon_budget": float(get("daily_epsilon_budget", DEFAULT_DAILY_EPSILON_BUDGET)),
+            "daily_delta_budget": float(get("daily_delta_budget", DEFAULT_DAILY_DELTA_BUDGET)),
+            "budget_period_hours": int(get("budget_period_hours", 24)),
+            "spent_epsilon": float(get("spent_epsilon", 0.0)),
+            "spent_delta": float(get("spent_delta", 0.0)),
+            "queries_today": int(get("queries_today", 0)),
+            "period_start": period_start_str,
+            "topic_budgets": topic_budgets,
+            "requester_budgets": requester_budgets,
+            "_version": int(get("schema_version", 1)),
+        }
+
+    def delete(self, federation_id: str) -> bool:
+        """Delete budget data from database.
+
+        Note: This method is sync for compatibility with BudgetStore protocol.
+        For async contexts, use delete_async().
+        """
+        import asyncio
+
+        if self._sync_mode:
+            return self._delete_sync(federation_id)
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                return False  # Can't determine in non-async context
+            except RuntimeError:
+                return asyncio.run(self.delete_async(federation_id))
+
+    async def delete_async(self, federation_id: str) -> bool:
+        """Delete budget data from database (async version)."""
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM privacy_budgets WHERE federation_id = $1",
+                federation_id,
+            )
+            return result == "DELETE 1"
+
+    def _delete_sync(self, federation_id: str) -> bool:
+        """Delete budget data synchronously (for psycopg2)."""
+        cursor = self._pool.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM privacy_budgets WHERE federation_id = %s",
+                (federation_id,),
+            )
+            deleted = cursor.rowcount > 0
+            self._pool.commit()
+            return deleted
+        finally:
+            cursor.close()
+
+    def list_federations(self) -> list[str]:
+        """List all federation IDs with stored budgets.
+
+        Note: This method is sync for compatibility with BudgetStore protocol.
+        For async contexts, use list_federations_async().
+        """
+        import asyncio
+
+        if self._sync_mode:
+            return self._list_federations_sync()
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                return []  # Can't determine in non-async context
+            except RuntimeError:
+                return asyncio.run(self.list_federations_async())
+
+    async def list_federations_async(self) -> list[str]:
+        """List all federation IDs (async version)."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
+            )
+            return [row["federation_id"] for row in rows]
+
+    def _list_federations_sync(self) -> list[str]:
+        """List all federation IDs synchronously (for psycopg2)."""
+        cursor = self._pool.cursor()
+        try:
+            cursor.execute(
+                "SELECT federation_id FROM privacy_budgets ORDER BY federation_id"
+            )
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+
+
 # =============================================================================
 # PRIVACY BUDGET
 # =============================================================================
