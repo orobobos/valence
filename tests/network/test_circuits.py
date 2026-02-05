@@ -505,6 +505,7 @@ class TestRouterCircuits:
 
 
 @pytest.mark.skip(reason="NodeClient methods moved to ConnectionManager (Issue #128 god class decomposition)")
+@pytest.mark.xfail(reason="NodeClient decomposed - tests need refactoring")
 class TestNodeCircuits:
     """Tests for node circuit building."""
 
