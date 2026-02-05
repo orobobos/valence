@@ -1,15 +1,24 @@
-"""Database connection utilities for Valence."""
+"""Database connection utilities for Valence.
+
+Provides connection pooling via psycopg2's ThreadedConnectionPool.
+Pool size is configured via environment variables:
+    - VALENCE_DB_POOL_MIN: Minimum connections (default: 5)
+    - VALENCE_DB_POOL_MAX: Maximum connections (default: 20)
+"""
 
 from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import psycopg2
+from psycopg2 import pool as psycopg2_pool
 from psycopg2.extras import RealDictCursor
 
 from .exceptions import DatabaseException
@@ -28,21 +37,150 @@ def get_connection_params() -> dict[str, Any]:
     }
 
 
+def get_pool_config() -> dict[str, int]:
+    """Get connection pool configuration from environment.
+
+    Environment variables:
+        VALENCE_DB_POOL_MIN: Minimum pool size (default: 5)
+        VALENCE_DB_POOL_MAX: Maximum pool size (default: 20)
+    """
+    return {
+        "minconn": int(os.environ.get("VALENCE_DB_POOL_MIN", "5")),
+        "maxconn": int(os.environ.get("VALENCE_DB_POOL_MAX", "20")),
+    }
+
+
+class ConnectionPool:
+    """Thread-safe connection pool manager.
+
+    Uses psycopg2's ThreadedConnectionPool for concurrent access.
+    Pool is lazily initialized on first connection request.
+
+    This is a singleton - use get_instance() to access.
+    """
+
+    _instance: ConnectionPool | None = None
+    _lock = threading.Lock()
+
+    def __init__(self):
+        self._pool: psycopg2_pool.ThreadedConnectionPool | None = None
+        self._pool_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> ConnectionPool:
+        """Get the singleton pool instance."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    def _ensure_pool(self) -> psycopg2_pool.ThreadedConnectionPool:
+        """Ensure pool is initialized, creating it if necessary."""
+        if self._pool is None:
+            with self._pool_lock:
+                if self._pool is None:
+                    conn_params = get_connection_params()
+                    pool_config = get_pool_config()
+                    try:
+                        self._pool = psycopg2_pool.ThreadedConnectionPool(
+                            minconn=pool_config["minconn"],
+                            maxconn=pool_config["maxconn"],
+                            **conn_params,
+                        )
+                        logger.info(
+                            f"Connection pool initialized: "
+                            f"min={pool_config['minconn']}, max={pool_config['maxconn']}"
+                        )
+                    except psycopg2.OperationalError as e:
+                        logger.error(f"Failed to create connection pool: {e}")
+                        raise DatabaseException(f"Failed to create connection pool: {e}")
+        return self._pool
+
+    def get_connection(self):
+        """Get a connection from the pool.
+
+        Raises:
+            DatabaseException: If pool is exhausted or connection fails
+        """
+        pool = self._ensure_pool()
+        try:
+            conn = pool.getconn()
+            if conn is None:
+                raise DatabaseException("Connection pool exhausted")
+            return conn
+        except psycopg2_pool.PoolError as e:
+            logger.error(f"Pool error getting connection: {e}")
+            raise DatabaseException(f"Failed to get connection from pool: {e}")
+        except psycopg2.Error as e:
+            logger.error(f"Database error: {e}")
+            raise DatabaseException(f"Database error: {e}")
+
+    def put_connection(self, conn) -> None:
+        """Return a connection to the pool."""
+        if self._pool is not None and conn is not None:
+            try:
+                self._pool.putconn(conn)
+            except psycopg2_pool.PoolError as e:
+                logger.warning(f"Error returning connection to pool: {e}")
+                # Try to close the connection if we can't return it
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    def close_all(self) -> None:
+        """Close all connections in the pool."""
+        with self._pool_lock:
+            if self._pool is not None:
+                self._pool.closeall()
+                self._pool = None
+                logger.info("Connection pool closed")
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get pool statistics."""
+        pool_config = get_pool_config()
+
+        if self._pool is None:
+            return {
+                "initialized": False,
+                "min_connections": pool_config["minconn"],
+                "max_connections": pool_config["maxconn"],
+            }
+
+        return {
+            "initialized": True,
+            "min_connections": pool_config["minconn"],
+            "max_connections": pool_config["maxconn"],
+        }
+
+
+# Module-level pool instance
+_pool = ConnectionPool.get_instance()
+
+
 def get_connection():
-    """Get a database connection with dict cursor.
+    """Get a database connection from the pool.
 
     Raises:
         DatabaseException: If connection fails
     """
-    params = get_connection_params()
-    try:
-        return psycopg2.connect(**params)
-    except psycopg2.OperationalError as e:
-        logger.error(f"Database connection failed: {e}")
-        raise DatabaseException(f"Failed to connect to database: {e}")
-    except psycopg2.Error as e:
-        logger.error(f"Database error: {e}")
-        raise DatabaseException(f"Database error: {e}")
+    return _pool.get_connection()
+
+
+def put_connection(conn) -> None:
+    """Return a connection to the pool."""
+    _pool.put_connection(conn)
+
+
+def close_pool() -> None:
+    """Close the connection pool."""
+    _pool.close_all()
+
+
+def get_pool_stats() -> dict[str, Any]:
+    """Get connection pool statistics."""
+    return _pool.get_stats()
 
 
 @contextmanager
@@ -58,6 +196,7 @@ def get_cursor(dict_cursor: bool = True) -> Generator:
         DatabaseException: On database errors
     """
     conn = get_connection()
+    cur = None
     try:
         cursor_factory = RealDictCursor if dict_cursor else None
         cur = conn.cursor(cursor_factory=cursor_factory)
@@ -76,8 +215,9 @@ def get_cursor(dict_cursor: bool = True) -> Generator:
         logger.error(f"Database error: {e}")
         raise DatabaseException(f"Database error: {e}")
     finally:
-        cur.close()
-        conn.close()
+        if cur is not None:
+            cur.close()
+        put_connection(conn)
 
 
 @contextmanager
@@ -109,7 +249,7 @@ def get_connection_context():
         logger.error(f"Database error: {e}")
         raise DatabaseException(f"Database error: {e}")
     finally:
-        conn.close()
+        put_connection(conn)
 
 
 def generate_id() -> str:
@@ -129,8 +269,9 @@ def init_schema() -> None:
         "procedures.sql",
     ]
 
+    conn = get_connection()
+    cur = None
     try:
-        conn = get_connection()
         cur = conn.cursor()
 
         for schema_file in schema_files:
@@ -141,11 +282,13 @@ def init_schema() -> None:
                     cur.execute(sql)
 
         conn.commit()
-        cur.close()
-        conn.close()
     except psycopg2.Error as e:
         logger.error(f"Schema initialization failed: {e}")
         raise DatabaseException(f"Failed to initialize schema: {e}")
+    finally:
+        if cur is not None:
+            cur.close()
+        put_connection(conn)
 
 
 def check_connection() -> bool:
@@ -162,12 +305,14 @@ def get_schema_version() -> str | None:
     """Get the current schema version if tracked."""
     try:
         with get_cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
                     WHERE table_name = 'schema_version'
                 )
-            """)
+            """
+            )
             if cur.fetchone()[0]:
                 cur.execute("SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1")
                 row = cur.fetchone()
@@ -185,31 +330,36 @@ def table_exists(table_name: str) -> bool:
         DatabaseException: If query fails
     """
     with get_cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_name = %s
             ) as exists
-        """, (table_name,))
+        """,
+            (table_name,),
+        )
         row = cur.fetchone()
         return row["exists"] if row else False
 
 
 # Allowlist of valid tables for count_rows() to prevent SQL injection
 # Only tables that are safe to query should be listed here
-VALID_TABLES = frozenset([
-    "beliefs",
-    "entities",
-    "vkb_sessions",
-    "vkb_exchanges",
-    "vkb_patterns",
-    "tensions",
-    "federation_nodes",
-    "node_trust",
-    "user_node_trust",
-    "sync_state",
-    "schema_version",
-])
+VALID_TABLES = frozenset(
+    [
+        "beliefs",
+        "entities",
+        "vkb_sessions",
+        "vkb_exchanges",
+        "vkb_patterns",
+        "tensions",
+        "federation_nodes",
+        "node_trust",
+        "user_node_trust",
+        "sync_state",
+        "schema_version",
+    ]
+)
 
 
 def count_rows(table_name: str) -> int:
@@ -232,15 +382,18 @@ def count_rows(table_name: str) -> int:
 
     with get_cursor() as cur:
         # Double-check table exists (defense in depth)
-        cur.execute("""
+        cur.execute(
+            """
             SELECT table_name FROM information_schema.tables
             WHERE table_name = %s
-        """, (table_name,))
+        """,
+            (table_name,),
+        )
         if not cur.fetchone():
             raise ValueError(f"Table does not exist: {table_name}")
 
         # Safe to interpolate because we validated against allowlist
-        cur.execute(f"SELECT COUNT(*) as count FROM {table_name}")
+        cur.execute(f"SELECT COUNT(*) as count FROM {table_name}")  # nosec B608
         row = cur.fetchone()
         return row["count"] if row else 0
 

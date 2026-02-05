@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any, Generator
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
-
 # ============================================================================
 # Environment Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def clean_env(monkeypatch):
@@ -50,48 +51,136 @@ def env_with_openai_key(monkeypatch):
 
 
 # ============================================================================
-# Database Mocking Fixtures
+# Database Mocking Fixtures (asyncpg)
 # ============================================================================
 
+
 @pytest.fixture
-def mock_psycopg2():
-    """Mock the psycopg2 module."""
-    with patch("psycopg2.connect") as mock_connect:
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_connect.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_cursor.__exit__ = MagicMock(return_value=False)
+def mock_asyncpg():
+    """Mock the asyncpg module for async database operations."""
+    with patch("asyncpg.create_pool") as mock_create_pool:
+        mock_pool = AsyncMock()
+        mock_connection = AsyncMock()
+        mock_transaction = AsyncMock()
+
+        # Configure the mock pool
+        mock_create_pool.return_value = mock_pool
+        mock_pool.acquire.return_value = mock_connection
+        mock_pool.release = AsyncMock()
+        mock_pool.close = AsyncMock()
+
+        # Configure the mock connection
+        mock_connection.fetch = AsyncMock(return_value=[])
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+        mock_connection.fetchval = AsyncMock(return_value=None)
+        mock_connection.execute = AsyncMock(return_value="")
+
+        # Configure transaction context manager
+        mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+        mock_transaction.__aexit__ = AsyncMock(return_value=None)
+        mock_connection.transaction.return_value = mock_transaction
+
         yield {
-            "connect": mock_connect,
+            "create_pool": mock_create_pool,
+            "pool": mock_pool,
+            "connection": mock_connection,
+            "transaction": mock_transaction,
+        }
+
+
+@pytest.fixture
+def mock_db_connection(mock_asyncpg):
+    """Get a mock database connection."""
+    return mock_asyncpg["connection"]
+
+
+@pytest.fixture
+def mock_get_cursor():
+    """Mock the get_cursor async context manager."""
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_conn.fetchval = AsyncMock(return_value=None)
+    mock_conn.execute = AsyncMock(return_value="")
+
+    @asynccontextmanager
+    async def fake_get_cursor(dict_cursor: bool = True) -> AsyncGenerator:
+        yield mock_conn
+
+    with patch("valence.core.db.get_cursor", fake_get_cursor):
+        yield mock_conn
+
+
+# ============================================================================
+# psycopg2 Connection Pool fixtures
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def reset_db_pool():
+    """Reset the connection pool singleton before each test."""
+    from valence.core import db
+
+    # Reset the pool singleton
+    db.ConnectionPool._instance = None
+    db._pool = db.ConnectionPool.get_instance()
+    yield
+    # Cleanup after test
+    try:
+        db._pool.close_all()
+    except Exception:
+        pass
+    db.ConnectionPool._instance = None
+
+
+@pytest.fixture
+def mock_psycopg2_pool():
+    """Mock the psycopg2 connection pool."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_pool = MagicMock()
+
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+
+    # Mock pool methods
+    mock_pool.getconn.return_value = mock_conn
+    mock_pool.putconn = MagicMock()
+    mock_pool.closeall = MagicMock()
+
+    with patch("valence.core.db.psycopg2_pool.ThreadedConnectionPool") as mock_pool_class:
+        mock_pool_class.return_value = mock_pool
+        yield {
+            "pool_class": mock_pool_class,
+            "pool": mock_pool,
             "connection": mock_conn,
             "cursor": mock_cursor,
         }
 
 
 @pytest.fixture
-def mock_db_cursor(mock_psycopg2):
-    """Get a mock database cursor."""
-    return mock_psycopg2["cursor"]
-
-
-@pytest.fixture
-def mock_get_cursor():
-    """Mock the get_cursor context manager."""
+def mock_psycopg2():
+    """Mock the psycopg2 module (legacy - use mock_psycopg2_pool for pool tests)."""
+    mock_conn = MagicMock()
     mock_cursor = MagicMock()
 
-    @contextmanager
-    def fake_get_cursor(dict_cursor: bool = True) -> Generator:
-        yield mock_cursor
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_cursor.__exit__ = MagicMock(return_value=False)
 
-    with patch("valence.core.db.get_cursor", fake_get_cursor):
-        yield mock_cursor
+    with patch("psycopg2.connect", return_value=mock_conn):
+        yield {
+            "connect": patch("psycopg2.connect"),
+            "connection": mock_conn,
+            "cursor": mock_cursor,
+        }
 
 
 # ============================================================================
 # Model Factory Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def sample_uuid() -> UUID:
@@ -108,13 +197,14 @@ def sample_datetime() -> datetime:
 @pytest.fixture
 def belief_row_factory():
     """Factory for creating belief database rows."""
+
     def factory(
         id: UUID | None = None,
         content: str = "Test belief content",
         confidence: dict | None = None,
         domain_path: list[str] | None = None,
         status: str = "active",
-        **kwargs
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -132,17 +222,16 @@ def belief_row_factory():
             "superseded_by_id": kwargs.get("superseded_by_id"),
             "status": status,
         }
+
     return factory
 
 
 @pytest.fixture
 def entity_row_factory():
     """Factory for creating entity database rows."""
+
     def factory(
-        id: UUID | None = None,
-        name: str = "Test Entity",
-        type: str = "concept",
-        **kwargs
+        id: UUID | None = None, name: str = "Test Entity", type: str = "concept", **kwargs
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -155,17 +244,16 @@ def entity_row_factory():
             "created_at": kwargs.get("created_at", now),
             "modified_at": kwargs.get("modified_at", now),
         }
+
     return factory
 
 
 @pytest.fixture
 def session_row_factory():
     """Factory for creating session database rows."""
+
     def factory(
-        id: UUID | None = None,
-        platform: str = "claude-code",
-        status: str = "active",
-        **kwargs
+        id: UUID | None = None, platform: str = "claude-code", status: str = "active", **kwargs
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -183,19 +271,21 @@ def session_row_factory():
             "exchange_count": kwargs.get("exchange_count"),
             "insight_count": kwargs.get("insight_count"),
         }
+
     return factory
 
 
 @pytest.fixture
 def exchange_row_factory():
     """Factory for creating exchange database rows."""
+
     def factory(
         id: UUID | None = None,
         session_id: UUID | None = None,
         sequence: int = 1,
         role: str = "user",
         content: str = "Test message",
-        **kwargs
+        **kwargs,
     ) -> dict[str, Any]:
         return {
             "id": id or uuid4(),
@@ -207,17 +297,19 @@ def exchange_row_factory():
             "tokens_approx": kwargs.get("tokens_approx"),
             "tool_uses": kwargs.get("tool_uses", []),
         }
+
     return factory
 
 
 @pytest.fixture
 def pattern_row_factory():
     """Factory for creating pattern database rows."""
+
     def factory(
         id: UUID | None = None,
         type: str = "topic_recurrence",
         description: str = "Test pattern",
-        **kwargs
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -231,17 +323,19 @@ def pattern_row_factory():
             "first_observed": kwargs.get("first_observed", now),
             "last_observed": kwargs.get("last_observed", now),
         }
+
     return factory
 
 
 @pytest.fixture
 def tension_row_factory():
     """Factory for creating tension database rows."""
+
     def factory(
         id: UUID | None = None,
         belief_a_id: UUID | None = None,
         belief_b_id: UUID | None = None,
-        **kwargs
+        **kwargs,
     ) -> dict[str, Any]:
         now = datetime.now()
         return {
@@ -256,17 +350,15 @@ def tension_row_factory():
             "resolved_at": kwargs.get("resolved_at"),
             "detected_at": kwargs.get("detected_at", now),
         }
+
     return factory
 
 
 @pytest.fixture
 def source_row_factory():
     """Factory for creating source database rows."""
-    def factory(
-        id: UUID | None = None,
-        type: str = "conversation",
-        **kwargs
-    ) -> dict[str, Any]:
+
+    def factory(id: UUID | None = None, type: str = "conversation", **kwargs) -> dict[str, Any]:
         return {
             "id": id or uuid4(),
             "type": type,
@@ -277,12 +369,14 @@ def source_row_factory():
             "metadata": kwargs.get("metadata", {}),
             "created_at": kwargs.get("created_at", datetime.now()),
         }
+
     return factory
 
 
 # ============================================================================
 # External Service Mocks
 # ============================================================================
+
 
 @pytest.fixture
 def mock_openai():
@@ -307,10 +401,12 @@ def mock_subprocess():
     with patch("subprocess.run") as mock_run:
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "session_id": "test-session-123",
-            "result": "Test response from Claude",
-        })
+        mock_result.stdout = json.dumps(
+            {
+                "session_id": "test-session-123",
+                "result": "Test response from Claude",
+            }
+        )
         mock_result.stderr = ""
         mock_run.return_value = mock_result
         yield mock_run
@@ -319,6 +415,7 @@ def mock_subprocess():
 # ============================================================================
 # MCP Server Mocks
 # ============================================================================
+
 
 @pytest.fixture
 def mock_mcp_server():
@@ -333,17 +430,15 @@ def mock_mcp_server():
 def mock_stdio_server():
     """Mock MCP stdio server."""
     with patch("mcp.server.stdio.stdio_server") as mock_stdio:
-        mock_context = MagicMock()
-        mock_stdio.return_value.__aenter__ = MagicMock(
-            return_value=(MagicMock(), MagicMock())
-        )
-        mock_stdio.return_value.__aexit__ = MagicMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
         yield mock_stdio
 
 
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def make_uuid() -> UUID:
     """Generate a new UUID for tests."""
