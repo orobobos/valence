@@ -144,7 +144,9 @@ class TestListNotificationsEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "recipient_did" in data["error"]
+        # Handle both old and new error response formats
+        error_msg = data.get("message", data.get("error", ""))
+        assert "recipient_did" in error_msg
 
     def test_list_notifications_service_unavailable(self, client):
         """Service unavailable returns 503."""
@@ -218,7 +220,7 @@ class TestAcknowledgeNotificationEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "recipient_did" in data["error"]
+        assert "recipient_did" in data.get("message", data.get("error", ""))
 
     def test_acknowledge_invalid_json(self, client, mock_sharing_service):
         """Invalid JSON returns 400."""
@@ -230,7 +232,7 @@ class TestAcknowledgeNotificationEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "JSON" in data["error"]
+        assert "JSON" in data.get("message", data.get("error", ""))
 
     def test_acknowledge_permission_denied(self, client, mock_sharing_service):
         """Permission denied returns 403."""

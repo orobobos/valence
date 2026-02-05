@@ -153,7 +153,7 @@ class TestShareBeliefEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "belief_id" in data["error"]
+        assert "belief_id" in data.get("message", data.get("error", ""))
 
     def test_share_missing_recipient_did(self, client, mock_sharing_service):
         """Missing recipient_did returns 400."""
@@ -166,7 +166,7 @@ class TestShareBeliefEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "recipient_did" in data["error"]
+        assert "recipient_did" in data.get("message", data.get("error", ""))
 
     def test_share_invalid_json(self, client, mock_sharing_service):
         """Invalid JSON returns 400."""
@@ -178,7 +178,7 @@ class TestShareBeliefEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "JSON" in data["error"]
+        assert "JSON" in data.get("message", data.get("error", ""))
 
     def test_share_invalid_policy(self, client, mock_sharing_service):
         """Invalid policy returns 400."""
@@ -197,7 +197,7 @@ class TestShareBeliefEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "policy" in data["error"].lower()
+        assert "policy" in data.get("message", data.get("error", "")).lower()
 
     def test_share_service_unavailable(self, client):
         """Service unavailable returns 503."""
@@ -227,7 +227,7 @@ class TestShareBeliefEndpoint:
 
         assert response.status_code == 400
         data = response.json()
-        assert "Belief not found" in data["error"]
+        assert "Belief not found" in data.get("message", data.get("error", ""))
 
     def test_share_internal_error(self, client, mock_sharing_service):
         """Internal error returns 500."""
@@ -468,7 +468,7 @@ class TestRevokeShareEndpoint:
 
         assert response.status_code == 409
         data = response.json()
-        assert "already revoked" in data["error"].lower()
+        assert "already revoked" in data.get("message", data.get("error", "")).lower()
 
     def test_revoke_permission_denied(self, client, mock_sharing_service):
         """Not owner returns 403."""
