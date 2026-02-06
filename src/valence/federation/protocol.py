@@ -291,6 +291,14 @@ class SyncRequest(ProtocolMessage):
     since: datetime | None = None
     domains: list[str] = field(default_factory=list)
     cursor: str | None = None
+    page_size: int = 100
+
+    #: Hard ceiling – prevents peers from requesting unbounded pages.
+    MAX_PAGE_SIZE: int = field(default=1000, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        """Clamp page_size to [1, MAX_PAGE_SIZE]."""
+        self.page_size = max(1, min(self.page_size, self.MAX_PAGE_SIZE))
 
     def to_dict(self) -> dict[str, Any]:
         result = super().to_dict()
@@ -299,6 +307,7 @@ class SyncRequest(ProtocolMessage):
                 "since": self.since.isoformat() if self.since else None,
                 "domains": self.domains,
                 "cursor": self.cursor,
+                "page_size": self.page_size,
             }
         )
         return result
@@ -758,9 +767,27 @@ def handle_request_beliefs(
             details={"required": min_trust_for_query, "current": requester_trust},
         )
 
+    # Validate cursor if provided
+    cursor_ts: datetime | None = None
+    cursor_id: str | None = None
+    if request.cursor:
+        decoded = _decode_cursor(request.cursor)
+        if decoded is None:
+            return ErrorMessage(
+                request_id=request.request_id,
+                error_code=ErrorCode.SYNC_CURSOR_INVALID,
+                message="Invalid cursor format",
+            )
+        cursor_ts, cursor_id = decoded
+
     # Build query
     conditions = ["status = 'active'", "is_local = TRUE"]
     params: list[Any] = []
+
+    # Cursor-based pagination (created_at DESC ordering, so we go *before* the cursor)
+    if cursor_ts is not None and cursor_id is not None:
+        conditions.append("(created_at < %s OR (created_at = %s AND id::text < %s))")
+        params.extend([cursor_ts, cursor_ts, cursor_id])
 
     # Visibility filter based on trust
     if requester_trust >= 0.4:  # Participant
@@ -782,6 +809,7 @@ def handle_request_beliefs(
 
     # Limit
     limit = min(request.limit, 100)  # Cap at 100
+    fetch_limit = limit + 1  # Fetch one extra to detect has_more
 
     # Execute query
     query = f"""  # nosec B608
@@ -789,35 +817,49 @@ def handle_request_beliefs(
                visibility, share_level, created_at
         FROM beliefs
         WHERE {" AND ".join(conditions)}
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT %s
     """
-    params.append(limit)
+    params.append(fetch_limit)
 
     beliefs_data = []
+    last_row: dict[str, Any] | None = None
     with get_cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
 
-        for row in rows:
+        for row in rows[:limit]:
             belief_dict = _belief_row_to_federated(row, requester_trust)
             if belief_dict:
                 beliefs_data.append(belief_dict)
+                last_row = row
 
-    # Get total count for pagination
+    has_more_beliefs = len(rows) > limit
+
+    # Build next-page cursor from the last returned row
+    next_cursor: str | None = None
+    if has_more_beliefs and last_row is not None:
+        next_cursor = _encode_cursor(last_row["created_at"], str(last_row["id"]))
+
+    # Get total count for pagination (exclude cursor conditions for true total)
+    base_conditions = [c for c in conditions if "created_at <" not in c]
+    base_params = params[: len(params) - 1]  # Remove fetch_limit
+    if cursor_ts is not None:
+        # Remove the 3 cursor params from the front
+        base_params = base_params[3:]
     count_query = f"""  # nosec B608
         SELECT COUNT(*) as total FROM beliefs
-        WHERE {" AND ".join(conditions[:-1] if limit else conditions)}
+        WHERE {" AND ".join(base_conditions)}
     """
     with get_cursor() as cur:
-        cur.execute(count_query, params[:-1] if limit else params)
+        cur.execute(count_query, base_params)
         total = cur.fetchone()["total"]
 
     return BeliefsResponse(
         request_id=request.request_id,
         beliefs=beliefs_data,
         total_available=total,
-        cursor=None,  # TODO: Implement cursor-based pagination
+        cursor=next_cursor,
     )
 
 
@@ -881,6 +923,48 @@ def _belief_row_to_federated(
 
 
 # =============================================================================
+# CURSOR HELPERS
+# =============================================================================
+
+
+def _encode_cursor(timestamp: datetime, record_id: str) -> str:
+    """Encode a pagination cursor from a timestamp and record ID.
+
+    The cursor is a deterministic string that encodes the position in the
+    result set.  Format: ``<ISO-timestamp>|<record-id>``
+
+    Args:
+        timestamp: The timestamp of the last returned record.
+        record_id: The ID (UUID) of the last returned record.
+
+    Returns:
+        Opaque cursor string.
+    """
+    return f"{timestamp.isoformat()}|{record_id}"
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str] | None:
+    """Decode a pagination cursor.
+
+    Returns:
+        (timestamp, record_id) tuple, or None if the cursor is invalid.
+    """
+    if not cursor:
+        return None
+    try:
+        parts = cursor.split("|", 1)
+        if len(parts) != 2:
+            return None
+        ts = datetime.fromisoformat(parts[0])
+        record_id = parts[1]
+        if not record_id:
+            return None
+        return ts, record_id
+    except (ValueError, TypeError):
+        return None
+
+
+# =============================================================================
 # SYNC HANDLERS
 # =============================================================================
 
@@ -910,12 +994,32 @@ def handle_sync_request(
             details={"required": min_trust_for_sync, "current": requester_trust},
         )
 
+    # Validate cursor if provided
+    cursor_ts: datetime | None = None
+    cursor_id: str | None = None
+    if request.cursor:
+        decoded = _decode_cursor(request.cursor)
+        if decoded is None:
+            return ErrorMessage(
+                request_id=request.request_id,
+                error_code=ErrorCode.SYNC_CURSOR_INVALID,
+                message="Invalid cursor format",
+            )
+        cursor_ts, cursor_id = decoded
+
+    # Effective page size (already clamped by SyncRequest.__post_init__)
+    page_size = request.page_size
+
     # Build query for changes since last sync
     conditions = ["status = 'active'", "is_local = TRUE"]
     params: list[Any] = []
 
-    # Time filter
-    if request.since:
+    # Cursor takes precedence over `since` for pagination continuation
+    if cursor_ts is not None and cursor_id is not None:
+        # Deterministic keyset pagination: (modified_at, id) > (cursor_ts, cursor_id)
+        conditions.append("(modified_at > %s OR (modified_at = %s AND id::text > %s))")
+        params.extend([cursor_ts, cursor_ts, cursor_id])
+    elif request.since:
         conditions.append("modified_at > %s")
         params.append(request.since)
 
@@ -930,23 +1034,26 @@ def handle_sync_request(
     else:
         conditions.append("visibility IN ('federated', 'public')")
 
-    # Query changes
+    # Query changes — fetch page_size + 1 to detect has_more without a second query
+    fetch_limit = page_size + 1
     query = f"""  # nosec B608
         SELECT id, content, confidence, domain_path, valid_from, valid_until,
                visibility, share_level, created_at, modified_at, status,
                supersedes_id, superseded_by_id
         FROM beliefs
         WHERE {" AND ".join(conditions)}
-        ORDER BY modified_at ASC
-        LIMIT 100
+        ORDER BY modified_at ASC, id ASC
+        LIMIT %s
     """
+    params.append(fetch_limit)
 
-    changes = []
+    changes: list[SyncChange] = []
+    last_row: dict[str, Any] | None = None
     with get_cursor() as cur:
         cur.execute(query, params)
         rows = cur.fetchall()
 
-        for row in rows:
+        for row in rows[:page_size]:
             belief_dict = _belief_row_to_federated(row, requester_trust)
             if belief_dict:
                 # Determine change type
@@ -964,6 +1071,15 @@ def handle_sync_request(
                     timestamp=row["modified_at"],
                 )
                 changes.append(change)
+                last_row = row
+
+    # Determine if there are more changes
+    has_more = len(rows) > page_size
+
+    # Build cursor for next page from the last returned row
+    next_cursor: str | None = None
+    if has_more and last_row is not None:
+        next_cursor = _encode_cursor(last_row["modified_at"], str(last_row["id"]))
 
     # Update sync metrics
     with get_cursor() as cur:
@@ -989,9 +1105,6 @@ def handle_sync_request(
             (requester_node_id,),
         )
 
-    # Determine if there are more changes
-    has_more = len(changes) == 100
-
     # Fetch our vector clock for this peer relationship
     our_vector_clock: dict[str, int] = {}
     with get_cursor() as cur:
@@ -1006,7 +1119,7 @@ def handle_sync_request(
     return SyncResponse(
         request_id=request.request_id,
         changes=changes,
-        cursor=changes[-1].timestamp.isoformat() if changes else None,
+        cursor=next_cursor,
         has_more=has_more,
         vector_clock=our_vector_clock,
     )
@@ -1077,6 +1190,7 @@ def parse_message(data: dict[str, Any]) -> ProtocolMessage | None:
             since=since,
             domains=data.get("domains", []),
             cursor=data.get("cursor"),
+            page_size=int(data.get("page_size", 100)),
         )
 
     elif message_type == MessageType.TRUST_ATTESTATION:
