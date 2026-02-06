@@ -36,6 +36,7 @@ from .commands import (
     cmd_peer_remove,
     cmd_query,
     cmd_query_federated,
+    cmd_resources,
     cmd_stats,
     cmd_trust,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "cmd_peer_remove",
     "cmd_query",
     "cmd_query_federated",
+    "cmd_resources",
     "cmd_stats",
     "cmd_trust",
     "compute_confidence_score",
@@ -376,6 +378,46 @@ Federation (Week 2):
     )
 
     # ========================================================================
+    # RESOURCES commands (Issue #270)
+    # ========================================================================
+
+    resources_parser = subparsers.add_parser("resources", help="Manage shared resources (prompts, configs, patterns)")
+    resources_subparsers = resources_parser.add_subparsers(dest="resources_command", required=True)
+
+    # resources list
+    resources_list_parser = resources_subparsers.add_parser("list", help="List shared resources")
+    resources_list_parser.add_argument(
+        "--type",
+        "-t",
+        choices=["prompt", "config", "pattern"],
+        help="Filter by resource type",
+    )
+    resources_list_parser.add_argument("--limit", "-n", type=int, default=50, help="Max results")
+    resources_list_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+
+    # resources share
+    resources_share_parser = resources_subparsers.add_parser("share", help="Share a resource from a file")
+    resources_share_parser.add_argument("file", help="File to share (or - for stdin)")
+    resources_share_parser.add_argument(
+        "--type",
+        "-t",
+        required=True,
+        choices=["prompt", "config", "pattern"],
+        help="Resource type",
+    )
+    resources_share_parser.add_argument("--name", help="Resource name")
+    resources_share_parser.add_argument("--description", help="Resource description")
+    resources_share_parser.add_argument("--trust", type=float, default=0.5, help="Minimum trust level to access (0.0-1.0)")
+    resources_share_parser.add_argument("--author", help="Author DID (default: did:vkb:local)")
+    resources_share_parser.add_argument("--tag", action="append", help="Tag (repeatable)")
+
+    # resources get
+    resources_get_parser = resources_subparsers.add_parser("get", help="Get a resource by ID")
+    resources_get_parser.add_argument("id", help="Resource UUID")
+    resources_get_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    resources_get_parser.add_argument("--requester", help="Requester DID (default: did:vkb:local)")
+
+    # ========================================================================
     # MIGRATE command (proper migration system)
     # ========================================================================
 
@@ -433,6 +475,7 @@ def main() -> int:
         "import": cmd_import,
         "trust": cmd_trust,
         "embeddings": cmd_embeddings,
+        "resources": cmd_resources,
         "migrate": cmd_migrate,
         "migrate-visibility": cmd_migrate_visibility,
     }
