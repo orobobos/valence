@@ -69,7 +69,7 @@ def validate_endpoint_tls(endpoint: str) -> None:
     parsed = urlparse(endpoint)
     if parsed.scheme != "https":
         raise TLSRequiredError(
-            f"TLS required but endpoint uses {parsed.scheme}://. " "Set VALENCE_REQUIRE_TLS=false for development or use HTTPS endpoint."
+            f"TLS required but endpoint uses {parsed.scheme}://. Set VALENCE_REQUIRE_TLS=false for development or use HTTPS endpoint."
         )
 
 
@@ -298,11 +298,11 @@ def update_sync_state(
 
         with get_cursor() as cur:
             cur.execute(
-                f"""  # nosec B608
+                f"""
                 UPDATE sync_state
                 SET {", ".join(updates)}
                 WHERE node_id = %s
-            """,
+            """,  # nosec B608 - column names are hardcoded, not user input
                 params,
             )
             return True
@@ -375,12 +375,12 @@ def get_pending_sync_items(
 
         with get_cursor() as cur:
             cur.execute(
-                f"""  # nosec B608
+                f"""
                 SELECT * FROM sync_outbound_queue
                 WHERE {" AND ".join(conditions)}
                 ORDER BY priority ASC, created_at ASC
                 LIMIT %s
-            """,
+            """,  # nosec B608 - conditions are hardcoded, not user input
                 params,
             )
             return cur.fetchall()
@@ -544,12 +544,12 @@ class SyncManager:
         with get_cursor() as cur:
             placeholders = ",".join(["%s"] * len(belief_ids))
             cur.execute(
-                f"""  # nosec B608
+                f"""
                 SELECT * FROM beliefs
                 WHERE id IN ({placeholders})
                   AND is_local = TRUE
                   AND visibility IN ('federated', 'public')
-            """,
+            """,  # nosec B608 - placeholders are parameterized, safe from injection
                 belief_ids,
             )
             belief_rows = cur.fetchall()
