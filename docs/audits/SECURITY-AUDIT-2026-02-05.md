@@ -15,7 +15,7 @@ This security audit examined the Valence personal knowledge substrate codebase, 
 | Severity | Count | Change from 2026-02-04 |
 |----------|-------|------------------------|
 | **Critical** | 0 | ↓1 (fixed) |
-| **High** | 1 | ↓1 (Matrix bot removed) |
+| **High** | 0 | ↓2 (Matrix bot removed, PyJWT false positive) |
 | **Medium** | 4 | ↓1 |
 | **Low** | 4 | — |
 
@@ -57,34 +57,28 @@ The Matrix bot (`src/valence/agents/matrix_bot.py`) referenced in the previous a
 
 ## Open Issues
 
-### HIGH-001: PyJWT Dependency Version Mismatch
+### HIGH-001: PyJWT Dependency Version Mismatch — ✅ FALSE POSITIVE
 
 **File:** `pyproject.toml`
-**Severity:** High
+**Severity:** ~~High~~ None
 
 **Description:**
-The `pyproject.toml` specifies `PyJWT>=2.11.0`, but the installed version is 2.7.0:
+The audit reported `PyJWT 2.7.0` installed when `pyproject.toml` specifies `>=2.11.0`.
 
-```toml
-# pyproject.toml
-"PyJWT>=2.11.0",
-```
+**Root Cause:** Audit ran in a stale virtual environment that hadn't been updated.
 
-```
-$ pip show PyJWT | grep Version
-Version: 2.7.0
-```
-
-This suggests the virtual environment wasn't updated after the dependency specification was changed. While no critical CVEs exist for PyJWT 2.7.0, versions 2.8+ include security hardening and bug fixes.
-
-**Remediation:**
+**Verification:**
 ```bash
-pip install --upgrade "PyJWT>=2.11.0"
-# or regenerate the virtual environment
-rm -rf .venv && python -m venv .venv && pip install -e ".[dev]"
+# Fresh venv confirms correct version
+$ python -m venv .fresh-venv && source .fresh-venv/bin/activate
+$ pip install -e ".[dev]"
+$ pip show PyJWT | grep Version
+Version: 2.11.0  # ✅ Correct
 ```
 
-**Status:** Open
+**Lesson Learned:** Audit sub-agents must create fresh venvs before checking dependency versions. See `docs/SUBAGENT-WORKFLOW.md` for updated audit procedure.
+
+**Status:** Closed (false positive)
 
 ---
 
@@ -294,7 +288,7 @@ The `consensus/anti_gaming.py` module implements:
 ## Recommendations Summary
 
 ### Immediate
-1. **HIGH-001**: Update PyJWT to match pyproject.toml specification (>=2.11.0)
+~~1. **HIGH-001**: Update PyJWT to match pyproject.toml specification (>=2.11.0)~~ — FALSE POSITIVE, closed
 
 ### Short Term (30 days)
 2. Add CSRF tokens to OAuth form
@@ -312,9 +306,9 @@ The `consensus/anti_gaming.py` module implements:
 
 ## Conclusion
 
-The Valence codebase demonstrates strong security practices. The critical XSS vulnerability from the previous audit has been properly remediated with HTML escaping. The primary remaining issue is the PyJWT version mismatch, which should be resolved before production deployment.
+The Valence codebase demonstrates strong security practices. The critical XSS vulnerability from the previous audit has been properly remediated with HTML escaping. The PyJWT version issue was a false positive caused by a stale audit environment.
 
-The overall security posture is **suitable for production** once HIGH-001 is addressed. The documented limitations around in-memory storage are acceptable for single-instance deployments.
+The overall security posture is **suitable for production**. No critical or high-severity issues remain. The documented limitations around in-memory storage are acceptable for single-instance deployments.
 
 ---
 
