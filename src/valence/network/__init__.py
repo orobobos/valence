@@ -85,6 +85,21 @@ from valence.network.node import (
     StateConflictError,
     create_node_client,
 )
+from valence.network.qos import (
+    DEFAULT_DIMENSION_WEIGHTS,
+    MAX_CONTRIBUTION_SCORE,
+    NEW_USER_MINIMUM_SCORE,
+    TIER_WEIGHTS,
+    ContributionDimension,
+    ContributionScore,
+    PriorityTier,
+    QoSPolicy,
+)
+from valence.network.qos_manager import (
+    LoadMetrics,
+    NodeQoSState,
+    QoSManager,
+)
 from valence.network.router import (
     # Circuit state (Issue #115)
     CircuitHopState,
@@ -192,6 +207,18 @@ __all__ = [
     "RouterClientConfig",
     "HealthMonitor",
     "HealthMonitorConfig",
+    # QoS (Issue #276)
+    "ContributionDimension",
+    "ContributionScore",
+    "DEFAULT_DIMENSION_WEIGHTS",
+    "MAX_CONTRIBUTION_SCORE",
+    "NEW_USER_MINIMUM_SCORE",
+    "PriorityTier",
+    "QoSPolicy",
+    "TIER_WEIGHTS",
+    "LoadMetrics",
+    "NodeQoSState",
+    "QoSManager",
     # Traffic Analysis Mitigations (Issue #120)
     "TrafficAnalysisMitigationConfig",
     "PrivacyLevel",
