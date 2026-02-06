@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from .resource_sharing import ResourceSharingService
 from .resources import UsageAttestation
 
 
@@ -99,7 +100,7 @@ class AttestationService:
     # Volume scoring: at this many attestations, volume_score = 1.0
     VOLUME_SATURATION: int = 20
 
-    def __init__(self, sharing_service: object) -> None:
+    def __init__(self, sharing_service: ResourceSharingService) -> None:
         """Initialize with a ResourceSharingService instance.
 
         Args:
