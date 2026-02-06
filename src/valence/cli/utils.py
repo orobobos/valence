@@ -29,20 +29,11 @@ def get_db_connection():
 
 
 def get_embedding(text: str) -> list[float] | None:
-    """Generate embedding using OpenAI."""
-    from ..core.config import get_config
-
-    config = get_config()
-    api_key = config.openai_api_key
-    if not api_key:
-        return None
-
+    """Generate embedding using configured provider (local or OpenAI)."""
     try:
-        from openai import OpenAI
+        from ..embeddings.service import generate_embedding
 
-        client = OpenAI(api_key=api_key)
-        response = client.embeddings.create(model="text-embedding-3-small", input=text)
-        return response.data[0].embedding
+        return generate_embedding(text)
     except Exception as e:
         print(f"⚠️  Embedding failed: {e}", file=sys.stderr)
         return None
@@ -53,7 +44,7 @@ def format_confidence(conf: dict) -> str:
     if not conf:
         return "?"
     overall = conf.get("overall", 0)
-    if isinstance(overall, (int, float)):
+    if isinstance(overall, int | float):
         return f"{overall:.0%}"
     return str(overall)[:5]
 
@@ -124,7 +115,7 @@ def compute_confidence_score(belief: dict) -> float:
     conf = belief.get("confidence", {})
     if isinstance(conf, dict):
         overall = conf.get("overall", 0.5)
-        if isinstance(overall, (int, float)):
+        if isinstance(overall, int | float):
             return min(1.0, max(0.0, float(overall)))
 
     return 0.5  # Default
@@ -185,7 +176,7 @@ def multi_signal_rank(
     for r in results:
         # Semantic score (already computed from embedding similarity)
         semantic = r.get("similarity", 0.0)
-        if isinstance(semantic, (int, float)):
+        if isinstance(semantic, int | float):
             semantic = min(1.0, max(0.0, float(semantic)))
         else:
             semantic = 0.0
