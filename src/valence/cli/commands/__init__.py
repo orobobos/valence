@@ -8,6 +8,7 @@ from .federation import cmd_query_federated
 from .io import cmd_export, cmd_import
 from .migration import cmd_migrate, cmd_migrate_visibility
 from .peers import cmd_peer, cmd_peer_add, cmd_peer_list, cmd_peer_remove
+from .resources import cmd_resources
 from .stats import cmd_stats
 from .trust import cmd_trust
 
@@ -28,6 +29,7 @@ __all__ = [
     "cmd_peer_remove",
     "cmd_query",
     "cmd_query_federated",
+    "cmd_resources",
     "cmd_stats",
     "cmd_trust",
 ]

@@ -85,6 +85,22 @@ from .models import (
     Source,
     Tension,
 )
+from .resource_sharing import (
+    AccessResult,
+    DefaultTrustProvider,
+    InMemoryResourceStore,
+    ResourceSharingService,
+    SafetyScanResult,
+    ShareResult,
+    scan_content,
+)
+from .resources import (
+    Resource,
+    ResourceReport,
+    ResourceType,
+    SafetyStatus,
+    UsageAttestation,
+)
 from .temporal import TemporalValidity
 from .verification import (
     ContradictionType,
@@ -192,6 +208,19 @@ __all__ = [
     "calculate_max_stake",
     "calculate_bounty",
     "create_evidence",
+    # Resources (Issue #270)
+    "Resource",
+    "ResourceType",
+    "SafetyStatus",
+    "ResourceReport",
+    "UsageAttestation",
+    "ResourceSharingService",
+    "InMemoryResourceStore",
+    "DefaultTrustProvider",
+    "ShareResult",
+    "AccessResult",
+    "SafetyScanResult",
+    "scan_content",
     # External Source Verification (L4)
     "ExternalSourceConstants",
     "SourceCategory",
