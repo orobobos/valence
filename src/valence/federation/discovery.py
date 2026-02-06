@@ -17,6 +17,7 @@ from uuid import UUID
 
 import aiohttp
 
+from ..core.config import get_config
 from ..core.db import get_cursor
 from .identity import (
     WELL_KNOWN_NODE_METADATA,
@@ -63,11 +64,19 @@ async def _fetch_node_metadata(base_url: str) -> DIDDocument | None:
 
     Returns:
         DIDDocument if found, None otherwise
+
+    Raises:
+        ValueError: If VALENCE_REQUIRE_TLS=true and URL is not HTTPS
     """
     # Normalize URL
     base_url = base_url.rstrip("/")
     if not base_url.startswith("http"):
         base_url = f"https://{base_url}"
+
+    # Enforce TLS in production
+    config = get_config()
+    if config.require_tls and not base_url.startswith("https://"):
+        raise ValueError("TLS required but URL uses HTTP. Set VALENCE_REQUIRE_TLS=false for development.")
 
     url = f"{base_url}{WELL_KNOWN_NODE_METADATA}"
 

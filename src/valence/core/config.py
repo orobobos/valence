@@ -184,6 +184,16 @@ class CoreSettings(BaseSettings):
     )
 
     # ==========================================================================
+    # FEDERATION SECURITY SETTINGS
+    # ==========================================================================
+
+    require_tls: bool = Field(
+        default=False,
+        description="Require TLS (HTTPS) for all federation peer connections. " "Set to true in production to prevent MITM attacks.",
+        validation_alias="VALENCE_REQUIRE_TLS",
+    )
+
+    # ==========================================================================
     # HEALTH CHECK SETTINGS
     # ==========================================================================
 

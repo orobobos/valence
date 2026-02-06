@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 
 import aiohttp
 
-from ..core.config import get_federation_config
+from ..core.config import get_config, get_federation_config
 from ..core.db import get_cursor
 from .discovery import (
     get_node_by_id,
@@ -45,6 +45,33 @@ from .protocol import (
     ShareBeliefRequest,
     handle_share_belief,
 )
+
+
+class TLSRequiredError(Exception):
+    """Raised when TLS is required but endpoint uses HTTP."""
+
+    pass
+
+
+def validate_endpoint_tls(endpoint: str) -> None:
+    """Validate that endpoint uses HTTPS when TLS is required.
+
+    Args:
+        endpoint: The federation endpoint URL to validate
+
+    Raises:
+        TLSRequiredError: If VALENCE_REQUIRE_TLS=true and endpoint is not HTTPS
+    """
+    config = get_config()
+    if not config.require_tls:
+        return
+
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https":
+        raise TLSRequiredError(
+            f"TLS required but endpoint uses {parsed.scheme}://. " "Set VALENCE_REQUIRE_TLS=false for development or use HTTPS endpoint."
+        )
+
 
 logger = logging.getLogger(__name__)
 
@@ -500,7 +527,13 @@ class SyncManager:
             node_id: Target node's UUID
             federation_endpoint: Node's federation endpoint URL
             items: Queue items to send
+
+        Raises:
+            TLSRequiredError: If VALENCE_REQUIRE_TLS=true and endpoint is not HTTPS
         """
+        # Validate TLS requirement
+        validate_endpoint_tls(federation_endpoint)
+
         # Collect beliefs to send
         belief_ids = [item["belief_id"] for item in items if item.get("belief_id")]
 
@@ -721,7 +754,13 @@ class SyncManager:
             trust_level: Current trust level
             cursor: Last sync cursor
             last_sync: Last sync timestamp
+
+        Raises:
+            TLSRequiredError: If VALENCE_REQUIRE_TLS=true and endpoint is not HTTPS
         """
+        # Validate TLS requirement
+        validate_endpoint_tls(federation_endpoint)
+
         try:
             url = f"{federation_endpoint}/sync"
             since = last_sync or (datetime.now() - timedelta(days=7))
