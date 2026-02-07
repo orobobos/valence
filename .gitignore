@@ -49,3 +49,4 @@ htmlcov/
 .pytest_cache/
 coverage/
 coverage.json
+.mypy_cache/
