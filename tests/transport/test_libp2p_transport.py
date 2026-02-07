@@ -20,6 +20,7 @@ from valence.transport.adapter import (
 )
 from valence.transport.config import TransportConfig
 from valence.transport.libp2p_transport import (
+    _LIBP2P_AVAILABLE,
     VALENCE_BELIEF_TOPIC,
     VALENCE_SYNC_PROTOCOL,
     Libp2pTransport,
@@ -97,6 +98,7 @@ class TestEnvelopeEncoding:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _LIBP2P_AVAILABLE, reason="py-libp2p not installed")
 class TestLibp2pTransportInit:
     def test_initial_state(self):
         transport = Libp2pTransport()
@@ -116,6 +118,7 @@ class TestLibp2pTransportInit:
             _ = transport.local_peer
 
 
+@pytest.mark.skipif(not _LIBP2P_AVAILABLE, reason="py-libp2p not installed")
 class TestLibp2pTransportNotRunning:
     """Operations that require RUNNING state should fail cleanly."""
 
@@ -150,6 +153,7 @@ class TestLibp2pTransportNotRunning:
             await transport.connect_peer("/ip4/1.2.3.4/tcp/4001/p2p/QmPeer")
 
 
+@pytest.mark.skipif(not _LIBP2P_AVAILABLE, reason="py-libp2p not installed")
 class TestLibp2pTransportStopIdempotent:
     @pytest.mark.asyncio
     async def test_stop_when_already_stopped(self):
@@ -177,6 +181,7 @@ class TestProtocolConstants:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _LIBP2P_AVAILABLE, reason="py-libp2p not installed")
 class TestLibp2pTransportConfig:
     def test_gossipsub_disabled(self):
         config = TransportConfig(gossipsub_enabled=False)
@@ -199,6 +204,7 @@ class TestLibp2pTransportConfig:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not _LIBP2P_AVAILABLE, reason="py-libp2p not installed")
 class TestRequireLibp2p:
     def test_available(self):
         """Should not raise when libp2p is installed."""

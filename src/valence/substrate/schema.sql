@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS beliefs (
     supersedes_id UUID REFERENCES beliefs(id) ON DELETE SET NULL,
     superseded_by_id UUID REFERENCES beliefs(id) ON DELETE SET NULL,
 
+    -- Ownership (distinct from source provenance)
+    holder_id UUID,
+
+    -- Belief versioning
+    version INTEGER NOT NULL DEFAULT 1,
+
+    -- Content integrity / deduplication
+    content_hash CHAR(64),
+
+    -- Federation privacy level
+    visibility TEXT NOT NULL DEFAULT 'private',
+    -- Values: private, federated, public
+
     -- Status
     status TEXT NOT NULL DEFAULT 'active',
     -- Values: active, superseded, disputed, archived
@@ -76,6 +89,8 @@ CREATE TABLE IF NOT EXISTS beliefs (
     ) STORED,
 
     CONSTRAINT beliefs_valid_status CHECK (status IN ('active', 'superseded', 'disputed', 'archived')),
+    CONSTRAINT beliefs_valid_visibility CHECK (visibility IN ('private', 'federated', 'public')),
+    CONSTRAINT beliefs_version_positive CHECK (version > 0),
     CONSTRAINT beliefs_valid_confidence CHECK (
         (confidence->>'overall')::numeric >= 0 AND
         (confidence->>'overall')::numeric <= 1
@@ -88,6 +103,8 @@ CREATE INDEX IF NOT EXISTS idx_beliefs_created ON beliefs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_beliefs_tsv ON beliefs USING GIN (content_tsv);
 CREATE INDEX IF NOT EXISTS idx_beliefs_source ON beliefs(source_id);
 CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_beliefs_holder ON beliefs(holder_id) WHERE holder_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_beliefs_content_hash ON beliefs(content_hash) WHERE content_hash IS NOT NULL;
 
 -- Entities: People, organizations, tools, concepts
 CREATE TABLE IF NOT EXISTS entities (

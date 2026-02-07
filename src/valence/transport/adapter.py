@@ -173,3 +173,36 @@ class TransportAdapter(Protocol):
     async def discover_peers(self) -> list[PeerInfo]:
         """Return a snapshot of currently known peers."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# Supporting types used by transport backends
+# ---------------------------------------------------------------------------
+
+
+class TransportError(Exception):
+    """Raised when a transport operation fails."""
+
+
+@dataclass
+class MessageEnvelope:
+    """Wraps a message with routing metadata for transport."""
+
+    payload: bytes
+    topic: str = ""
+    sender_id: str = ""
+    source: str = ""
+    correlation_id: str = ""
+    message_id: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    timestamp: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.timestamp == 0.0:
+            import time
+
+            self.timestamp = time.time()
+
+
+# Callback type for message subscriptions
+MessageHandler = Callable[[MessageEnvelope], Any]

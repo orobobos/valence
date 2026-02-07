@@ -29,8 +29,6 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
-import trio
-
 from valence.transport.adapter import (
     MessageEnvelope,
     MessageHandler,
@@ -49,6 +47,7 @@ logger = logging.getLogger(__name__)
 _LIBP2P_AVAILABLE = False
 
 try:
+    import trio  # noqa: F811 — lazy import alongside libp2p
     from libp2p import new_host
     from libp2p.crypto.ed25519 import (
         Ed25519PrivateKey,
@@ -133,9 +132,9 @@ class _TrioBridge:
 
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
-        self._trio_token: trio.lowlevel.TrioToken | None = None
+        self._trio_token: Any = None
         self._started = threading.Event()
-        self._stop_event: trio.Event | None = None
+        self._stop_event: Any = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run_trio, daemon=True, name="valence-libp2p-trio")
@@ -317,7 +316,7 @@ class Libp2pTransport:
         host_addrs = [str(a) for a in self._host.get_addrs()]
         self._local_peer = PeerInfo(
             peer_id=peer_id_str,
-            addrs=tuple(host_addrs),
+            addrs=list(host_addrs),
         )
 
         # Set up stream protocol handlers
@@ -572,7 +571,7 @@ class Libp2pTransport:
                 peers.append(
                     PeerInfo(
                         peer_id=pid.to_string(),
-                        addrs=tuple(str(a) for a in addrs),
+                        addrs=list(str(a) for a in addrs),
                     )
                 )
             loop.call_soon_threadsafe(future.set_result, peers)
@@ -615,7 +614,7 @@ class Libp2pTransport:
             addrs = self._host.get_peerstore().addrs(peer_info.peer_id)
             result = PeerInfo(
                 peer_id=peer_info.peer_id.to_string(),
-                addrs=tuple(str(a) for a in addrs),
+                addrs=list(str(a) for a in addrs),
             )
             loop.call_soon_threadsafe(future.set_result, result)
         except Exception as exc:
