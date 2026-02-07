@@ -16,6 +16,80 @@ from ..utils import (
 )
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register belief commands (init, add, query, list) on the CLI parser."""
+    # init
+    init_parser = subparsers.add_parser("init", help="Initialize database schema")
+    init_parser.add_argument("--force", "-f", action="store_true", help="Recreate schema even if exists")
+    init_parser.set_defaults(func=cmd_init)
+
+    # add
+    add_parser = subparsers.add_parser("add", help="Add a new belief")
+    add_parser.add_argument("content", help="Belief content")
+    add_parser.add_argument("--confidence", "-c", help="Confidence (JSON or float 0-1)")
+    add_parser.add_argument("--domain", "-d", action="append", help="Domain tag (repeatable)")
+    add_parser.add_argument(
+        "--derivation-type",
+        "-t",
+        choices=[
+            "observation",
+            "inference",
+            "aggregation",
+            "hearsay",
+            "assumption",
+            "correction",
+            "synthesis",
+        ],
+        default="observation",
+        help="How this belief was derived",
+    )
+    add_parser.add_argument("--derived-from", help="UUID of source belief this was derived from")
+    add_parser.add_argument("--method", "-m", help="Method description for derivation")
+    add_parser.set_defaults(func=cmd_add)
+
+    # query
+    query_parser = subparsers.add_parser("query", help="Search beliefs with multi-signal ranking")
+    query_parser.add_argument("query", help="Search query")
+    query_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
+    query_parser.add_argument("--threshold", "-t", type=float, default=0.3, help="Min semantic similarity")
+    query_parser.add_argument("--domain", "-d", help="Filter by domain")
+    query_parser.add_argument("--chain", action="store_true", help="Show full supersession chains")
+    query_parser.add_argument(
+        "--scope",
+        "-s",
+        choices=["local", "federated"],
+        default="local",
+        help="Search scope: local (default) or federated (include peer beliefs)",
+    )
+    query_parser.add_argument(
+        "--recency-weight",
+        "-r",
+        type=float,
+        default=0.15,
+        help="Recency weight 0.0-1.0 (default 0.15). Higher = prefer newer beliefs",
+    )
+    query_parser.add_argument(
+        "--min-confidence",
+        "-c",
+        type=float,
+        default=None,
+        help="Filter beliefs below this confidence threshold (0.0-1.0)",
+    )
+    query_parser.add_argument(
+        "--explain",
+        "-e",
+        action="store_true",
+        help="Show detailed score breakdown per result",
+    )
+    query_parser.set_defaults(func=cmd_query)
+
+    # list
+    list_parser = subparsers.add_parser("list", help="List recent beliefs")
+    list_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
+    list_parser.add_argument("--domain", "-d", help="Filter by domain")
+    list_parser.set_defaults(func=cmd_list)
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Initialize valence database."""
     import psycopg2

@@ -51,6 +51,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     trust_parser.add_argument("resource_id", help="Resource UUID")
     trust_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
 
+    att_parser.set_defaults(func=cmd_attestations)
+
 
 def cmd_attestations(args: argparse.Namespace) -> int:
     """Dispatch attestations subcommands."""

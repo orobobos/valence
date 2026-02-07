@@ -18,8 +18,9 @@ import os
 import sys
 from pathlib import Path
 
-# Re-export for backward compatibility
+# Re-export for backward compatibility (tests import from valence.cli.main)
 from .commands import (
+    COMMAND_MODULES,
     cmd_add,
     cmd_attestations,
     cmd_conflicts,
@@ -76,8 +77,8 @@ __all__ = [
     "cmd_qos",
     "cmd_query",
     "cmd_query_federated",
-    "register_identity_commands",
     "cmd_resources",
+    "cmd_schema",
     "cmd_stats",
     "cmd_trust",
     "compute_confidence_score",
@@ -88,6 +89,7 @@ __all__ = [
     "get_embedding",
     "main",
     "multi_signal_rank",
+    "register_identity_commands",
 ]
 
 # Try to load .env from common locations
@@ -103,7 +105,12 @@ for env_path in [Path.cwd() / ".env", Path.home() / ".valence" / ".env"]:
 
 
 def app() -> argparse.ArgumentParser:
-    """Build the argument parser."""
+    """Build the argument parser.
+
+    Each command module in ``valence.cli.commands`` provides a
+    ``register(subparsers)`` function that adds its parser(s) and sets
+    ``parser.set_defaults(func=handler)`` so dispatch is automatic.
+    """
     parser = argparse.ArgumentParser(
         prog="valence",
         description="Personal knowledge substrate for AI agents",
@@ -132,452 +139,9 @@ Federation (Week 2):
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # init
-    init_parser = subparsers.add_parser("init", help="Initialize database schema")
-    init_parser.add_argument("--force", "-f", action="store_true", help="Recreate schema even if exists")
-
-    # add
-    add_parser = subparsers.add_parser("add", help="Add a new belief")
-    add_parser.add_argument("content", help="Belief content")
-    add_parser.add_argument("--confidence", "-c", help="Confidence (JSON or float 0-1)")
-    add_parser.add_argument("--domain", "-d", action="append", help="Domain tag (repeatable)")
-    add_parser.add_argument(
-        "--derivation-type",
-        "-t",
-        choices=[
-            "observation",
-            "inference",
-            "aggregation",
-            "hearsay",
-            "assumption",
-            "correction",
-            "synthesis",
-        ],
-        default="observation",
-        help="How this belief was derived",
-    )
-    add_parser.add_argument("--derived-from", help="UUID of source belief this was derived from")
-    add_parser.add_argument("--method", "-m", help="Method description for derivation")
-
-    # query
-    query_parser = subparsers.add_parser("query", help="Search beliefs with multi-signal ranking")
-    query_parser.add_argument("query", help="Search query")
-    query_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
-    query_parser.add_argument("--threshold", "-t", type=float, default=0.3, help="Min semantic similarity")
-    query_parser.add_argument("--domain", "-d", help="Filter by domain")
-    query_parser.add_argument("--chain", action="store_true", help="Show full supersession chains")
-    query_parser.add_argument(
-        "--scope",
-        "-s",
-        choices=["local", "federated"],
-        default="local",
-        help="Search scope: local (default) or federated (include peer beliefs)",
-    )
-    # Multi-signal ranking options (Valence Query Protocol)
-    query_parser.add_argument(
-        "--recency-weight",
-        "-r",
-        type=float,
-        default=0.15,
-        help="Recency weight 0.0-1.0 (default 0.15). Higher = prefer newer beliefs",
-    )
-    query_parser.add_argument(
-        "--min-confidence",
-        "-c",
-        type=float,
-        default=None,
-        help="Filter beliefs below this confidence threshold (0.0-1.0)",
-    )
-    query_parser.add_argument(
-        "--explain",
-        "-e",
-        action="store_true",
-        help="Show detailed score breakdown per result",
-    )
-
-    # list
-    list_parser = subparsers.add_parser("list", help="List recent beliefs")
-    list_parser.add_argument("--limit", "-n", type=int, default=10, help="Max results")
-    list_parser.add_argument("--domain", "-d", help="Filter by domain")
-
-    # conflicts
-    conflicts_parser = subparsers.add_parser("conflicts", help="Detect contradicting beliefs")
-    conflicts_parser.add_argument(
-        "--threshold",
-        "-t",
-        type=float,
-        default=0.85,
-        help="Similarity threshold for conflict detection",
-    )
-    conflicts_parser.add_argument(
-        "--auto-record",
-        "-r",
-        action="store_true",
-        help="Automatically record detected conflicts as tensions",
-    )
-
-    # stats
-    subparsers.add_parser("stats", help="Show database statistics")
-
-    # ========================================================================
-    # DISCOVER command (Network bootstrap)
-    # ========================================================================
-
-    discover_parser = subparsers.add_parser("discover", help="Discover network routers via seeds")
-    discover_parser.add_argument(
-        "--seed",
-        "-s",
-        action="append",
-        dest="seeds",
-        help="Custom seed URL (repeatable)",
-    )
-    discover_parser.add_argument(
-        "--count",
-        "-n",
-        type=int,
-        default=5,
-        help="Number of routers to request (default: 5)",
-    )
-    discover_parser.add_argument("--region", "-r", help="Preferred region")
-    discover_parser.add_argument(
-        "--feature",
-        "-f",
-        action="append",
-        dest="features",
-        help="Required feature (repeatable)",
-    )
-    discover_parser.add_argument("--refresh", action="store_true", help="Force refresh (bypass cache)")
-    discover_parser.add_argument("--no-verify", action="store_true", help="Skip router signature verification")
-    discover_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    discover_parser.add_argument("--stats", action="store_true", help="Show discovery statistics")
-
-    # ========================================================================
-    # PEER commands (Week 2 Federation)
-    # ========================================================================
-
-    peer_parser = subparsers.add_parser("peer", help="Manage trusted peers")
-    peer_subparsers = peer_parser.add_subparsers(dest="peer_command", required=True)
-
-    # peer add
-    peer_add_parser = peer_subparsers.add_parser("add", help="Add or update a trusted peer")
-    peer_add_parser.add_argument("did", help="Peer DID (e.g., did:vkb:web:alice.example.com)")
-    peer_add_parser.add_argument(
-        "--trust",
-        type=float,
-        required=True,
-        help="Trust level 0.0-1.0 (e.g., 0.8 for 80%% trust)",
-    )
-    peer_add_parser.add_argument("--name", help="Human-readable name for this peer")
-    peer_add_parser.add_argument("--notes", help="Notes about this peer")
-
-    # peer list
-    peer_subparsers.add_parser("list", help="List trusted peers")
-
-    # peer remove
-    peer_remove_parser = peer_subparsers.add_parser("remove", help="Remove a peer")
-    peer_remove_parser.add_argument("did", help="Peer DID to remove")
-
-    # ========================================================================
-    # EXPORT command
-    # ========================================================================
-
-    export_parser = subparsers.add_parser("export", help="Export beliefs for sharing")
-    export_parser.add_argument("--to", dest="to", help="Recipient DID (for filtering)")
-    export_parser.add_argument("--output", "-o", help="Output file (default: stdout)")
-    export_parser.add_argument("--domain", "-d", action="append", help="Filter by domain")
-    export_parser.add_argument("--min-confidence", type=float, default=0.0, help="Minimum confidence threshold")
-    export_parser.add_argument("--limit", "-n", type=int, default=1000, help="Max beliefs")
-    export_parser.add_argument(
-        "--include-federated",
-        action="store_true",
-        help="Include beliefs received from other peers",
-    )
-
-    # ========================================================================
-    # IMPORT command
-    # ========================================================================
-
-    import_parser = subparsers.add_parser("import", help="Import beliefs from a peer")
-    import_parser.add_argument("file", help="Import file (JSON) or - for stdin")
-    import_parser.add_argument("--from", dest="source", help="Source peer DID (overrides package)")
-    import_parser.add_argument("--trust", type=float, help="Override trust level (otherwise uses registry)")
-
-    # ========================================================================
-    # TRUST commands
-    # ========================================================================
-
-    trust_parser = subparsers.add_parser("trust", help="Trust network management")
-    trust_subparsers = trust_parser.add_subparsers(dest="trust_command", required=True)
-
-    # trust check
-    trust_check_parser = trust_subparsers.add_parser("check", help="Check for trust concentration issues")
-    trust_check_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    trust_check_parser.add_argument(
-        "--single-threshold",
-        type=float,
-        default=None,
-        help="Custom threshold for single node dominance (default: 30%%)",
-    )
-    trust_check_parser.add_argument(
-        "--top3-threshold",
-        type=float,
-        default=None,
-        help="Custom threshold for top 3 nodes dominance (default: 50%%)",
-    )
-    trust_check_parser.add_argument(
-        "--min-sources",
-        type=int,
-        default=None,
-        help="Minimum trusted sources (default: 3)",
-    )
-
-    # trust watch
-    trust_watch_parser = trust_subparsers.add_parser("watch", help="Watch an entity (see content without reputation boost)")
-    trust_watch_parser.add_argument("entity", help="DID of entity to watch")
-    trust_watch_parser.add_argument("--domain", "-d", help="Optional domain scope")
-
-    # trust unwatch
-    trust_unwatch_parser = trust_subparsers.add_parser("unwatch", help="Remove a watch relationship")
-    trust_unwatch_parser.add_argument("entity", help="DID of entity to unwatch")
-    trust_unwatch_parser.add_argument("--domain", "-d", help="Optional domain scope")
-
-    # trust distrust
-    trust_distrust_parser = trust_subparsers.add_parser("distrust", help="Mark an entity as distrusted (negative reputation)")
-    trust_distrust_parser.add_argument("entity", help="DID of entity to distrust")
-    trust_distrust_parser.add_argument("--domain", "-d", help="Optional domain scope")
-
-    # trust ignore
-    trust_ignore_parser = trust_subparsers.add_parser("ignore", help="Ignore an entity (block content)")
-    trust_ignore_parser.add_argument("entity", help="DID of entity to ignore")
-    trust_ignore_parser.add_argument("--domain", "-d", help="Optional domain scope")
-
-    # trust set (#268) — set multi-dimensional epistemic trust
-    trust_set_parser = trust_subparsers.add_parser(
-        "set",
-        help="Set multi-dimensional epistemic trust on an entity",
-    )
-    trust_set_parser.add_argument("entity", help="Target entity DID")
-    trust_set_parser.add_argument("--source", default=None, help="Source DID (default: self)")
-    trust_set_parser.add_argument("--domain", default=None, help="Domain scope")
-    trust_set_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    # Epistemic dimensions
-    trust_set_parser.add_argument("--conclusions", type=float, default=None, help="Trust in their conclusions (0-1)")
-    trust_set_parser.add_argument("--reasoning", type=float, default=None, help="Trust in their reasoning (0-1)")
-    trust_set_parser.add_argument("--perspective", type=float, default=None, help="Trust in their perspective (0-1)")
-    trust_set_parser.add_argument("--honesty", type=float, default=None, help="Trust in their honesty (0-1)")
-    trust_set_parser.add_argument("--methodology", type=float, default=None, help="Trust in their methodology (0-1)")
-    trust_set_parser.add_argument("--predictive", type=float, default=None, help="Trust in their predictions (0-1)")
-    # Core 4D overrides
-    trust_set_parser.add_argument("--competence", type=float, default=None, help="Core competence score (0-1)")
-    trust_set_parser.add_argument("--integrity", type=float, default=None, help="Core integrity score (0-1)")
-    trust_set_parser.add_argument("--confidentiality", type=float, default=None, help="Core confidentiality score (0-1)")
-    trust_set_parser.add_argument("--judgment", type=float, default=None, help="Core judgment score (0-1)")
-
-    # trust show (#268) — show trust dimensions for an entity
-    trust_show_parser = trust_subparsers.add_parser(
-        "show",
-        help="Show trust dimensions for an entity",
-    )
-    trust_show_parser.add_argument("entity", help="Target entity DID")
-    trust_show_parser.add_argument("--source", default=None, help="Source DID (default: self)")
-    trust_show_parser.add_argument("--domain", default=None, help="Domain scope")
-    trust_show_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-
-    # ========================================================================
-    # EMBEDDINGS commands
-    # ========================================================================
-
-    embeddings_parser = subparsers.add_parser("embeddings", help="Embedding management")
-    embeddings_subparsers = embeddings_parser.add_subparsers(dest="embeddings_command", required=True)
-
-    # embeddings backfill
-    backfill_parser = embeddings_subparsers.add_parser("backfill", help="Backfill missing or outdated embeddings")
-    backfill_parser.add_argument(
-        "--batch-size",
-        "-b",
-        type=int,
-        default=100,
-        help="Number of records to process per batch (default: 100)",
-    )
-    backfill_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be backfilled without making changes",
-    )
-    backfill_parser.add_argument(
-        "--content-type",
-        "-t",
-        choices=["belief", "exchange", "pattern"],
-        default=None,
-        help="Content type to backfill (default: all)",
-    )
-    backfill_parser.add_argument(
-        "--force",
-        "-f",
-        action="store_true",
-        help="Re-embed all records even if embedding exists (for provider migration)",
-    )
-
-    # ========================================================================
-    # ATTESTATIONS commands (Issue #271)
-    # ========================================================================
-
-    from .commands.attestations import register as register_attestations
-
-    register_attestations(subparsers)
-
-    # ========================================================================
-    # RESOURCES commands (Issue #270)
-    # ========================================================================
-
-    resources_parser = subparsers.add_parser("resources", help="Manage shared resources (prompts, configs, patterns)")
-    resources_subparsers = resources_parser.add_subparsers(dest="resources_command", required=True)
-
-    # resources list
-    resources_list_parser = resources_subparsers.add_parser("list", help="List shared resources")
-    resources_list_parser.add_argument(
-        "--type",
-        "-t",
-        choices=["prompt", "config", "pattern"],
-        help="Filter by resource type",
-    )
-    resources_list_parser.add_argument("--limit", "-n", type=int, default=50, help="Max results")
-    resources_list_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-
-    # resources share
-    resources_share_parser = resources_subparsers.add_parser("share", help="Share a resource from a file")
-    resources_share_parser.add_argument("file", help="File to share (or - for stdin)")
-    resources_share_parser.add_argument(
-        "--type",
-        "-t",
-        required=True,
-        choices=["prompt", "config", "pattern"],
-        help="Resource type",
-    )
-    resources_share_parser.add_argument("--name", help="Resource name")
-    resources_share_parser.add_argument("--description", help="Resource description")
-    resources_share_parser.add_argument("--trust", type=float, default=0.5, help="Minimum trust level to access (0.0-1.0)")
-    resources_share_parser.add_argument("--author", help="Author DID (default: did:vkb:local)")
-    resources_share_parser.add_argument("--tag", action="append", help="Tag (repeatable)")
-
-    # resources get
-    resources_get_parser = resources_subparsers.add_parser("get", help="Get a resource by ID")
-    resources_get_parser.add_argument("id", help="Resource UUID")
-    resources_get_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    resources_get_parser.add_argument("--requester", help="Requester DID (default: did:vkb:local)")
-
-    # ========================================================================
-    # MIGRATE command (proper migration system)
-    # ========================================================================
-
-    migrate_parser = subparsers.add_parser("migrate", help="Database migration management")
-    migrate_subparsers = migrate_parser.add_subparsers(dest="migrate_command", required=True)
-
-    # migrate up
-    migrate_up = migrate_subparsers.add_parser("up", help="Apply pending migrations")
-    migrate_up.add_argument("--to", help="Apply up to this version (inclusive)")
-    migrate_up.add_argument("--dry-run", action="store_true", help="Show what would be applied")
-
-    # migrate down
-    migrate_down = migrate_subparsers.add_parser("down", help="Rollback migrations")
-    migrate_down.add_argument("--to", help="Rollback to this version (exclusive — it stays applied)")
-    migrate_down.add_argument("--dry-run", action="store_true", help="Show what would be rolled back")
-
-    # migrate status
-    migrate_subparsers.add_parser("status", help="Show migration status")
-
-    # migrate create
-    migrate_create = migrate_subparsers.add_parser("create", help="Scaffold a new migration")
-    migrate_create.add_argument("name", help="Migration name (e.g. add_users_table)")
-
-    # migrate bootstrap
-    migrate_bootstrap = migrate_subparsers.add_parser("bootstrap", help="Bootstrap fresh database")
-    migrate_bootstrap.add_argument("--dry-run", action="store_true", help="Show what would be applied")
-
-    # ========================================================================
-    # SCHEMA commands (#267)
-    # ========================================================================
-
-    schema_parser = subparsers.add_parser("schema", help="Dimension schema management")
-    schema_subparsers = schema_parser.add_subparsers(dest="schema_command", required=True)
-
-    # schema list
-    schema_subparsers.add_parser("list", help="List all registered dimension schemas")
-
-    # schema show
-    schema_show = schema_subparsers.add_parser("show", help="Show details of a dimension schema")
-    schema_show.add_argument("name", help="Schema name (e.g. v1.confidence.core)")
-
-    # schema validate
-    schema_validate = schema_subparsers.add_parser("validate", help="Validate dimensions against a schema")
-    schema_validate.add_argument("name", help="Schema name")
-    schema_validate.add_argument("json", help="JSON object of dimension values")
-
-    # ========================================================================
-    # QOS commands (Issue #276)
-    # ========================================================================
-
-    qos_parser = subparsers.add_parser("qos", help="Contribution-based QoS management")
-    qos_subparsers = qos_parser.add_subparsers(dest="qos_command", required=True)
-
-    # qos status
-    qos_status_parser = qos_subparsers.add_parser("status", help="Show QoS system status")
-    qos_status_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-
-    # qos score
-    qos_score_parser = qos_subparsers.add_parser("score", help="Show contribution score for a node")
-    qos_score_parser.add_argument("node_id", nargs="?", default=None, help="Node ID (default: self)")
-    qos_score_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
-    qos_score_parser.add_argument(
-        "--routing-capacity",
-        type=float,
-        default=None,
-        dest="routing_capacity",
-        help="Set routing_capacity score (0.0-1.0)",
-    )
-    qos_score_parser.add_argument(
-        "--uptime-reliability",
-        type=float,
-        default=None,
-        dest="uptime_reliability",
-        help="Set uptime_reliability score (0.0-1.0)",
-    )
-    qos_score_parser.add_argument(
-        "--belief-quality",
-        type=float,
-        default=None,
-        dest="belief_quality",
-        help="Set belief_quality score (0.0-1.0)",
-    )
-    qos_score_parser.add_argument(
-        "--resource-sharing",
-        type=float,
-        default=None,
-        dest="resource_sharing",
-        help="Set resource_sharing score (0.0-1.0)",
-    )
-    qos_score_parser.add_argument(
-        "--trust-received",
-        type=float,
-        default=None,
-        dest="trust_received",
-        help="Set trust_received score (0.0-1.0)",
-    )
-
-    # ========================================================================
-    # MIGRATE-VISIBILITY command (legacy)
-    # ========================================================================
-
-    subparsers.add_parser(
-        "migrate-visibility",
-        help="Migrate existing beliefs from visibility to SharePolicy",
-    )
-
-    # ========================================================================
-    # IDENTITY commands (#277)
-    # ========================================================================
-
-    register_identity_commands(subparsers)
+    # Let each command module register its own parsers
+    for module in COMMAND_MODULES:
+        module.register(subparsers)
 
     return parser
 
@@ -587,29 +151,8 @@ def main() -> int:
     parser = app()
     args = parser.parse_args()
 
-    commands = {
-        "init": cmd_init,
-        "add": cmd_add,
-        "query": cmd_query,
-        "list": cmd_list,
-        "conflicts": cmd_conflicts,
-        "stats": cmd_stats,
-        "discover": cmd_discover,
-        "peer": cmd_peer,
-        "export": cmd_export,
-        "import": cmd_import,
-        "trust": cmd_trust,
-        "embeddings": cmd_embeddings,
-        "resources": cmd_resources,
-        "attestations": cmd_attestations,
-        "schema": cmd_schema,
-        "qos": cmd_qos,
-        "migrate": cmd_migrate,
-        "migrate-visibility": cmd_migrate_visibility,
-        "identity": cmd_identity,
-    }
-
-    handler = commands.get(args.command)
+    # Dispatch via the func default set by each command's register()
+    handler = getattr(args, "func", None)
     if handler:
         return handler(args)
 

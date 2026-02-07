@@ -21,6 +21,43 @@ from ..utils import get_db_connection
 logger = logging.getLogger(__name__)
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register migrate and migrate-visibility commands on the CLI parser."""
+    # migrate
+    migrate_parser = subparsers.add_parser("migrate", help="Database migration management")
+    migrate_subparsers = migrate_parser.add_subparsers(dest="migrate_command", required=True)
+
+    # migrate up
+    migrate_up = migrate_subparsers.add_parser("up", help="Apply pending migrations")
+    migrate_up.add_argument("--to", help="Apply up to this version (inclusive)")
+    migrate_up.add_argument("--dry-run", action="store_true", help="Show what would be applied")
+
+    # migrate down
+    migrate_down = migrate_subparsers.add_parser("down", help="Rollback migrations")
+    migrate_down.add_argument("--to", help="Rollback to this version (exclusive — it stays applied)")
+    migrate_down.add_argument("--dry-run", action="store_true", help="Show what would be rolled back")
+
+    # migrate status
+    migrate_subparsers.add_parser("status", help="Show migration status")
+
+    # migrate create
+    migrate_create = migrate_subparsers.add_parser("create", help="Scaffold a new migration")
+    migrate_create.add_argument("name", help="Migration name (e.g. add_users_table)")
+
+    # migrate bootstrap
+    migrate_bootstrap = migrate_subparsers.add_parser("bootstrap", help="Bootstrap fresh database")
+    migrate_bootstrap.add_argument("--dry-run", action="store_true", help="Show what would be applied")
+
+    migrate_parser.set_defaults(func=cmd_migrate)
+
+    # migrate-visibility (legacy)
+    mv_parser = subparsers.add_parser(
+        "migrate-visibility",
+        help="Migrate existing beliefs from visibility to SharePolicy",
+    )
+    mv_parser.set_defaults(func=cmd_migrate_visibility)
+
+
 def _get_migrations_dir() -> Path:
     """Resolve the migrations directory (repo root / migrations)."""
     # Walk up from this file to find the repo root

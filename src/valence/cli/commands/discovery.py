@@ -6,6 +6,38 @@ import argparse
 import sys
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register the discover command on the CLI parser."""
+    discover_parser = subparsers.add_parser("discover", help="Discover network routers via seeds")
+    discover_parser.add_argument(
+        "--seed",
+        "-s",
+        action="append",
+        dest="seeds",
+        help="Custom seed URL (repeatable)",
+    )
+    discover_parser.add_argument(
+        "--count",
+        "-n",
+        type=int,
+        default=5,
+        help="Number of routers to request (default: 5)",
+    )
+    discover_parser.add_argument("--region", "-r", help="Preferred region")
+    discover_parser.add_argument(
+        "--feature",
+        "-f",
+        action="append",
+        dest="features",
+        help="Required feature (repeatable)",
+    )
+    discover_parser.add_argument("--refresh", action="store_true", help="Force refresh (bypass cache)")
+    discover_parser.add_argument("--no-verify", action="store_true", help="Skip router signature verification")
+    discover_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    discover_parser.add_argument("--stats", action="store_true", help="Show discovery statistics")
+    discover_parser.set_defaults(func=cmd_discover)
+
+
 def cmd_discover(args: argparse.Namespace) -> int:
     """Discover network routers via seed nodes."""
     import asyncio

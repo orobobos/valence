@@ -10,6 +10,12 @@ from ..utils import get_db_connection
 logger = logging.getLogger(__name__)
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register the stats command on the CLI parser."""
+    stats_parser = subparsers.add_parser("stats", help="Show database statistics")
+    stats_parser.set_defaults(func=cmd_stats)
+
+
 def cmd_stats(args: argparse.Namespace) -> int:
     """Show database statistics."""
     conn = None
