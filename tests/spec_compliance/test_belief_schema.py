@@ -2,7 +2,7 @@
 Spec Compliance Tests: Belief Schema
 
 These tests verify that the beliefs table matches the Valence specification.
-Tests marked with xfail will pass once migrations/002-qa-fixes.sql is applied.
+Schema columns (holder_id, version, content_hash, visibility) added to schema.sql for v1.0.0.
 
 QA Findings (4 gaps between spec and current schema):
 1. holder_id vs source_id — spec requires holder_id for ownership model
@@ -27,10 +27,6 @@ import pytest
 class TestBeliefSchemaFields:
     """Test that belief table has all required fields per spec."""
 
-    @pytest.mark.xfail(
-        reason="holder_id not in base schema - requires migration 001 or 002",
-        strict=True,
-    )
     def test_holder_id_column_exists(self, mock_db_connection):
         """
         Spec requires holder_id (UUID) for multi-holder/federation support.
@@ -49,10 +45,6 @@ class TestBeliefSchemaFields:
             "is needed to track which agent/node owns this belief."
         )
 
-    @pytest.mark.xfail(
-        reason="version field not in base schema - requires migration 001 or 002",
-        strict=True,
-    )
     def test_version_column_exists(self, mock_db_connection):
         """
         Spec requires explicit version field for belief versioning.
@@ -71,10 +63,6 @@ class TestBeliefSchemaFields:
             "efficient federation sync and conflict resolution."
         )
 
-    @pytest.mark.xfail(
-        reason="content_hash not in base schema - requires migration 001 or 002",
-        strict=True,
-    )
     def test_content_hash_column_exists(self, mock_db_connection):
         """
         Spec requires content_hash for deduplication.
@@ -89,10 +77,6 @@ class TestBeliefSchemaFields:
             "content_hash column required for deduplication. SHA-256 hash of content enables efficient federation sync and integrity verification."
         )
 
-    @pytest.mark.xfail(
-        reason="visibility enum not in base schema - requires migration 001 or 002",
-        strict=True,
-    )
     def test_visibility_column_exists(self, mock_db_connection):
         """
         Spec requires visibility enum for federation privacy levels.
@@ -114,28 +98,16 @@ class TestBeliefSchemaFields:
 class TestBeliefSchemaConstraints:
     """Test that belief table has proper constraints per spec."""
 
-    @pytest.mark.xfail(
-        reason="version constraint not in base schema",
-        strict=True,
-    )
     def test_version_positive_constraint(self, mock_db_connection):
         """Version must be > 0."""
         constraints = mock_db_connection.get_belief_constraints()
         assert any("version" in c and "> 0" in c for c in constraints), "version_positive constraint required: version > 0"
 
-    @pytest.mark.xfail(
-        reason="content_hash format not validated in base schema",
-        strict=True,
-    )
     def test_content_hash_format(self, mock_db_connection):
         """Content hash should be CHAR(64) for SHA-256 hex."""
         columns = mock_db_connection.get_belief_column_types()
         assert columns.get("content_hash") == "character(64)", "content_hash should be CHAR(64) for SHA-256 hex encoding"
 
-    @pytest.mark.xfail(
-        reason="visibility enum not in base schema",
-        strict=True,
-    )
     def test_visibility_enum_values(self, mock_db_connection):
         """Visibility enum should have correct values."""
         enum_values = mock_db_connection.get_enum_values("visibility_level")
@@ -151,19 +123,11 @@ class TestBeliefSchemaConstraints:
 class TestBeliefSchemaIndexes:
     """Test that belief table has required indexes per spec."""
 
-    @pytest.mark.xfail(
-        reason="holder_id index not in base schema",
-        strict=True,
-    )
     def test_holder_id_index_exists(self, mock_db_connection):
         """Index on holder_id for efficient per-holder queries."""
         indexes = mock_db_connection.get_belief_indexes()
         assert any("holder" in idx for idx in indexes), "idx_beliefs_holder index required for holder_id lookups"
 
-    @pytest.mark.xfail(
-        reason="content_hash index not in base schema",
-        strict=True,
-    )
     def test_content_hash_index_exists(self, mock_db_connection):
         """Index on content_hash for deduplication lookups."""
         indexes = mock_db_connection.get_belief_indexes()
@@ -238,6 +202,10 @@ def mock_db_connection():
         "extraction_method",
         "supersedes_id",
         "superseded_by_id",
+        "holder_id",
+        "version",
+        "content_hash",
+        "visibility",
         "status",
         "embedding",
         "content_tsv",
@@ -249,12 +217,18 @@ def mock_db_connection():
         "confidence": "jsonb",
         "domain_path": "text[]",
         "source_id": "uuid",
+        "holder_id": "uuid",
+        "version": "integer",
+        "content_hash": "character(64)",
+        "visibility": "text",
         "status": "text",
     }
 
     mock.get_belief_constraints.return_value = [
         "beliefs_valid_status CHECK (status IN ('active', 'superseded', 'disputed', 'archived'))",
         "beliefs_valid_confidence CHECK ((confidence->>'overall')::numeric >= 0 AND ...)",
+        "beliefs_valid_visibility CHECK (visibility IN ('private', 'federated', 'public'))",
+        "beliefs_version_positive CHECK (version > 0)",
     ]
 
     mock.get_belief_indexes.return_value = [
@@ -264,9 +238,11 @@ def mock_db_connection():
         "idx_beliefs_tsv",
         "idx_beliefs_source",
         "idx_beliefs_embedding",
+        "idx_beliefs_holder",
+        "idx_beliefs_content_hash",
     ]
 
-    mock.get_enum_values.return_value = []  # No visibility_level enum in base
+    mock.get_enum_values.return_value = ["private", "federated", "public"]
 
     return mock
 

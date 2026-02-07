@@ -48,16 +48,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        group:
-          - name: "api"
-            paths: "tests/core tests/mcp tests/server tests/cli tests/agents"
-          - name: "security"
-            paths: "tests/privacy tests/security tests/network tests/federation tests/consensus"
-          - name: "data"
-            paths: "tests/storage tests/substrate tests/vkb tests/crypto tests/embeddings tests/compliance tests/spec_compliance"
 
     services:
       postgres:
@@ -98,14 +88,14 @@ jobs:
           psql -f src/valence/substrate/schema.sql
           psql -f src/valence/substrate/procedures.sql
 
-      - name: Run tests (${{ matrix.group.name }})
+      - name: Run tests
         env:
           VKB_DB_HOST: localhost
           VKB_DB_USER: valence
           VKB_DB_PASSWORD: testpass
           VKB_DB_NAME: valence_test
         run: |
-          pytest ${{ matrix.group.paths }} \
+          pytest tests/ \
             -m "not integration and not slow" \
             -v \
             --tb=short \
