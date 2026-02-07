@@ -382,11 +382,10 @@ class TestEmbeddingsRouting:
     """Test embeddings command routing."""
 
     def test_main_dispatches_to_embeddings(self):
-        """main() dispatches 'embeddings' to cmd_embeddings."""
-        from valence.cli.main import main
+        """main() dispatches 'embeddings' to cmd_embeddings via args.func."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "backfill", "--dry-run"])
 
-        with patch("valence.cli.main.cmd_embeddings", return_value=0) as mock_cmd:
-            with patch("sys.argv", ["valence", "embeddings", "backfill", "--dry-run"]):
-                result = main()
-                assert result == 0
-                mock_cmd.assert_called_once()
+        # With modular registration, args.func is set by set_defaults()
+        assert hasattr(args, "func")
+        assert args.func is cmd_embeddings

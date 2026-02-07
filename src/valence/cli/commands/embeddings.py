@@ -13,6 +13,42 @@ logger = logging.getLogger(__name__)
 VALID_CONTENT_TYPES = ("belief", "exchange", "pattern")
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register embeddings commands on the CLI parser."""
+    embeddings_parser = subparsers.add_parser("embeddings", help="Embedding management")
+    embeddings_subparsers = embeddings_parser.add_subparsers(dest="embeddings_command", required=True)
+
+    # embeddings backfill
+    backfill_parser = embeddings_subparsers.add_parser("backfill", help="Backfill missing or outdated embeddings")
+    backfill_parser.add_argument(
+        "--batch-size",
+        "-b",
+        type=int,
+        default=100,
+        help="Number of records to process per batch (default: 100)",
+    )
+    backfill_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be backfilled without making changes",
+    )
+    backfill_parser.add_argument(
+        "--content-type",
+        "-t",
+        choices=["belief", "exchange", "pattern"],
+        default=None,
+        help="Content type to backfill (default: all)",
+    )
+    backfill_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Re-embed all records even if embedding exists (for provider migration)",
+    )
+
+    embeddings_parser.set_defaults(func=cmd_embeddings)
+
+
 def _count_missing_embeddings(cur, content_type: str) -> int:
     """Count records missing embeddings for a given content type."""
     if content_type == "belief":

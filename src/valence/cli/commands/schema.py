@@ -13,6 +13,26 @@ import json
 import sys
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register schema commands on the CLI parser."""
+    schema_parser = subparsers.add_parser("schema", help="Dimension schema management")
+    schema_subparsers = schema_parser.add_subparsers(dest="schema_command", required=True)
+
+    # schema list
+    schema_subparsers.add_parser("list", help="List all registered dimension schemas")
+
+    # schema show
+    schema_show = schema_subparsers.add_parser("show", help="Show details of a dimension schema")
+    schema_show.add_argument("name", help="Schema name (e.g. v1.confidence.core)")
+
+    # schema validate
+    schema_validate = schema_subparsers.add_parser("validate", help="Validate dimensions against a schema")
+    schema_validate.add_argument("name", help="Schema name")
+    schema_validate.add_argument("dimensions_json", metavar="json", help="JSON object of dimension values")
+
+    schema_parser.set_defaults(func=cmd_schema)
+
+
 def cmd_schema(args: argparse.Namespace) -> int:
     """Router for schema sub-commands."""
     handlers = {

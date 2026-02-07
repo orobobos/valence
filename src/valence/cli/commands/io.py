@@ -6,6 +6,30 @@ import argparse
 import json
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register export and import commands on the CLI parser."""
+    # export
+    export_parser = subparsers.add_parser("export", help="Export beliefs for sharing")
+    export_parser.add_argument("--to", dest="to", help="Recipient DID (for filtering)")
+    export_parser.add_argument("--output", "-o", help="Output file (default: stdout)")
+    export_parser.add_argument("--domain", "-d", action="append", help="Filter by domain")
+    export_parser.add_argument("--min-confidence", type=float, default=0.0, help="Minimum confidence threshold")
+    export_parser.add_argument("--limit", "-n", type=int, default=1000, help="Max beliefs")
+    export_parser.add_argument(
+        "--include-federated",
+        action="store_true",
+        help="Include beliefs received from other peers",
+    )
+    export_parser.set_defaults(func=cmd_export)
+
+    # import
+    import_parser = subparsers.add_parser("import", help="Import beliefs from a peer")
+    import_parser.add_argument("file", help="Import file (JSON) or - for stdin")
+    import_parser.add_argument("--from", dest="source", help="Source peer DID (overrides package)")
+    import_parser.add_argument("--trust", type=float, help="Override trust level (otherwise uses registry)")
+    import_parser.set_defaults(func=cmd_import)
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     """Export beliefs for sharing with a peer."""
     from ...federation.peer_sync import export_beliefs

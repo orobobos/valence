@@ -12,6 +12,58 @@ import argparse
 import json
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register QoS commands on the CLI parser."""
+    qos_parser = subparsers.add_parser("qos", help="Contribution-based QoS management")
+    qos_subparsers = qos_parser.add_subparsers(dest="qos_command", required=True)
+
+    # qos status
+    qos_status_parser = qos_subparsers.add_parser("status", help="Show QoS system status")
+    qos_status_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+
+    # qos score
+    qos_score_parser = qos_subparsers.add_parser("score", help="Show contribution score for a node")
+    qos_score_parser.add_argument("node_id", nargs="?", default=None, help="Node ID (default: self)")
+    qos_score_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    qos_score_parser.add_argument(
+        "--routing-capacity",
+        type=float,
+        default=None,
+        dest="routing_capacity",
+        help="Set routing_capacity score (0.0-1.0)",
+    )
+    qos_score_parser.add_argument(
+        "--uptime-reliability",
+        type=float,
+        default=None,
+        dest="uptime_reliability",
+        help="Set uptime_reliability score (0.0-1.0)",
+    )
+    qos_score_parser.add_argument(
+        "--belief-quality",
+        type=float,
+        default=None,
+        dest="belief_quality",
+        help="Set belief_quality score (0.0-1.0)",
+    )
+    qos_score_parser.add_argument(
+        "--resource-sharing",
+        type=float,
+        default=None,
+        dest="resource_sharing",
+        help="Set resource_sharing score (0.0-1.0)",
+    )
+    qos_score_parser.add_argument(
+        "--trust-received",
+        type=float,
+        default=None,
+        dest="trust_received",
+        help="Set trust_received score (0.0-1.0)",
+    )
+
+    qos_parser.set_defaults(func=cmd_qos)
+
+
 def cmd_qos_status(args: argparse.Namespace) -> int:
     """Show QoS system status including policy, load, and tier summary."""
     from ...network.qos import QoSPolicy

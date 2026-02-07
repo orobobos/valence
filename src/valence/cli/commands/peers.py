@@ -7,6 +7,33 @@ import argparse
 from ..utils import format_age
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register the peer command on the CLI parser."""
+    peer_parser = subparsers.add_parser("peer", help="Manage trusted peers")
+    peer_subparsers = peer_parser.add_subparsers(dest="peer_command", required=True)
+
+    # peer add
+    peer_add_parser = peer_subparsers.add_parser("add", help="Add or update a trusted peer")
+    peer_add_parser.add_argument("did", help="Peer DID (e.g., did:vkb:web:alice.example.com)")
+    peer_add_parser.add_argument(
+        "--trust",
+        type=float,
+        required=True,
+        help="Trust level 0.0-1.0 (e.g., 0.8 for 80%% trust)",
+    )
+    peer_add_parser.add_argument("--name", help="Human-readable name for this peer")
+    peer_add_parser.add_argument("--notes", help="Notes about this peer")
+
+    # peer list
+    peer_subparsers.add_parser("list", help="List trusted peers")
+
+    # peer remove
+    peer_remove_parser = peer_subparsers.add_parser("remove", help="Remove a peer")
+    peer_remove_parser.add_argument("did", help="Peer DID to remove")
+
+    peer_parser.set_defaults(func=cmd_peer)
+
+
 def cmd_peer_add(args: argparse.Namespace) -> int:
     """Add a trusted peer to the local registry."""
     from ...federation.peer_sync import get_trust_registry

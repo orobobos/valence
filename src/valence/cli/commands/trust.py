@@ -6,6 +6,86 @@ import argparse
 import json
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register trust commands on the CLI parser."""
+    trust_parser = subparsers.add_parser("trust", help="Trust network management")
+    trust_subparsers = trust_parser.add_subparsers(dest="trust_command", required=True)
+
+    # trust check
+    trust_check_parser = trust_subparsers.add_parser("check", help="Check for trust concentration issues")
+    trust_check_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    trust_check_parser.add_argument(
+        "--single-threshold",
+        type=float,
+        default=None,
+        help="Custom threshold for single node dominance (default: 30%%)",
+    )
+    trust_check_parser.add_argument(
+        "--top3-threshold",
+        type=float,
+        default=None,
+        help="Custom threshold for top 3 nodes dominance (default: 50%%)",
+    )
+    trust_check_parser.add_argument(
+        "--min-sources",
+        type=int,
+        default=None,
+        help="Minimum trusted sources (default: 3)",
+    )
+
+    # trust watch
+    trust_watch_parser = trust_subparsers.add_parser("watch", help="Watch an entity (see content without reputation boost)")
+    trust_watch_parser.add_argument("entity", help="DID of entity to watch")
+    trust_watch_parser.add_argument("--domain", "-d", help="Optional domain scope")
+
+    # trust unwatch
+    trust_unwatch_parser = trust_subparsers.add_parser("unwatch", help="Remove a watch relationship")
+    trust_unwatch_parser.add_argument("entity", help="DID of entity to unwatch")
+    trust_unwatch_parser.add_argument("--domain", "-d", help="Optional domain scope")
+
+    # trust distrust
+    trust_distrust_parser = trust_subparsers.add_parser("distrust", help="Mark an entity as distrusted (negative reputation)")
+    trust_distrust_parser.add_argument("entity", help="DID of entity to distrust")
+    trust_distrust_parser.add_argument("--domain", "-d", help="Optional domain scope")
+
+    # trust ignore
+    trust_ignore_parser = trust_subparsers.add_parser("ignore", help="Ignore an entity (block content)")
+    trust_ignore_parser.add_argument("entity", help="DID of entity to ignore")
+    trust_ignore_parser.add_argument("--domain", "-d", help="Optional domain scope")
+
+    # trust set (#268)
+    trust_set_parser = trust_subparsers.add_parser(
+        "set",
+        help="Set multi-dimensional epistemic trust on an entity",
+    )
+    trust_set_parser.add_argument("entity", help="Target entity DID")
+    trust_set_parser.add_argument("--source", default=None, help="Source DID (default: self)")
+    trust_set_parser.add_argument("--domain", default=None, help="Domain scope")
+    trust_set_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    trust_set_parser.add_argument("--conclusions", type=float, default=None, help="Trust in their conclusions (0-1)")
+    trust_set_parser.add_argument("--reasoning", type=float, default=None, help="Trust in their reasoning (0-1)")
+    trust_set_parser.add_argument("--perspective", type=float, default=None, help="Trust in their perspective (0-1)")
+    trust_set_parser.add_argument("--honesty", type=float, default=None, help="Trust in their honesty (0-1)")
+    trust_set_parser.add_argument("--methodology", type=float, default=None, help="Trust in their methodology (0-1)")
+    trust_set_parser.add_argument("--predictive", type=float, default=None, help="Trust in their predictions (0-1)")
+    trust_set_parser.add_argument("--competence", type=float, default=None, help="Core competence score (0-1)")
+    trust_set_parser.add_argument("--integrity", type=float, default=None, help="Core integrity score (0-1)")
+    trust_set_parser.add_argument("--confidentiality", type=float, default=None, help="Core confidentiality score (0-1)")
+    trust_set_parser.add_argument("--judgment", type=float, default=None, help="Core judgment score (0-1)")
+
+    # trust show (#268)
+    trust_show_parser = trust_subparsers.add_parser(
+        "show",
+        help="Show trust dimensions for an entity",
+    )
+    trust_show_parser.add_argument("entity", help="Target entity DID")
+    trust_show_parser.add_argument("--source", default=None, help="Source DID (default: self)")
+    trust_show_parser.add_argument("--domain", default=None, help="Domain scope")
+    trust_show_parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+
+    trust_parser.set_defaults(func=cmd_trust)
+
+
 def cmd_trust_set(args: argparse.Namespace) -> int:
     """Set multi-dimensional epistemic trust on an entity (#268).
 

@@ -7,6 +7,25 @@ import argparse
 from ..utils import get_db_connection
 
 
+def register(subparsers: argparse._SubParsersAction) -> None:
+    """Register the conflicts command on the CLI parser."""
+    conflicts_parser = subparsers.add_parser("conflicts", help="Detect contradicting beliefs")
+    conflicts_parser.add_argument(
+        "--threshold",
+        "-t",
+        type=float,
+        default=0.85,
+        help="Similarity threshold for conflict detection",
+    )
+    conflicts_parser.add_argument(
+        "--auto-record",
+        "-r",
+        action="store_true",
+        help="Automatically record detected conflicts as tensions",
+    )
+    conflicts_parser.set_defaults(func=cmd_conflicts)
+
+
 def cmd_conflicts(args: argparse.Namespace) -> int:
     """Detect beliefs that may contradict each other.
 

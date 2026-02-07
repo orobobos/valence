@@ -1,5 +1,25 @@
-"""CLI command modules for Valence."""
+"""CLI command modules for Valence.
 
+Each module exposes a ``register(subparsers)`` function that wires up
+its argparse sub-commands and sets ``parser.set_defaults(func=handler)``.
+"""
+
+from . import (
+    attestations,
+    beliefs,
+    conflicts,
+    discovery,
+    embeddings,
+    identity,
+    io,
+    migration,
+    peers,
+    qos,
+    resources,
+    schema,
+    stats,
+    trust,
+)
 from .attestations import cmd_attestations
 from .beliefs import cmd_add, cmd_init, cmd_list, cmd_query
 from .conflicts import cmd_conflicts
@@ -16,7 +36,26 @@ from .schema import cmd_schema
 from .stats import cmd_stats
 from .trust import cmd_trust
 
+# All command modules with register() functions, in registration order.
+COMMAND_MODULES = [
+    beliefs,
+    conflicts,
+    stats,
+    discovery,
+    peers,
+    io,
+    trust,
+    embeddings,
+    attestations,
+    resources,
+    migration,
+    schema,
+    qos,
+    identity,
+]
+
 __all__ = [
+    "COMMAND_MODULES",
     "cmd_add",
     "cmd_attestations",
     "cmd_conflicts",
@@ -36,9 +75,9 @@ __all__ = [
     "cmd_qos",
     "cmd_query",
     "cmd_query_federated",
-    "register_identity_commands",
     "cmd_resources",
     "cmd_schema",
     "cmd_stats",
     "cmd_trust",
+    "register_identity_commands",
 ]

@@ -212,7 +212,7 @@ def cmd_identity(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def register_identity_commands(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     """Register ``valence identity`` sub-commands on the main CLI parser.
 
     Called from :func:`valence.cli.main.app` to wire up the identity commands.
@@ -248,3 +248,9 @@ def register_identity_commands(subparsers: argparse._SubParsersAction) -> None: 
     revoke_parser.add_argument("did", help="DID to revoke")
     revoke_parser.add_argument("--reason", "-r", help="Reason for revocation")
     revoke_parser.add_argument("--store", help="Path to identity store file")
+
+    identity_parser.set_defaults(func=cmd_identity)
+
+
+# Backward-compatible alias
+register_identity_commands = register
