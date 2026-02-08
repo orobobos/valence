@@ -2,6 +2,17 @@
 
 Valence is a personal knowledge substrate with Claude Code at its core. It stores beliefs, tracks conversations, and learns patterns over time.
 
+## Orobobos Conventions
+
+Valence is a **composed project** in the orobobos ecosystem. Conventions and tooling standards are defined in [`oro-infra`](https://github.com/orobobos/oro-infra). As a pre-existing project, Valence does not fully conform yet (e.g., line-length 150 vs standard 120), but new code should trend toward oro-infra standards where practical.
+
+Key references:
+- Naming: `oro-infra/standards/naming.md`
+- Versioning: `oro-infra/standards/versioning.md`
+- API contracts: `oro-infra/standards/api-contracts.md`
+- Testing: `oro-infra/standards/testing.md`
+- State ownership: `oro-infra/standards/state-ownership.md`
+
 ## Quick Start
 
 ```bash

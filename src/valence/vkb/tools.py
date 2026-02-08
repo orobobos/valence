@@ -628,16 +628,17 @@ def pattern_record(
 ) -> dict[str, Any]:
     """Record a new pattern."""
     with get_cursor() as cur:
-        # Convert evidence strings to UUIDs if needed
-        evidence_uuids = [UUID(e) if isinstance(e, str) else e for e in (evidence or [])]
+        # Validate and keep as strings — psycopg2 can't adapt UUID objects in arrays,
+        # but PostgreSQL will cast text[] to uuid[] via the explicit ::uuid[] cast.
+        evidence_strs = [str(UUID(e)) for e in (evidence or [])]
 
         cur.execute(
             """
             INSERT INTO vkb_patterns (type, description, evidence, confidence)
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s::uuid[], %s)
             RETURNING *
             """,
-            (type, description, evidence_uuids, confidence),
+            (type, description, evidence_strs, confidence),
         )
         row = cur.fetchone()
 
@@ -677,15 +678,18 @@ def pattern_reinforce(
         if pattern.occurrence_count >= 4 and pattern.status.value == "emerging":
             new_status = "established"
 
+        # Convert UUIDs to strings for psycopg2 array adaptation
+        evidence_strs = [str(e) for e in evidence]
+
         cur.execute(
             """
             UPDATE vkb_patterns
-            SET evidence = %s, occurrence_count = occurrence_count + 1,
+            SET evidence = %s::uuid[], occurrence_count = occurrence_count + 1,
                 confidence = %s, last_observed = NOW(), status = %s
             WHERE id = %s
             RETURNING *
             """,
-            (evidence, new_confidence, new_status, pattern_id),
+            (evidence_strs, new_confidence, new_status, pattern_id),
         )
         row = cur.fetchone()
 

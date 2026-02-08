@@ -494,6 +494,48 @@ class TestPatternRecord:
 
         assert result["success"] is True
 
+    def test_pattern_record_evidence_passed_as_strings(self, mock_get_cursor, sample_pattern_row):
+        """Regression: evidence must be passed as strings, not UUID objects.
+
+        psycopg2 can't adapt list[UUID] to PostgreSQL UUID[]. The SQL must use
+        ::uuid[] cast and the params must contain plain strings.
+        """
+        session1 = uuid4()
+        mock_get_cursor.fetchone.return_value = sample_pattern_row(evidence=[session1])
+
+        pattern_record(
+            type="preference",
+            description="Test pattern",
+            evidence=[str(session1)],
+        )
+
+        call_args = mock_get_cursor.execute.call_args
+        sql = call_args[0][0]
+        params = call_args[0][1]
+
+        # SQL must cast to uuid[]
+        assert "::uuid[]" in sql
+        # Evidence param (index 2) must be a list of strings, not UUID objects
+        evidence_param = params[2]
+        assert isinstance(evidence_param, list)
+        for item in evidence_param:
+            assert isinstance(item, str), f"Expected str, got {type(item)}"
+
+    def test_pattern_record_empty_evidence(self, mock_get_cursor, sample_pattern_row):
+        """Regression: empty evidence list should not cause UUID parse errors."""
+        mock_get_cursor.fetchone.return_value = sample_pattern_row()
+
+        result = pattern_record(
+            type="preference",
+            description="Test pattern",
+            evidence=[],
+        )
+
+        assert result["success"] is True
+        call_args = mock_get_cursor.execute.call_args
+        params = call_args[0][1]
+        assert params[2] == []
+
 
 class TestPatternReinforce:
     """Tests for pattern_reinforce function."""
@@ -525,6 +567,29 @@ class TestPatternReinforce:
         result = pattern_reinforce(pattern_id=str(pattern_id), session_id=str(session_id))
 
         assert result["success"] is True
+
+    def test_pattern_reinforce_evidence_passed_as_strings(self, mock_get_cursor, sample_pattern_row):
+        """Regression: evidence must be passed as strings in UPDATE, not UUID objects."""
+        pattern_id = uuid4()
+        session_id = uuid4()
+
+        mock_get_cursor.fetchone.side_effect = [
+            sample_pattern_row(id=pattern_id, evidence=[uuid4()]),
+            sample_pattern_row(id=pattern_id),
+        ]
+
+        pattern_reinforce(pattern_id=str(pattern_id), session_id=str(session_id))
+
+        # The second execute call is the UPDATE
+        update_call = mock_get_cursor.execute.call_args_list[1]
+        sql = update_call[0][0]
+        params = update_call[0][1]
+
+        assert "::uuid[]" in sql
+        evidence_param = params[0]
+        assert isinstance(evidence_param, list)
+        for item in evidence_param:
+            assert isinstance(item, str), f"Expected str, got {type(item)}"
 
     def test_pattern_reinforce_not_found(self, mock_get_cursor):
         """Test reinforcing non-existent pattern."""
