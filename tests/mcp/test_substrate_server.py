@@ -31,7 +31,7 @@ def mock_get_cursor(mock_cursor):
     def fake_get_cursor(dict_cursor=True):
         yield mock_cursor
 
-    with patch("valence.substrate.mcp_server.get_cursor", fake_get_cursor):
+    with patch("valence.substrate.tools.get_cursor", fake_get_cursor):
         yield mock_cursor
 
 
@@ -45,7 +45,7 @@ class TestBeliefQuery:
 
     def test_basic_search(self, mock_get_cursor):
         """Should search beliefs by query."""
-        from valence.substrate.mcp_server import belief_query
+        from valence.substrate.tools import belief_query
 
         belief_id = uuid4()
         now = datetime.now()
@@ -77,7 +77,7 @@ class TestBeliefQuery:
 
     def test_with_domain_filter(self, mock_get_cursor):
         """Should filter by domain."""
-        from valence.substrate.mcp_server import belief_query
+        from valence.substrate.tools import belief_query
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -90,7 +90,7 @@ class TestBeliefQuery:
 
     def test_with_entity_filter(self, mock_get_cursor):
         """Should filter by entity."""
-        from valence.substrate.mcp_server import belief_query
+        from valence.substrate.tools import belief_query
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -103,7 +103,7 @@ class TestBeliefQuery:
 
     def test_include_superseded(self, mock_get_cursor):
         """Should include superseded beliefs when requested."""
-        from valence.substrate.mcp_server import belief_query
+        from valence.substrate.tools import belief_query
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -117,7 +117,7 @@ class TestBeliefQuery:
 
     def test_empty_results(self, mock_get_cursor):
         """Should handle empty results."""
-        from valence.substrate.mcp_server import belief_query
+        from valence.substrate.tools import belief_query
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -138,7 +138,7 @@ class TestBeliefCreate:
 
     def test_basic_creation(self, mock_get_cursor):
         """Should create a basic belief."""
-        from valence.substrate.mcp_server import belief_create
+        from valence.substrate.tools import belief_create
 
         belief_id = uuid4()
         now = datetime.now()
@@ -165,7 +165,7 @@ class TestBeliefCreate:
 
     def test_with_confidence(self, mock_get_cursor):
         """Should accept confidence dimensions."""
-        from valence.substrate.mcp_server import belief_create
+        from valence.substrate.tools import belief_create
 
         belief_id = uuid4()
         now = datetime.now()
@@ -191,7 +191,7 @@ class TestBeliefCreate:
 
     def test_with_source(self, mock_get_cursor):
         """Should create source record."""
-        from valence.substrate.mcp_server import belief_create
+        from valence.substrate.tools import belief_create
 
         source_id = uuid4()
         belief_id = uuid4()
@@ -223,7 +223,7 @@ class TestBeliefCreate:
 
     def test_with_entities(self, mock_get_cursor):
         """Should create and link entities."""
-        from valence.substrate.mcp_server import belief_create
+        from valence.substrate.tools import belief_create
 
         belief_id = uuid4()
         entity_id = uuid4()
@@ -268,7 +268,7 @@ class TestBeliefSupersede:
 
     def test_basic_supersession(self, mock_get_cursor):
         """Should supersede an existing belief."""
-        from valence.substrate.mcp_server import belief_supersede
+        from valence.substrate.tools import belief_supersede
 
         old_id = uuid4()
         new_id = uuid4()
@@ -318,7 +318,7 @@ class TestBeliefSupersede:
 
     def test_belief_not_found(self, mock_get_cursor):
         """Should return error if belief not found."""
-        from valence.substrate.mcp_server import belief_supersede
+        from valence.substrate.tools import belief_supersede
 
         mock_get_cursor.fetchone.return_value = None
 
@@ -329,7 +329,7 @@ class TestBeliefSupersede:
 
     def test_with_custom_confidence(self, mock_get_cursor):
         """Should accept custom confidence for new belief."""
-        from valence.substrate.mcp_server import belief_supersede
+        from valence.substrate.tools import belief_supersede
 
         old_id = uuid4()
         new_id = uuid4()
@@ -383,7 +383,7 @@ class TestBeliefGet:
 
     def test_basic_get(self, mock_get_cursor):
         """Should get a belief by ID."""
-        from valence.substrate.mcp_server import belief_get
+        from valence.substrate.tools import belief_get
 
         belief_id = uuid4()
         now = datetime.now()
@@ -415,7 +415,7 @@ class TestBeliefGet:
 
     def test_not_found(self, mock_get_cursor):
         """Should return error if belief not found."""
-        from valence.substrate.mcp_server import belief_get
+        from valence.substrate.tools import belief_get
 
         mock_get_cursor.fetchone.return_value = None
 
@@ -426,7 +426,7 @@ class TestBeliefGet:
 
     def test_include_history(self, mock_get_cursor):
         """Should include supersession history when requested."""
-        from valence.substrate.mcp_server import belief_get
+        from valence.substrate.tools import belief_get
 
         belief_id = uuid4()
         old_id = uuid4()
@@ -473,7 +473,7 @@ class TestBeliefGet:
 
     def test_include_tensions(self, mock_get_cursor):
         """Should include tensions when requested."""
-        from valence.substrate.mcp_server import belief_get
+        from valence.substrate.tools import belief_get
 
         belief_id = uuid4()
         tension_id = uuid4()
@@ -530,7 +530,7 @@ class TestEntityGet:
 
     def test_basic_get(self, mock_get_cursor):
         """Should get an entity by ID."""
-        from valence.substrate.mcp_server import entity_get
+        from valence.substrate.tools import entity_get
 
         entity_id = uuid4()
         now = datetime.now()
@@ -553,7 +553,7 @@ class TestEntityGet:
 
     def test_not_found(self, mock_get_cursor):
         """Should return error if entity not found."""
-        from valence.substrate.mcp_server import entity_get
+        from valence.substrate.tools import entity_get
 
         mock_get_cursor.fetchone.return_value = None
 
@@ -564,7 +564,7 @@ class TestEntityGet:
 
     def test_include_beliefs(self, mock_get_cursor):
         """Should include related beliefs when requested."""
-        from valence.substrate.mcp_server import entity_get
+        from valence.substrate.tools import entity_get
 
         entity_id = uuid4()
         belief_id = uuid4()
@@ -617,7 +617,7 @@ class TestEntitySearch:
 
     def test_name_match(self, mock_get_cursor):
         """Should search by name."""
-        from valence.substrate.mcp_server import entity_search
+        from valence.substrate.tools import entity_search
 
         entity_id = uuid4()
         now = datetime.now()
@@ -643,7 +643,7 @@ class TestEntitySearch:
 
     def test_alias_match(self, mock_get_cursor):
         """Should search by alias."""
-        from valence.substrate.mcp_server import entity_search
+        from valence.substrate.tools import entity_search
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -656,7 +656,7 @@ class TestEntitySearch:
 
     def test_type_filter(self, mock_get_cursor):
         """Should filter by entity type."""
-        from valence.substrate.mcp_server import entity_search
+        from valence.substrate.tools import entity_search
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -677,7 +677,7 @@ class TestTensionList:
 
     def test_basic_list(self, mock_get_cursor):
         """Should list tensions."""
-        from valence.substrate.mcp_server import tension_list
+        from valence.substrate.tools import tension_list
 
         tension_id = uuid4()
         belief_a = uuid4()
@@ -714,7 +714,7 @@ class TestTensionList:
 
     def test_status_filter(self, mock_get_cursor):
         """Should filter by status."""
-        from valence.substrate.mcp_server import tension_list
+        from valence.substrate.tools import tension_list
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -726,7 +726,7 @@ class TestTensionList:
 
     def test_severity_filter(self, mock_get_cursor):
         """Should filter by minimum severity."""
-        from valence.substrate.mcp_server import tension_list
+        from valence.substrate.tools import tension_list
 
         mock_get_cursor.fetchall.return_value = []
 
@@ -747,7 +747,7 @@ class TestTensionResolve:
 
     def test_supersede_a(self, mock_get_cursor):
         """Should supersede belief A with B."""
-        from valence.substrate.mcp_server import tension_resolve
+        from valence.substrate.tools import tension_resolve
 
         tension_id = uuid4()
         belief_a = uuid4()
@@ -808,7 +808,7 @@ class TestTensionResolve:
 
     def test_keep_both(self, mock_get_cursor):
         """Should mark tension as accepted when keeping both."""
-        from valence.substrate.mcp_server import tension_resolve
+        from valence.substrate.tools import tension_resolve
 
         tension_id = uuid4()
         now = datetime.now()
@@ -830,7 +830,7 @@ class TestTensionResolve:
 
     def test_not_found(self, mock_get_cursor):
         """Should return error if tension not found."""
-        from valence.substrate.mcp_server import tension_resolve
+        from valence.substrate.tools import tension_resolve
 
         mock_get_cursor.fetchone.return_value = None
 

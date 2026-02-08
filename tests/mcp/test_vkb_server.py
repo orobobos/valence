@@ -31,7 +31,7 @@ def mock_get_cursor(mock_cursor):
     def fake_get_cursor(dict_cursor=True):
         yield mock_cursor
 
-    with patch("valence.vkb.mcp_server.get_cursor", fake_get_cursor):
+    with patch("valence.vkb.tools.get_cursor", fake_get_cursor):
         yield mock_cursor
 
 
