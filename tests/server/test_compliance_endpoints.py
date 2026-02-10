@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from oro_compliance.deletion import (
+from our_compliance.deletion import (
     DeletionReason,
     DeletionResult,
     Tombstone,

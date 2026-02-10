@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pattern_record` and `pattern_reinforce` UUID array handling — psycopg2 can't adapt `list[UUID]` to PostgreSQL `UUID[]`; now passes strings with `::uuid[]` cast (affects both MCP stdio server and unified HTTP server)
 
 ### Changed
-- Added oro-infra conventions reference to CLAUDE.md
+- Added our-infra conventions reference to CLAUDE.md
 
 ## [1.0.1] - 2026-02-06
 

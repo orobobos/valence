@@ -29,8 +29,8 @@ from typing import Any
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Resource, TextContent, TextResourceContents
-from oro_db import get_cursor, init_schema
-from oro_models import Belief
+from our_db import get_cursor, init_schema
+from our_models import Belief
 from pydantic import AnyUrl
 
 from ..core.exceptions import DatabaseException, ValidationException

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from oro_compliance.deletion import (
+from our_compliance.deletion import (
     DeletionReason,
     delete_user_data,
     get_deletion_verification,

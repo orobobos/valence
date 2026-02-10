@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
-from oro_federation.identity import (
+from our_federation.identity import (
     DIDMethod,
     create_key_did,
     generate_keypair,
@@ -15,7 +15,7 @@ from oro_federation.identity import (
     sign_belief_content,
     verify_belief_signature,
 )
-from oro_federation.peers import PeerStore
+from our_federation.peers import PeerStore
 
 
 class TestIdentity:

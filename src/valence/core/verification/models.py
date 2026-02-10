@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from oro_confidence import DimensionalConfidence
+from our_confidence import DimensionalConfidence
 
 
 @dataclass

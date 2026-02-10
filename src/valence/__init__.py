@@ -6,7 +6,7 @@ Valence provides:
 - Claude Code integration (plugin, hooks, skills)
 - Multi-platform agents (Matrix, API)
 
-Brick packages (oro-*) provide: consensus, federation, privacy,
+Brick packages (our-*) provide: consensus, federation, privacy,
 network, embeddings, crypto, identity, storage, compliance.
 """
 

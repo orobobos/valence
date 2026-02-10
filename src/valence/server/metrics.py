@@ -224,7 +224,7 @@ class MetricsCollector:
         lines: list[str] = []
 
         try:
-            from oro_federation.peer_sync import get_trust_registry
+            from our_federation.peer_sync import get_trust_registry
 
             registry = get_trust_registry()
             peers = registry.list_peers()

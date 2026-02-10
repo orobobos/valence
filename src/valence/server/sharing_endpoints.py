@@ -13,13 +13,13 @@ import json
 import logging
 from typing import Any
 
-from oro_privacy.sharing import (
+from our_privacy.sharing import (
     RevokeRequest,
     Share,
     ShareRequest,
     SharingService,
 )
-from oro_privacy.types import SharePolicy
+from our_privacy.types import SharePolicy
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 

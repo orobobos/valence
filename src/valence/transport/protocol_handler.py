@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from oro_federation.protocol import (
+from our_federation.protocol import (
     AuthChallengeRequest,
     AuthVerifyRequest,
     ErrorMessage,
@@ -220,19 +220,19 @@ class SyncProtocolHandler(BaseStreamHandler):
             return ErrorMessage(message="Sender identification required").to_dict()
 
         if isinstance(msg, SyncRequest):
-            from oro_federation.protocol import handle_sync_request
+            from our_federation.protocol import handle_sync_request
 
             result = handle_sync_request(msg, sender_node_id, sender_trust)
             return result.to_dict()
 
         if isinstance(msg, ShareBeliefRequest):
-            from oro_federation.protocol import handle_share_belief
+            from our_federation.protocol import handle_share_belief
 
             share_result = handle_share_belief(msg, sender_node_id, sender_trust)
             return share_result.to_dict()
 
         if isinstance(msg, RequestBeliefsRequest):
-            from oro_federation.protocol import handle_request_beliefs
+            from our_federation.protocol import handle_request_beliefs
 
             beliefs_result = handle_request_beliefs(msg, sender_node_id, sender_trust)
             return beliefs_result.to_dict()
@@ -279,7 +279,7 @@ class AuthProtocolHandler(BaseStreamHandler):
             return ErrorMessage(message="Unparseable auth message").to_dict()
 
         if isinstance(msg, AuthChallengeRequest):
-            from oro_federation.protocol import create_auth_challenge
+            from our_federation.protocol import create_auth_challenge
 
             response = create_auth_challenge(msg.client_did)
             return response.to_dict()
@@ -290,7 +290,7 @@ class AuthProtocolHandler(BaseStreamHandler):
             if public_key is None:
                 return ErrorMessage(message=f"Unknown node: {msg.client_did}").to_dict()
 
-            from oro_federation.protocol import verify_auth_challenge
+            from our_federation.protocol import verify_auth_challenge
 
             verify_response = verify_auth_challenge(
                 client_did=msg.client_did,
@@ -310,7 +310,7 @@ class AuthProtocolHandler(BaseStreamHandler):
         is not known.
         """
         try:
-            from oro_db import get_cursor
+            from our_db import get_cursor
 
             with get_cursor() as cur:
                 cur.execute(
@@ -363,7 +363,7 @@ class TrustProtocolHandler(BaseStreamHandler):
                 return ErrorMessage(message="Sender identification required").to_dict()
 
             # Delegate to the existing VFP handler (sync, not async)
-            from oro_federation.protocol import _handle_trust_attestation
+            from our_federation.protocol import _handle_trust_attestation
 
             result = _handle_trust_attestation(msg, sender_node_id, sender_trust)
             return result.to_dict()
@@ -442,7 +442,7 @@ class BeliefPropagationHandler:
             logger.warning("beliefs topic: could not identify sender")
             return None
 
-        from oro_federation.protocol import handle_share_belief
+        from our_federation.protocol import handle_share_belief
 
         result = handle_share_belief(msg, sender_node_id, sender_trust)
         return result.to_dict()

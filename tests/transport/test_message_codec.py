@@ -6,7 +6,7 @@ import json
 import struct
 
 import pytest
-from oro_federation.protocol import (
+from our_federation.protocol import (
     AuthChallengeRequest,
     SyncRequest,
 )

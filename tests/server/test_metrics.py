@@ -211,7 +211,7 @@ class TestDatabaseMetrics:
 class TestFederationMetrics:
     """Tests for federation metrics collection."""
 
-    @patch("oro_federation.peer_sync.get_trust_registry")
+    @patch("our_federation.peer_sync.get_trust_registry")
     def test_collect_federation_metrics_success(self, mock_get_registry):
         """Federation metrics are collected when available."""
         mock_peer1 = MagicMock()
@@ -237,7 +237,7 @@ class TestFederationMetrics:
         assert any("valence_federation_beliefs_received_total 30" in line for line in lines)
         assert any("valence_federation_beliefs_sent_total 20" in line for line in lines)
 
-    @patch("oro_federation.peer_sync.get_trust_registry")
+    @patch("our_federation.peer_sync.get_trust_registry")
     def test_collect_federation_metrics_no_peers(self, mock_get_registry):
         """Empty registry returns zero metrics."""
         mock_registry = MagicMock()
