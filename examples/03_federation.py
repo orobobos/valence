@@ -26,19 +26,7 @@ src_path = Path(__file__).parent.parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
 
-# Use dynamic import to avoid database dependencies
-import importlib.util
-
-
-def load_module(name: str, path: Path):
-    """Load a module directly without going through __init__.py."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load {name} from {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+from our_federation.server import FederationNode
 
 
 def print_header(text: str) -> None:
@@ -68,22 +56,6 @@ Key concepts:
 - Belief sharing: Signed beliefs with provenance
 - Trust-weighted queries: Results weighted by peer reputation
 """)
-
-    # Load federation modules directly to avoid database dependencies
-    identity = load_module(
-        "valence.federation.identity",
-        src_path / "valence/federation/identity.py"
-    )
-    peers = load_module(
-        "valence.federation.peers",
-        src_path / "valence/federation/peers.py"
-    )
-    server = load_module(
-        "valence.federation.server",
-        src_path / "valence/federation/server.py"
-    )
-
-    FederationNode = server.FederationNode
 
     # =========================================================================
     # Step 1: Create federation nodes

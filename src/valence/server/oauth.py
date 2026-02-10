@@ -499,7 +499,8 @@ async def _handle_refresh_token_grant(form: Any) -> JSONResponse:
 def _login_page(params: dict[str, Any], client_name: str, error: str | None = None) -> str:
     """Generate the login page HTML."""
     # Preserve query params for form submission
-    query_string = urllib.parse.urlencode(params)
+    # HTML-escape the query string to prevent attribute injection in the form action
+    query_string = html.escape(urllib.parse.urlencode(params), quote=True)
 
     # Escape user-controlled values to prevent XSS
     safe_client_name = html.escape(client_name)
@@ -617,7 +618,7 @@ def _login_page(params: dict[str, Any], client_name: str, error: str | None = No
             Authorize <span>{safe_client_name}</span>
         </div>
         {error_html}
-        <form method="POST" action="/oauth/authorize?{query_string}">
+        <form method="POST" action="/api/v1/oauth/authorize?{query_string}">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" required autocomplete="username">
 

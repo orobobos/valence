@@ -66,17 +66,16 @@ OPTIONAL_ENV_VARS = [
 ]
 
 # Core tables that must exist for the system to function
-# Note: VKB tables use vkb_ prefix to avoid conflicts with Synapse tables
 REQUIRED_TABLES = [
     "beliefs",
     "entities",
     "belief_entities",
     "sources",
     "tensions",
-    "vkb_sessions",  # Prefixed to avoid Synapse conflict
-    "vkb_exchanges",  # Prefixed to avoid Synapse conflict
-    "vkb_patterns",  # Prefixed to avoid Synapse conflict
-    "vkb_session_insights",  # Prefixed to avoid Synapse conflict
+    "vkb_sessions",
+    "vkb_exchanges",
+    "vkb_patterns",
+    "vkb_session_insights",
 ]
 
 

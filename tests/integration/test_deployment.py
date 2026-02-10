@@ -324,41 +324,6 @@ class TestRemoteEndpoints:
         if not VALENCE_DOMAIN:
             pytest.skip("VALENCE_DOMAIN not set")
 
-    def test_matrix_wellknown_server(self):
-        """Test Matrix server well-known endpoint."""
-        import requests
-
-        response = requests.get(
-            f"https://{VALENCE_DOMAIN}/.well-known/matrix/server",
-            timeout=10,
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "m.server" in data
-
-    def test_matrix_wellknown_client(self):
-        """Test Matrix client well-known endpoint."""
-        import requests
-
-        response = requests.get(
-            f"https://{VALENCE_DOMAIN}/.well-known/matrix/client",
-            timeout=10,
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "m.homeserver" in data
-
-    def test_matrix_versions(self):
-        """Test Matrix versions endpoint."""
-        import requests
-
-        response = requests.get(
-            f"https://{VALENCE_DOMAIN}/_matrix/client/versions",
-            timeout=10,
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "versions" in data
 
 
 class TestIdempotency:

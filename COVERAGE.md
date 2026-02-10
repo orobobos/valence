@@ -75,12 +75,11 @@ Coverage varies significantly by module. Priority is given to core modules.
 | `compliance.pii_scanner` | ~55% | ✅ High |
 | `compliance.deletion` | ~60% | ✅ High |
 
-### VKB/Agents (Target: 50%+)
+### VKB (Target: 50%+)
 | Module | Coverage | Priority |
 |--------|----------|----------|
 | `vkb.tools` | ~50% | Medium |
 | `vkb.mcp_server` | ~45% | Low |
-| `agents.matrix_bot` | ~30% | Low |
 
 ## Priority Queue
 
@@ -94,11 +93,14 @@ Modules to focus on next (biggest impact):
 
 ## CI Enforcement
 
-- **Project target**: 50% (fail if below)
-- **Patch target**: 60% (new code must be well-tested)
+All three enforcement points are aligned:
+
+- **ci.yml** `--cov-fail-under`: 50% (CI gate — build fails below this)
+- **codecov.yml** project target: 50% (CodeCov status check)
+- **codecov.yml** patch target: 60% (new code must be well-tested)
 - **Threshold**: 2% (allow small regressions)
 
-See `codecov.yml` for configuration.
+See `codecov.yml` and `.github/workflows/ci.yml` for configuration.
 
 ## How to Improve
 

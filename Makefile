@@ -12,8 +12,8 @@ help:
 	@echo "  make dev            Install development dependencies"
 	@echo ""
 	@echo "Quality:"
-	@echo "  make lint           Run linters (ruff, black, mypy)"
-	@echo "  make format         Format code with black"
+	@echo "  make lint           Run linters (ruff check, ruff format, mypy)"
+	@echo "  make format         Format code with ruff"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test           Run unit tests (fast)"
@@ -51,11 +51,11 @@ dev:
 
 lint:
 	ruff check src/valence tests/
-	black --check src/valence tests/
+	ruff format --check src/valence tests/
 	mypy src/valence --ignore-missing-imports
 
 format:
-	black src/valence tests/
+	ruff format src/valence tests/
 	ruff check src/valence tests/ --fix
 
 # =============================================================================

@@ -27,7 +27,7 @@ src_path = Path(__file__).parent.parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
 
-from valence.federation import (
+from our_federation import (
     # Trust management
     TrustSignal,
     TrustManager,
@@ -45,8 +45,10 @@ from valence.federation import (
     SIGNAL_WEIGHTS,
     PHASE_TRANSITION,
     CONCENTRATION_THRESHOLDS,
+    # Models
+    NodeTrust,
+    TrustPhase,
 )
-from valence.federation.models import NodeTrust, TrustPhase
 
 
 def print_header(text: str) -> None:

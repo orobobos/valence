@@ -14,7 +14,7 @@
 
 **Summary:**
 - **Critical Issues:** 1 (XSS in OAuth login page)
-- **High Issues:** 2 (Outdated PyJWT, Matrix bot subprocess)
+- **High Issues:** 1 (Outdated PyJWT)
 - **Medium Issues:** 5 (In-memory tokens, JWT auto-gen, CSRF, CORS, rate limiting)
 - **Low Issues:** 4 (Security headers, error verbosity, env secrets, input validation)
 
@@ -32,7 +32,7 @@
 **GitHub Issues Created:**
 - [#42 - [CRITICAL] XSS Vulnerability in OAuth Login Page](https://github.com/ourochronos/valence/issues/42)
 - [#43 - [HIGH] Outdated PyJWT Dependency](https://github.com/ourochronos/valence/issues/43)
-- [#44 - [HIGH] Subprocess Command Injection Risk in Matrix Bot](https://github.com/ourochronos/valence/issues/44)
+- ~~[#44 - [HIGH] Subprocess Command Injection Risk in Matrix Bot](https://github.com/ourochronos/valence/issues/44)~~ **N/A** - Matrix bot removed
 
 ---
 
@@ -75,9 +75,9 @@
 | Category | Risk Level | Notes |
 |----------|------------|-------|
 | **Security** | | |
-| Authentication | 🔴 HIGH | XSS vulnerability in OAuth (issue #42) |
+| Authentication | 🟢 LOW | XSS vulnerability fixed (issue #42) |
 | Dependencies | 🟡 MEDIUM | PyJWT outdated (issue #43) |
-| Input Validation | 🟡 MEDIUM | Matrix bot subprocess (issue #44) |
+| Input Validation | 🟢 LOW | Matrix bot removed (issue #44 N/A) |
 | SQL Injection | 🟢 LOW | Proper parameterization |
 | Cryptography | 🟢 LOW | Good practices observed |
 | | | |
@@ -93,11 +93,11 @@
 ## Priority Actions (Before Production)
 
 ### Critical (Must Fix)
-1. **Fix XSS vulnerability** - Add HTML escaping to OAuth login page (#42)
+1. ~~**Fix XSS vulnerability** - Add HTML escaping to OAuth login page (#42)~~ **FIXED** - Query string HTML-escaped in form action attribute
 
 ### High (Should Fix Soon)
 2. **Update PyJWT** - Upgrade to 2.10+ (#43)
-3. **Sanitize Matrix bot input** - Add input validation (#44)
+3. ~~**Sanitize Matrix bot input**~~ **N/A** - Matrix bot removed (#44)
 4. **Implement consent infrastructure** - Before EU federation
 
 ### Medium (Within 30 Days)

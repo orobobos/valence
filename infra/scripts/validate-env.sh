@@ -191,54 +191,6 @@ if ! check_var "VALENCE_DB_PASSWORD" "PostgreSQL password"; then
 fi
 
 echo ""
-echo "--- Matrix/Synapse Secrets ---"
-
-# VALENCE_BOT_PASSWORD
-if ! check_var "VALENCE_BOT_PASSWORD" "Matrix bot password"; then
-    if [ "$GENERATE_SECRETS" = true ]; then
-        export VALENCE_BOT_PASSWORD=$(generate_password)
-        log_info "Generated VALENCE_BOT_PASSWORD"
-        ((ERRORS--)) || true
-    fi
-fi
-
-# SYNAPSE_ADMIN_PASSWORD
-if ! check_var "SYNAPSE_ADMIN_PASSWORD" "Synapse admin password"; then
-    if [ "$GENERATE_SECRETS" = true ]; then
-        export SYNAPSE_ADMIN_PASSWORD=$(generate_password)
-        log_info "Generated SYNAPSE_ADMIN_PASSWORD"
-        ((ERRORS--)) || true
-    fi
-fi
-
-# SYNAPSE_REGISTRATION_SECRET
-if ! check_var "SYNAPSE_REGISTRATION_SECRET" "Synapse registration secret"; then
-    if [ "$GENERATE_SECRETS" = true ]; then
-        export SYNAPSE_REGISTRATION_SECRET=$(generate_password)
-        log_info "Generated SYNAPSE_REGISTRATION_SECRET"
-        ((ERRORS--)) || true
-    fi
-fi
-
-# SYNAPSE_MACAROON_SECRET
-if ! check_var "SYNAPSE_MACAROON_SECRET" "Synapse macaroon secret"; then
-    if [ "$GENERATE_SECRETS" = true ]; then
-        export SYNAPSE_MACAROON_SECRET=$(generate_password)
-        log_info "Generated SYNAPSE_MACAROON_SECRET"
-        ((ERRORS--)) || true
-    fi
-fi
-
-# SYNAPSE_FORM_SECRET
-if ! check_var "SYNAPSE_FORM_SECRET" "Synapse form secret"; then
-    if [ "$GENERATE_SECRETS" = true ]; then
-        export SYNAPSE_FORM_SECRET=$(generate_password)
-        log_info "Generated SYNAPSE_FORM_SECRET"
-        ((ERRORS--)) || true
-    fi
-fi
-
-echo ""
 echo "--- API Keys ---"
 
 # OPENAI_API_KEY
@@ -288,11 +240,6 @@ EXPORT_EOF
     echo "export LETSENCRYPT_EMAIL=\"$LETSENCRYPT_EMAIL\""
     echo "export VALENCE_SSH_PUBKEY=\"$VALENCE_SSH_PUBKEY\""
     echo "export VALENCE_DB_PASSWORD=\"$VALENCE_DB_PASSWORD\""
-    echo "export VALENCE_BOT_PASSWORD=\"$VALENCE_BOT_PASSWORD\""
-    echo "export SYNAPSE_ADMIN_PASSWORD=\"$SYNAPSE_ADMIN_PASSWORD\""
-    echo "export SYNAPSE_REGISTRATION_SECRET=\"$SYNAPSE_REGISTRATION_SECRET\""
-    echo "export SYNAPSE_MACAROON_SECRET=\"$SYNAPSE_MACAROON_SECRET\""
-    echo "export SYNAPSE_FORM_SECRET=\"$SYNAPSE_FORM_SECRET\""
     echo "export OPENAI_API_KEY=\"$OPENAI_API_KEY\""
     [ -n "$ANTHROPIC_API_KEY" ] && echo "export ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\""
 fi

@@ -26,15 +26,10 @@ src_path = Path(__file__).parent.parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
 
-from valence.core import (
-    Belief,
-    DimensionalConfidence,
-    get_connection,
-)
 from valence.substrate.tools import (
     belief_create,
-    belief_query,
     belief_get,
+    belief_query,
     belief_supersede,
 )
 

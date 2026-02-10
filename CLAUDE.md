@@ -4,7 +4,7 @@ Valence is a personal knowledge substrate with Claude Code at its core. It store
 
 ## Ourochronos Conventions
 
-Valence is a **composed project** in the ourochronos ecosystem. Conventions and tooling standards are defined in [`our-infra`](https://github.com/ourochronos/our-infra). As a pre-existing project, Valence does not fully conform yet (e.g., line-length 150 vs standard 120), but new code should trend toward our-infra standards where practical.
+Valence is a **composed project** in the ourochronos ecosystem. Conventions and tooling standards are defined in [`our-infra`](https://github.com/ourochronos/our-infra). Valence uses line-length 150 (configured in pyproject.toml). New ourochronos bricks use 120, but valence's existing codebase uses 150 consistently.
 
 Key references:
 - Naming: `our-infra/standards/naming.md`
@@ -31,8 +31,6 @@ valence-server  # Starts on http://127.0.0.1:8420
 python -m valence.substrate.mcp_server  # Knowledge substrate
 python -m valence.vkb.mcp_server        # Conversation tracking
 
-# Run Matrix bot
-MATRIX_PASSWORD=xxx python -m valence.agents.matrix_bot
 ```
 
 ## HTTP MCP Server
@@ -182,9 +180,6 @@ curl -X POST http://localhost:8420/api/v1/mcp \
    - Skills for knowledge operations
    - MCP server configuration
 
-5. **Agents** (`src/valence/agents/`)
-   - Matrix bot with session resumption
-
 ### MCP Tools
 
 **valence-substrate:**
@@ -236,11 +231,6 @@ VALENCE_OAUTH_USERNAME=admin      # Default: admin
 VALENCE_OAUTH_JWT_SECRET=xxx      # Auto-generated if not set
 VALENCE_OAUTH_ENABLED=true        # Default: true
 
-# Matrix bot
-MATRIX_HOMESERVER=https://matrix.example.com
-MATRIX_USER=@bot:example.com
-MATRIX_PASSWORD=xxx
-
 # OpenAI
 OPENAI_API_KEY=xxx  # For embeddings
 ```
@@ -255,7 +245,8 @@ pytest
 mypy src/valence
 
 # Format
-black src/valence
+ruff format src/valence tests/
+ruff check src/valence tests/ --fix
 ```
 
 ## Plugin Usage
@@ -270,7 +261,7 @@ cp -r plugin ~/.claude/plugins/valence
 
 ## Pod Deployment
 
-Deploy Valence to a Digital Ocean droplet with the full stack (Matrix, PostgreSQL, VKB).
+Deploy Valence to a Digital Ocean droplet with PostgreSQL and the VKB server.
 
 ```bash
 cd infra
@@ -295,9 +286,8 @@ source .env.pod
 
 - **Security**: UFW firewall, SSH key auth, fail2ban, auto-updates
 - **Database**: PostgreSQL 16 + pgvector for embeddings
-- **Matrix**: Synapse homeserver with nginx + SSL
 - **Valence HTTP MCP**: Remote MCP server at /api/v1/mcp endpoint with token auth
-- **VKB**: Legacy stdio MCP server running as systemd service
+- **MCP Transport**: HTTP is primary for remote access; stdio for local Claude Code development
 
 ### Idempotent Re-deployment
 
