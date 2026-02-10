@@ -24,12 +24,14 @@ import json
 import logging
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Resource, TextContent, TextResourceContents
 from our_db import get_cursor, init_schema
+from our_db.exceptions import DatabaseError as OurDatabaseError
 from our_models import Belief
 from pydantic import AnyUrl
 
@@ -339,12 +341,13 @@ def run() -> None:
     if not args.skip_health_check:
         startup_checks(fail_fast=True)
 
-    # Initialize schema
+    # Initialize schema (tolerates already-existing tables/constraints)
     try:
-        init_schema()
+        schema_dir = Path(__file__).parent
+        init_schema(schema_dir)
         logger.info("Schema initialized")
-    except DatabaseException as e:
-        logger.warning(f"Schema initialization failed (may already exist): {e}")
+    except (DatabaseException, OurDatabaseError) as e:
+        logger.warning(f"Schema initialization skipped (may already exist): {e}")
 
     async def main():
         async with stdio_server() as (read_stream, write_stream):

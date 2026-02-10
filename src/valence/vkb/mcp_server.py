@@ -18,12 +18,14 @@ import asyncio
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 from our_db import init_schema
+from our_db.exceptions import DatabaseError as OurDatabaseError
 
 from ..core.exceptions import DatabaseException, ValidationException
 from ..core.health import cli_health_check, startup_checks
@@ -151,12 +153,13 @@ def run() -> None:
     if not args.skip_health_check:
         startup_checks(fail_fast=True)
 
-    # Initialize schema
+    # Initialize schema (schema files live in substrate/, tolerates already-existing)
     try:
-        init_schema()
+        schema_dir = Path(__file__).parent.parent / "substrate"
+        init_schema(schema_dir)
         logger.info("Schema initialized")
-    except DatabaseException as e:
-        logger.warning(f"Schema initialization failed (may already exist): {e}")
+    except (DatabaseException, OurDatabaseError) as e:
+        logger.warning(f"Schema initialization skipped (may already exist): {e}")
 
     async def main():
         async with stdio_server() as (read_stream, write_stream):
