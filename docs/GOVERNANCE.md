@@ -12,7 +12,7 @@ Governance should be as decentralized as the network can sustain. Premature dece
 
 **Condition:** Early development, small contributor base, rapid iteration needed.
 
-The Valence org (Orobobos) acts as benevolent dictator. This is honest about where we are: a small team making fast decisions.
+The Valence org (Ourochronos) acts as benevolent dictator. This is honest about where we are: a small team making fast decisions.
 
 **What this means:**
 - Core team makes architectural and protocol decisions

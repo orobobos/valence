@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-04  
 **Auditor:** OpenClaw Security Subagent  
-**Repository:** orobobos/valence  
+**Repository:** ourochronos/valence  
 **Commit:** HEAD (as of audit date)  
 **Scope:** Authentication, Authorization, Input Validation, Cryptography, Secrets Management, Dependencies
 

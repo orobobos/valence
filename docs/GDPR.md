@@ -109,7 +109,7 @@ Remote nodes can only store beliefs you explicitly chose to federate, with crypt
 
 ## Contact
 
-For privacy-related questions about the Valence protocol, open an issue at [github.com/orobobos/valence](https://github.com/orobobos/valence) or consult the [Privacy Guarantees](./PRIVACY_GUARANTEES.md) documentation.
+For privacy-related questions about the Valence protocol, open an issue at [github.com/ourochronos/valence](https://github.com/ourochronos/valence) or consult the [Privacy Guarantees](./PRIVACY_GUARANTEES.md) documentation.
 
 ---
 

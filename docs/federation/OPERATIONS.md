@@ -577,7 +577,7 @@ location /.well-known/vfp-node-metadata {
 
 - **Documentation**: [Valence docs](/docs/)
 - **Protocol spec**: [FEDERATION_PROTOCOL.md](../FEDERATION_PROTOCOL.md)
-- **Issues**: [GitHub Issues](https://github.com/orobobos/valence/issues)
+- **Issues**: [GitHub Issues](https://github.com/ourochronos/valence/issues)
 
 ---
 

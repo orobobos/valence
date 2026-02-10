@@ -178,7 +178,7 @@ All critical federation blockers from the security audit resolved:
 - **Test Coverage** (#179): Added 3,291 lines of tests for previously uncovered modules (cli/router, cli/seed, federation/server, threat_detector, sharing_endpoints, notification_endpoints)
 
 ### Documentation
-- **OpenAPI URL Fix** (#182): Corrected contact URL from `valence-dev` to `orobobos`
+- **OpenAPI URL Fix** (#182): Corrected contact URL from `valence-dev` to `ourochronos`
 
 ### Stats
 - 54 files changed, +7,255 lines
@@ -435,5 +435,5 @@ and the foundation of its Python implementation.
 
 ---
 
-[Unreleased]: https://github.com/orobobos/valence/compare/v0.1.0-alpha...HEAD
-[0.1.0-alpha]: https://github.com/orobobos/valence/releases/tag/v0.1.0-alpha
+[Unreleased]: https://github.com/ourochronos/valence/compare/v0.1.0-alpha...HEAD
+[0.1.0-alpha]: https://github.com/ourochronos/valence/releases/tag/v0.1.0-alpha

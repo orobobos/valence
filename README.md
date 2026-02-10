@@ -211,7 +211,7 @@ valence peer              Peer management
 Valence is open source. We welcome contributions.
 
 ```bash
-git clone https://github.com/orobobos/valence.git
+git clone https://github.com/ourochronos/valence.git
 cd valence
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"

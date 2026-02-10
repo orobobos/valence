@@ -18,7 +18,7 @@ keywords = [
 ]
 
 dependencies = [
-    # Orobobos bricks
+    # Ourochronos bricks
     "oro-db>=0.1.0",
     "oro-models>=0.1.0",
     "oro-confidence>=0.1.0",

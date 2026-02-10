@@ -30,9 +30,9 @@
 - ✅ Production JWT secret validation
 
 **GitHub Issues Created:**
-- [#42 - [CRITICAL] XSS Vulnerability in OAuth Login Page](https://github.com/orobobos/valence/issues/42)
-- [#43 - [HIGH] Outdated PyJWT Dependency](https://github.com/orobobos/valence/issues/43)
-- [#44 - [HIGH] Subprocess Command Injection Risk in Matrix Bot](https://github.com/orobobos/valence/issues/44)
+- [#42 - [CRITICAL] XSS Vulnerability in OAuth Login Page](https://github.com/ourochronos/valence/issues/42)
+- [#43 - [HIGH] Outdated PyJWT Dependency](https://github.com/ourochronos/valence/issues/43)
+- [#44 - [HIGH] Subprocess Command Injection Risk in Matrix Bot](https://github.com/ourochronos/valence/issues/44)
 
 ---
 

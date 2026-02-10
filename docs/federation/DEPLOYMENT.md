@@ -29,7 +29,7 @@ The recommended deployment uses Ansible for reproducibility:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/orobobos/valence.git
+git clone https://github.com/ourochronos/valence.git
 cd valence/infra
 
 # 2. Configure environment
@@ -197,7 +197,7 @@ EOF
 sudo useradd -r -m -d /opt/valence -s /bin/bash valence
 
 # Clone and set up
-sudo -u valence git clone https://github.com/orobobos/valence.git /opt/valence/repo
+sudo -u valence git clone https://github.com/ourochronos/valence.git /opt/valence/repo
 cd /opt/valence/repo
 
 # Create virtual environment
