@@ -30,6 +30,16 @@ class DatabaseStats:
         self.patterns_count: int = 0
         self.tensions_count: int = 0
 
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "beliefs_count": self.beliefs_count,
+            "entities_count": self.entities_count,
+            "sessions_count": self.sessions_count,
+            "exchanges_count": self.exchanges_count,
+            "patterns_count": self.patterns_count,
+            "tensions_count": self.tensions_count,
+        }
+
     @classmethod
     def collect(cls) -> DatabaseStats:
         """Collect current database statistics."""
