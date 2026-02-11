@@ -78,4 +78,4 @@ def format_age(dt: datetime) -> str:
 # Re-exported from core.ranking for backward compatibility
 # ============================================================================
 
-from ..core.ranking import compute_confidence_score, compute_recency_score, multi_signal_rank  # noqa: F401
+from ..core.ranking import compute_confidence_score, compute_recency_score, multi_signal_rank  # noqa: E402, F401
