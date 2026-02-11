@@ -36,21 +36,42 @@ def get_db_connection():
         return None
 
 
-def query_beliefs(conn) -> list[dict[str, Any]]:
-    """Query recent active beliefs using parameterized query."""
+def query_beliefs(conn, project_context: str = "") -> list[dict[str, Any]]:
+    """Query recent active beliefs, preferring project-relevant ones."""
     if not conn:
         return []
 
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
-                SELECT content, confidence->>'overall' as confidence, created_at
-                FROM beliefs
-                WHERE status = 'active'
-                AND superseded_by_id IS NULL
-                ORDER BY created_at DESC
-                LIMIT 5
-            """)
+            if project_context:
+                # Try project-relevant beliefs first, fall back to recent
+                cur.execute("""
+                    (SELECT content, confidence->>'overall' as confidence, created_at
+                    FROM beliefs
+                    WHERE status = 'active'
+                    AND superseded_by_id IS NULL
+                    AND domain_path && %s
+                    ORDER BY created_at DESC
+                    LIMIT 5)
+                    UNION ALL
+                    (SELECT content, confidence->>'overall' as confidence, created_at
+                    FROM beliefs
+                    WHERE status = 'active'
+                    AND superseded_by_id IS NULL
+                    AND NOT (domain_path && %s)
+                    ORDER BY created_at DESC
+                    LIMIT 5)
+                    LIMIT 5
+                """, ([project_context], [project_context]))
+            else:
+                cur.execute("""
+                    SELECT content, confidence->>'overall' as confidence, created_at
+                    FROM beliefs
+                    WHERE status = 'active'
+                    AND superseded_by_id IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                """)
             return [dict(row) for row in cur.fetchall()]
     except psycopg2.Error:
         return []
@@ -65,7 +86,7 @@ def query_patterns(conn) -> list[dict[str, Any]]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT type, description, confidence
-                FROM patterns
+                FROM vkb_patterns
                 WHERE status = 'established'
                 ORDER BY confidence DESC
                 LIMIT 5
@@ -85,7 +106,7 @@ def create_session(conn, project_context: str) -> str | None:
             # Use parameterized query to prevent SQL injection
             cur.execute(
                 """
-                INSERT INTO sessions (platform, project_context, status)
+                INSERT INTO vkb_sessions (platform, project_context, status)
                 VALUES (%s, %s, %s)
                 RETURNING id
                 """,
@@ -154,8 +175,8 @@ def build_context(
         "- Any factual claims that might be in the knowledge base",
         "",
         "You MUST query the knowledge base first using:",
-        "- mcp__valence_substrate__belief_query - Search for relevant beliefs",
-        "- mcp__valence_vkb__pattern_list - Get established behavioral patterns",
+        "- mcp__valence__belief_query - Search for relevant beliefs",
+        "- mcp__valence__pattern_list - Get established behavioral patterns",
         "",
         "This is not optional. Query first, then respond with grounded information.",
         "",
@@ -199,7 +220,7 @@ def main():
     conn = get_db_connection()
     if conn:
         try:
-            beliefs = query_beliefs(conn)
+            beliefs = query_beliefs(conn, project_context)
             patterns = query_patterns(conn)
             session_id = create_session(conn, project_context)
         finally:

@@ -27,9 +27,12 @@ psql -d valence -f src/valence/substrate/procedures.sql
 # Run HTTP MCP server (recommended for remote access)
 valence-server  # Starts on http://127.0.0.1:8420
 
-# Or run stdio MCP servers (for local Claude Code)
-python -m valence.substrate.mcp_server  # Knowledge substrate
-python -m valence.vkb.mcp_server        # Conversation tracking
+# Or run unified stdio MCP server (for local Claude Code)
+python -m valence.mcp_server            # All tools in one server
+
+# Or run individual stdio servers (legacy, still supported)
+python -m valence.substrate.mcp_server  # Knowledge substrate only
+python -m valence.vkb.mcp_server        # Conversation tracking only
 
 ```
 
@@ -182,17 +185,23 @@ curl -X POST http://localhost:8420/api/v1/mcp \
 
 ### MCP Tools
 
-**valence-substrate:**
-- `belief_query` - Search beliefs
+All tools are served by the unified `valence` MCP server. `VALENCE_MODE` env var controls which tools are exposed: `personal` (16 core), `connected` (+ trust), `full` (all 25, default).
+
+**Knowledge Substrate:**
+- `belief_query` - Search beliefs (supports `ranking` param with configurable weights + `explain` mode)
 - `belief_create` - Store new belief
 - `belief_supersede` - Update with history
 - `belief_get` - Get belief details
+- `belief_search` - Semantic search via embeddings (supports `ranking` param)
 - `entity_get` - Get entity with beliefs
 - `entity_search` - Find entities
 - `tension_list` - List contradictions
 - `tension_resolve` - Resolve contradiction
+- `confidence_explain` - Explain confidence dimensions
+- `belief_corroboration` - Check corroboration sources
+- `trust_check` - Check trust levels for entities/topics
 
-**valence-vkb:**
+**Conversation Tracking:**
 - `session_start/end/get/list` - Manage sessions
 - `session_find_by_room` - Find session by external room ID
 - `exchange_add/list` - Record turns
@@ -206,10 +215,13 @@ PostgreSQL with pgvector. See `src/valence/substrate/schema.sql`.
 Key tables:
 - `beliefs` - Knowledge claims with confidence
 - `entities` - People, tools, concepts
-- `sessions` - Conversation sessions
-- `exchanges` - Individual turns
-- `patterns` - Behavioral patterns
-- `tensions` - Contradictions
+- `belief_entities` - Many-to-many links
+- `tensions` - Contradictions between beliefs
+- `vkb_sessions` - Conversation sessions
+- `vkb_exchanges` - Individual turns
+- `vkb_patterns` - Behavioral patterns
+- `vkb_session_insights` - Links sessions to extracted beliefs
+- `belief_retrievals` - Tracks which beliefs are retrieved (feedback loop)
 
 ## Environment Variables
 

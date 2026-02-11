@@ -355,6 +355,20 @@ CREATE TABLE IF NOT EXISTS vkb_session_insights (
 CREATE INDEX IF NOT EXISTS idx_vkb_session_insights_session ON vkb_session_insights(session_id);
 CREATE INDEX IF NOT EXISTS idx_vkb_session_insights_belief ON vkb_session_insights(belief_id);
 
+-- Belief Retrievals: Track which beliefs are accessed (feedback loop)
+CREATE TABLE IF NOT EXISTS belief_retrievals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    belief_id UUID NOT NULL REFERENCES beliefs(id) ON DELETE CASCADE,
+    query_text TEXT,
+    tool_name TEXT NOT NULL,
+    retrieved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    final_score NUMERIC,
+    session_id UUID REFERENCES vkb_sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_belief_retrievals_belief ON belief_retrievals(belief_id);
+CREATE INDEX IF NOT EXISTS idx_belief_retrievals_time ON belief_retrievals(retrieved_at DESC);
+
 -- ============================================================================
 -- EMBEDDING SUPPORT TABLES
 -- ============================================================================

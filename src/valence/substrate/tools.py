@@ -69,10 +69,25 @@ SUBSTRATE_TOOLS = [
                     "default": False,
                     "description": "Include beliefs with revoked consent chains (requires audit logging)",
                 },
+                "include_archived": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include archived beliefs in results. Archived beliefs are kept for provenance and reference but excluded from active queries by default.",
+                },
                 "limit": {
                     "type": "integer",
                     "default": 20,
                     "description": "Maximum results",
+                },
+                "ranking": {
+                    "type": "object",
+                    "description": "Configure result ranking weights",
+                    "properties": {
+                        "semantic_weight": {"type": "number", "default": 0.50, "description": "Weight for semantic relevance (0-1)"},
+                        "confidence_weight": {"type": "number", "default": 0.35, "description": "Weight for belief confidence (0-1)"},
+                        "recency_weight": {"type": "number", "default": 0.15, "description": "Weight for recency (0-1)"},
+                        "explain": {"type": "boolean", "default": False, "description": "Include score breakdown in results"},
+                    },
                 },
             },
             "required": ["query"],
@@ -378,10 +393,25 @@ SUBSTRATE_TOOLS = [
                     "items": {"type": "string"},
                     "description": "Filter by domain path",
                 },
+                "include_archived": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Include archived beliefs in results. Archived beliefs are kept for provenance and reference but excluded from active queries by default.",
+                },
                 "limit": {
                     "type": "integer",
                     "default": 10,
                     "description": "Maximum results",
+                },
+                "ranking": {
+                    "type": "object",
+                    "description": "Configure result ranking weights",
+                    "properties": {
+                        "semantic_weight": {"type": "number", "default": 0.50, "description": "Weight for semantic similarity (0-1)"},
+                        "confidence_weight": {"type": "number", "default": 0.35, "description": "Weight for belief confidence (0-1)"},
+                        "recency_weight": {"type": "number", "default": 0.15, "description": "Weight for recency (0-1)"},
+                        "explain": {"type": "boolean", "default": False, "description": "Include score breakdown in results"},
+                    },
                 },
             },
             "required": ["query"],
@@ -451,6 +481,29 @@ SUBSTRATE_TOOLS = [
 
 
 # ============================================================================
+# Retrieval Logging (Feedback Loop)
+# ============================================================================
+
+
+def _log_retrievals(beliefs: list[dict], query: str, tool_name: str) -> None:
+    """Log belief retrievals for the feedback loop. Non-fatal on error."""
+    if not beliefs:
+        return
+    try:
+        with get_cursor() as cur:
+            for b in beliefs[:20]:  # Cap logging to top 20
+                cur.execute(
+                    """
+                    INSERT INTO belief_retrievals (belief_id, query_text, tool_name, final_score)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (b.get("id"), query[:500] if query else None, tool_name, b.get("final_score")),
+                )
+    except Exception:
+        pass  # Retrieval logging is never fatal
+
+
+# ============================================================================
 # Tool Implementations
 # ============================================================================
 
@@ -461,13 +514,16 @@ def belief_query(
     entity_id: str | None = None,
     include_superseded: bool = False,
     include_revoked: bool = False,
+    include_archived: bool = False,
     limit: int = 20,
     user_did: str | None = None,
+    ranking: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search beliefs with revocation filtering.
 
-    By default, excludes beliefs that have revoked consent chains.
-    This ensures users cannot query content that has been explicitly revoked.
+    By default, excludes beliefs that have revoked consent chains and archived beliefs.
+    This ensures users cannot query content that has been explicitly revoked,
+    and archived beliefs are only included when explicitly requested.
 
     Args:
         query: Natural language search query
@@ -475,6 +531,7 @@ def belief_query(
         entity_id: Filter by related entity UUID
         include_superseded: Include superseded beliefs
         include_revoked: Include beliefs with revoked consent chains (audit logged)
+        include_archived: Include archived beliefs (kept for provenance/reference)
         limit: Maximum results
         user_did: DID of user making query (for audit logging)
 
@@ -494,7 +551,11 @@ def belief_query(
         params: list[Any] = [query, query]
 
         if not include_superseded:
-            sql += " AND b.status = 'active' AND b.superseded_by_id IS NULL"
+            sql += " AND b.superseded_by_id IS NULL"
+            if include_archived:
+                sql += " AND b.status IN ('active', 'archived')"
+            else:
+                sql += " AND b.status = 'active'"
 
         # Filter out beliefs with revoked consent chains by default
         if not include_revoked:
@@ -521,17 +582,37 @@ def belief_query(
         rows = cur.fetchall()
 
         beliefs = []
+        # Normalize relevance scores to 0-1 for ranking
+        max_relevance = max((float(row.get("relevance", 0)) for row in rows), default=1.0) or 1.0
         for row in rows:
             belief = Belief.from_row(dict(row))
             belief_dict = belief.to_dict()
-            belief_dict["relevance_score"] = float(row.get("relevance", 0))
+            raw_relevance = float(row.get("relevance", 0))
+            belief_dict["relevance_score"] = raw_relevance
+            belief_dict["similarity"] = raw_relevance / max_relevance  # Normalized for ranking
             beliefs.append(belief_dict)
+
+        # Apply multi-signal ranking if requested or by default
+        if ranking or beliefs:
+            from ..core.ranking import multi_signal_rank
+
+            rank_params = ranking or {}
+            beliefs = multi_signal_rank(
+                beliefs,
+                semantic_weight=rank_params.get("semantic_weight", 0.50),
+                confidence_weight=rank_params.get("confidence_weight", 0.35),
+                recency_weight=rank_params.get("recency_weight", 0.15),
+                explain=rank_params.get("explain", False),
+            )
+
+        _log_retrievals(beliefs, query, "belief_query")
 
         return {
             "success": True,
             "beliefs": beliefs,
             "total_count": len(beliefs),
             "include_revoked": include_revoked,
+            "include_archived": include_archived,
         }
 
 
@@ -1001,7 +1082,9 @@ def belief_search(
     min_similarity: float = 0.5,
     min_confidence: float | None = None,
     domain_filter: list[str] | None = None,
+    include_archived: bool = False,
     limit: int = 10,
+    ranking: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Semantic search for beliefs using embeddings."""
     try:
@@ -1024,11 +1107,12 @@ def belief_search(
 
     with get_cursor() as cur:
         # Build query with similarity filter
-        sql = """
+        status_filter = "b.status IN ('active', 'archived')" if include_archived else "b.status = 'active'"
+        sql = f"""
             SELECT b.*, 1 - (b.embedding <=> %s::vector) as similarity
             FROM beliefs b
             WHERE b.embedding IS NOT NULL
-            AND b.status = 'active'
+            AND {status_filter}
             AND 1 - (b.embedding <=> %s::vector) >= %s
         """
         params: list[Any] = [query_str, query_str, min_similarity]
@@ -1053,6 +1137,21 @@ def belief_search(
             belief_dict = belief.to_dict()
             belief_dict["similarity"] = float(row["similarity"])
             beliefs.append(belief_dict)
+
+        # Apply multi-signal ranking (similarity already 0-1 from cosine)
+        if ranking or beliefs:
+            from ..core.ranking import multi_signal_rank
+
+            rank_params = ranking or {}
+            beliefs = multi_signal_rank(
+                beliefs,
+                semantic_weight=rank_params.get("semantic_weight", 0.50),
+                confidence_weight=rank_params.get("confidence_weight", 0.35),
+                recency_weight=rank_params.get("recency_weight", 0.15),
+                explain=rank_params.get("explain", False),
+            )
+
+        _log_retrievals(beliefs, query, "belief_search")
 
         return {
             "success": True,

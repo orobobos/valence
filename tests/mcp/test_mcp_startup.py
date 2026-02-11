@@ -165,7 +165,9 @@ class TestMCPPluginConfig:
         config_path = Path(__file__).parent.parent.parent / "plugin" / ".mcp.json"
         config = json.loads(config_path.read_text())
 
-        for server_name in ["valence-substrate", "valence-vkb"]:
+        # Unified server ("valence") or legacy split servers
+        server_names = list(config["mcpServers"].keys())
+        for server_name in server_names:
             env = config["mcpServers"][server_name]["env"]
             # Must have ORO_DB_ vars (what our_db reads)
             assert "ORO_DB_HOST" in env, f"{server_name} missing ORO_DB_HOST"
@@ -181,7 +183,8 @@ class TestMCPPluginConfig:
         config_path = Path(__file__).parent.parent.parent / "plugin" / ".mcp.json"
         config = json.loads(config_path.read_text())
 
-        for server_name in ["valence-substrate", "valence-vkb"]:
+        server_names = list(config["mcpServers"].keys())
+        for server_name in server_names:
             env = config["mcpServers"][server_name]["env"]
             assert "VKB_DB_HOST" in env, f"{server_name} missing VKB_DB_HOST"
             assert "VKB_DB_PORT" in env, f"{server_name} missing VKB_DB_PORT"
@@ -193,7 +196,8 @@ class TestMCPPluginConfig:
         config_path = Path(__file__).parent.parent.parent / "plugin" / ".mcp.json"
         config = json.loads(config_path.read_text())
 
-        for server_name in ["valence-substrate", "valence-vkb"]:
+        server_names = list(config["mcpServers"].keys())
+        for server_name in server_names:
             env = config["mcpServers"][server_name]["env"]
             assert "5433" in env.get("ORO_DB_PORT", "")
             assert "5433" in env.get("VKB_DB_PORT", "")

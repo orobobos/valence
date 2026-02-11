@@ -70,6 +70,7 @@ dev = [
 
 [project.scripts]
 valence = "valence.cli:main"
+valence-mcp = "valence.mcp_server:run"
 valence-substrate = "valence.substrate.mcp_server:run"
 valence-vkb = "valence.vkb.mcp_server:run"
 valence-server = "valence.server.app:run"

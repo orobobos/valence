@@ -1,0 +1,48 @@
+# Docker Compose for Valence local development
+# Usage: docker compose up -d
+# Then:  valence-mcp --health-check
+#
+# Optional: docker compose --profile server up -d
+# (also starts the HTTP MCP server)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${VALENCE_DB_USER:-valence}
+      POSTGRES_PASSWORD: ${VALENCE_DB_PASSWORD:-valence}
+      POSTGRES_DB: ${VALENCE_DB_NAME:-valence}
+    ports:
+      - "${VALENCE_DB_PORT:-5433}:5432"
+    volumes:
+      - valence-data:/var/lib/postgresql/data
+      - ./src/valence/substrate/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/valence/substrate/procedures.sql:/docker-entrypoint-initdb.d/02-procedures.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VALENCE_DB_USER:-valence} -d ${VALENCE_DB_NAME:-valence}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    build: .
+    profiles: ["server"]
+    environment:
+      VKB_DB_HOST: postgres
+      VKB_DB_PORT: 5432
+      VKB_DB_NAME: ${VALENCE_DB_NAME:-valence}
+      VKB_DB_USER: ${VALENCE_DB_USER:-valence}
+      VKB_DB_PASSWORD: ${VALENCE_DB_PASSWORD:-valence}
+      VALENCE_HOST: 0.0.0.0
+      VALENCE_PORT: 8420
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${VALENCE_PORT:-8420}:8420"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  valence-data:
