@@ -138,6 +138,32 @@ def check_oauth_rate_limit(
     return RateLimitResult(allowed=True)
 
 
+def check_federation_rate_limit(
+    peer_did: str,
+    endpoint: str,
+    rpm_limit: int = 60,
+    window_seconds: int = 60,
+) -> RateLimitResult:
+    """Check rate limit for a federation peer by DID.
+
+    Applies per-peer, per-endpoint rate limiting. Each peer DID gets its own
+    rate limit bucket per endpoint path.
+
+    Args:
+        peer_did: DID of the federation peer
+        endpoint: Endpoint path (e.g., "/federation/sync", "/federation/beliefs")
+        rpm_limit: Maximum requests per window per peer per endpoint
+        window_seconds: Time window in seconds (default: 60)
+
+    Returns:
+        RateLimitResult indicating if request is allowed
+    """
+    key = f"federation:{peer_did}:{endpoint}"
+    if not check_rate_limit(key, rpm_limit, window_seconds):
+        return RateLimitResult(allowed=False, key=key, retry_after=window_seconds)
+    return RateLimitResult(allowed=True)
+
+
 def rate_limit_response() -> JSONResponse:
     """Create a standard 429 rate limit response for OAuth endpoints."""
     return JSONResponse(
@@ -147,6 +173,19 @@ def rate_limit_response() -> JSONResponse:
         },
         status_code=429,
         headers={"Retry-After": "60"},
+    )
+
+
+def federation_rate_limit_response(peer_did: str, retry_after: int = 60) -> JSONResponse:
+    """Create a 429 rate limit response for federation endpoints."""
+    return JSONResponse(
+        {
+            "error": "rate_limit_exceeded",
+            "error_description": f"Federation peer {peer_did} rate limited. Try again later.",
+            "peer_did": peer_did,
+        },
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
     )
 
 

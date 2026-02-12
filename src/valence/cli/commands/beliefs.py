@@ -89,6 +89,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     list_parser.add_argument("--domain", "-d", help="Filter by domain")
     list_parser.set_defaults(func=cmd_list)
 
+    # verify-chains
+    verify_parser = subparsers.add_parser("verify-chains", help="Verify supersession chain integrity")
+    verify_parser.add_argument("--limit", "-n", type=int, default=None, help="Max chains to verify (default: all)")
+    verify_parser.add_argument("--json", action="store_true", dest="output_json", help="Output as JSON")
+    verify_parser.set_defaults(func=cmd_verify_chains)
+
 
 def cmd_init(args: argparse.Namespace) -> int:
     """Initialize valence database."""
@@ -726,6 +732,47 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     except Exception as e:
         print(f"❌ List failed: {e}")
+        return 1
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def cmd_verify_chains(args: argparse.Namespace) -> int:
+    """Verify supersession chain integrity."""
+    import json as json_mod
+
+    from ...core.verification.chain_integrity import verify_chains
+
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        report = verify_chains(cur, limit=args.limit)
+
+        if args.output_json:
+            print(json_mod.dumps(report.to_dict(), indent=2))
+        else:
+            print(report)
+            if report.issues:
+                print()
+                for issue in report.issues:
+                    ids = ", ".join(bid[:8] for bid in issue.belief_ids)
+                    print(f"  [{issue.issue_type}] {issue.description}")
+                    if ids:
+                        print(f"    beliefs: {ids}")
+
+        return 0 if not report.issues else 1
+
+    except Exception as e:
+        print(f"Failed to verify chains: {e}")
+        import traceback
+
+        traceback.print_exc()
         return 1
     finally:
         if cur:

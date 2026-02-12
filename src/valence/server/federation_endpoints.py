@@ -34,6 +34,7 @@ from .errors import (
     missing_field_error,
     not_found_error,
 )
+from .rate_limit import check_federation_rate_limit, federation_rate_limit_response
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,8 @@ async def verify_did_signature(request: Request) -> dict[str, Any] | None:
 def require_did_signature(handler: Callable) -> Callable:
     """Decorator that requires valid DID signature for federation endpoints.
 
+    Also enforces per-peer rate limiting after DID verification (#347).
+
     Usage:
         @require_did_signature
         async def my_handler(request: Request) -> JSONResponse:
@@ -159,6 +162,14 @@ def require_did_signature(handler: Callable) -> Callable:
 
         # Attach verified DID info to request state
         request.state.did_info = did_info
+
+        # Per-peer rate limiting (#347)
+        peer_did = did_info["did"]
+        endpoint = request.url.path
+        rate_result = check_federation_rate_limit(peer_did, endpoint)
+        if not rate_result.allowed:
+            logger.warning(f"Federation rate limit exceeded for {peer_did} on {endpoint}")
+            return federation_rate_limit_response(peer_did, rate_result.retry_after)
 
         return await handler(request)
 
