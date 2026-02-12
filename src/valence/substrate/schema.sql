@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS beliefs (
     status TEXT NOT NULL DEFAULT 'active',
     -- Values: active, superseded, disputed, archived
 
+    -- Archival tracking
+    archived_at TIMESTAMPTZ,
+
     -- Vector embedding for similarity search (384-dim, BAAI/bge-small-en-v1.5)
     embedding VECTOR(384),
 
@@ -111,9 +114,11 @@ CREATE INDEX IF NOT EXISTS idx_beliefs_status ON beliefs(status);
 CREATE INDEX IF NOT EXISTS idx_beliefs_created ON beliefs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_beliefs_tsv ON beliefs USING GIN (content_tsv);
 CREATE INDEX IF NOT EXISTS idx_beliefs_source ON beliefs(source_id);
-CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_beliefs_embedding ON beliefs USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
 CREATE INDEX IF NOT EXISTS idx_beliefs_holder ON beliefs(holder_id) WHERE holder_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_beliefs_content_hash ON beliefs(content_hash) WHERE content_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_beliefs_archival_candidates ON beliefs(modified_at) WHERE status = 'superseded';
+CREATE INDEX IF NOT EXISTS idx_beliefs_archived ON beliefs(archived_at DESC) WHERE status = 'archived';
 
 -- Entities: People, organizations, tools, concepts
 CREATE TABLE IF NOT EXISTS entities (
@@ -142,9 +147,9 @@ CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
 CREATE INDEX IF NOT EXISTS idx_entities_aliases ON entities USING GIN (aliases);
 CREATE INDEX IF NOT EXISTS idx_entities_canonical ON entities(canonical_id) WHERE canonical_id IS NOT NULL;
 
--- Unique constraint on canonical entities only
+-- Unique constraint on canonical entities only (case-insensitive)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_unique_canonical
-    ON entities(name, type)
+    ON entities(LOWER(name), type)
     WHERE canonical_id IS NULL;
 
 -- Belief-Entity junction
@@ -250,7 +255,10 @@ CREATE TABLE IF NOT EXISTS vkb_sessions (
     metadata JSONB DEFAULT '{}',
 
     CONSTRAINT vkb_sessions_valid_status CHECK (status IN ('active', 'completed', 'abandoned')),
-    CONSTRAINT vkb_sessions_valid_platform CHECK (platform IN ('claude-code', 'matrix', 'api', 'slack'))
+    CONSTRAINT vkb_sessions_valid_platform CHECK (platform IN (
+        'claude-code', 'matrix', 'api', 'slack',
+        'claude-web', 'claude-desktop', 'claude-mobile'
+    ))
 );
 
 CREATE INDEX IF NOT EXISTS idx_vkb_sessions_platform ON vkb_sessions(platform);
@@ -294,7 +302,7 @@ CREATE TABLE IF NOT EXISTS vkb_exchanges (
 
 CREATE INDEX IF NOT EXISTS idx_vkb_exchanges_session ON vkb_exchanges(session_id);
 CREATE INDEX IF NOT EXISTS idx_vkb_exchanges_created ON vkb_exchanges(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_vkb_exchanges_embedding ON vkb_exchanges USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_vkb_exchanges_embedding ON vkb_exchanges USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
 
 -- Patterns: Macro-scale behavioral patterns
 CREATE TABLE IF NOT EXISTS vkb_patterns (
@@ -335,7 +343,7 @@ CREATE TABLE IF NOT EXISTS vkb_patterns (
 
 CREATE INDEX IF NOT EXISTS idx_vkb_patterns_type ON vkb_patterns(type);
 CREATE INDEX IF NOT EXISTS idx_vkb_patterns_status ON vkb_patterns(status);
-CREATE INDEX IF NOT EXISTS idx_vkb_patterns_embedding ON vkb_patterns USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_vkb_patterns_embedding ON vkb_patterns USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
 
 -- Session Insights: Links sessions to extracted beliefs
 CREATE TABLE IF NOT EXISTS vkb_session_insights (
@@ -414,6 +422,25 @@ CREATE TABLE IF NOT EXISTS embedding_coverage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_embedding_coverage_type ON embedding_coverage(embedding_type_id);
+
+-- Tombstones: GDPR-compliant deletion tracking
+CREATE TABLE IF NOT EXISTS tombstones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content_type TEXT NOT NULL,
+    content_id UUID NOT NULL,
+    deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reason TEXT NOT NULL DEFAULT 'retention_policy',
+    metadata JSONB DEFAULT '{}',
+    retention_until TIMESTAMPTZ,
+
+    CONSTRAINT tombstones_valid_reason CHECK (
+        reason IN ('retention_policy', 'user_request', 'gdpr_erasure', 'admin_action')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_tombstones_content ON tombstones(content_type, content_id);
+CREATE INDEX IF NOT EXISTS idx_tombstones_deleted ON tombstones(deleted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tombstones_retention ON tombstones(retention_until) WHERE retention_until IS NOT NULL;
 
 -- ============================================================================
 -- VIEWS
@@ -1282,3 +1309,282 @@ JOIN consent_chains cc ON s.consent_chain_id = cc.id;
 CREATE OR REPLACE VIEW active_shares AS
 SELECT * FROM shares_with_consent
 WHERE NOT consent_revoked;
+
+-- ============================================================================
+-- COMPLIANCE TABLES
+-- ============================================================================
+
+-- Consent Records: GDPR consent tracking
+CREATE TABLE IF NOT EXISTS consent_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    holder_did TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'all',
+
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+
+    -- GDPR: 7-year minimum retention
+    retention_until TIMESTAMPTZ NOT NULL,
+
+    metadata JSONB DEFAULT '{}',
+
+    CONSTRAINT consent_records_valid_purpose CHECK (
+        purpose IN ('data_processing', 'federation_sharing', 'analytics', 'backup')
+    ),
+    CONSTRAINT consent_records_valid_scope CHECK (
+        scope IN ('all', 'beliefs', 'sessions', 'patterns')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_consent_records_holder ON consent_records(holder_did);
+CREATE INDEX IF NOT EXISTS idx_consent_records_purpose ON consent_records(holder_did, purpose);
+CREATE INDEX IF NOT EXISTS idx_consent_records_active ON consent_records(holder_did)
+    WHERE revoked_at IS NULL;
+
+-- Audit Log: Append-only audit trail for all state-changing operations
+CREATE TABLE IF NOT EXISTS audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actor_did TEXT,
+    action TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT,
+    details JSONB DEFAULT '{}',
+    ip_address TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_did) WHERE actor_did IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+
+-- ============================================================================
+-- VERIFICATION PROTOCOL TABLES
+-- ============================================================================
+
+-- Reputations: Agent reputation scores for verification system
+CREATE TABLE IF NOT EXISTS reputations (
+    identity_id TEXT PRIMARY KEY,  -- DID
+    overall NUMERIC(5,4) NOT NULL DEFAULT 0.5
+        CHECK (overall >= 0.1 AND overall <= 1.0),
+    by_domain JSONB NOT NULL DEFAULT '{}',
+    verification_count INTEGER NOT NULL DEFAULT 0,
+    discrepancy_finds INTEGER NOT NULL DEFAULT 0,
+    stake_at_risk NUMERIC(8,6) NOT NULL DEFAULT 0.0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reputations_overall ON reputations(overall DESC);
+CREATE INDEX IF NOT EXISTS idx_reputations_modified ON reputations(modified_at DESC);
+
+-- Verifications: Adversarial verifications of beliefs with reputation staking
+CREATE TABLE IF NOT EXISTS verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    verifier_id TEXT NOT NULL,  -- DID
+    belief_id UUID NOT NULL REFERENCES beliefs(id) ON DELETE CASCADE,
+    holder_id TEXT NOT NULL,  -- DID (cached from belief)
+    result TEXT NOT NULL,
+    evidence JSONB NOT NULL DEFAULT '[]',
+    stake JSONB NOT NULL,  -- {amount, type, locked_until, escrow_id}
+    reasoning TEXT,
+    result_details JSONB,
+    status TEXT NOT NULL DEFAULT 'pending',
+    dispute_id UUID,
+    signature BYTEA,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    accepted_at TIMESTAMPTZ,
+
+    CONSTRAINT verifications_valid_result CHECK (
+        result IN ('confirmed', 'contradicted', 'uncertain', 'partial')
+    ),
+    CONSTRAINT verifications_valid_status CHECK (
+        status IN ('pending', 'accepted', 'disputed', 'overturned', 'rejected', 'expired')
+    ),
+    CONSTRAINT verifications_verifier_not_holder CHECK (verifier_id != holder_id),
+    CONSTRAINT verifications_valid_stake CHECK (
+        stake->>'amount' IS NOT NULL AND
+        (stake->>'amount')::numeric >= 0
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_verifications_belief ON verifications(belief_id);
+CREATE INDEX IF NOT EXISTS idx_verifications_verifier ON verifications(verifier_id);
+CREATE INDEX IF NOT EXISTS idx_verifications_holder ON verifications(holder_id);
+CREATE INDEX IF NOT EXISTS idx_verifications_status ON verifications(status);
+CREATE INDEX IF NOT EXISTS idx_verifications_result ON verifications(result);
+CREATE INDEX IF NOT EXISTS idx_verifications_created ON verifications(created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_verifications_unique_verifier_belief
+    ON verifications(verifier_id, belief_id)
+    WHERE status NOT IN ('rejected', 'expired');
+
+-- Disputes: Challenges to verification results
+CREATE TABLE IF NOT EXISTS disputes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    verification_id UUID NOT NULL REFERENCES verifications(id) ON DELETE CASCADE,
+    disputer_id TEXT NOT NULL,  -- DID
+    counter_evidence JSONB NOT NULL DEFAULT '[]',
+    stake JSONB NOT NULL,
+    dispute_type TEXT NOT NULL,
+    reasoning TEXT NOT NULL,
+    proposed_result TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    outcome TEXT,
+    resolution_reasoning TEXT,
+    resolution_method TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+
+    CONSTRAINT disputes_valid_type CHECK (
+        dispute_type IN ('evidence_invalid', 'evidence_fabricated', 'evidence_insufficient',
+                         'reasoning_flawed', 'conflict_of_interest', 'new_evidence')
+    ),
+    CONSTRAINT disputes_valid_status CHECK (
+        status IN ('pending', 'resolved', 'expired')
+    ),
+    CONSTRAINT disputes_valid_outcome CHECK (
+        outcome IS NULL OR outcome IN ('upheld', 'overturned', 'modified', 'dismissed')
+    ),
+    CONSTRAINT disputes_valid_proposed_result CHECK (
+        proposed_result IS NULL OR proposed_result IN ('confirmed', 'contradicted', 'uncertain', 'partial')
+    ),
+    CONSTRAINT disputes_valid_resolution_method CHECK (
+        resolution_method IS NULL OR resolution_method IN ('automatic', 'jury', 'expert', 'appeal')
+    ),
+    CONSTRAINT disputes_valid_stake CHECK (
+        stake->>'amount' IS NOT NULL AND
+        (stake->>'amount')::numeric >= 0
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_disputes_verification ON disputes(verification_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_disputer ON disputes(disputer_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
+CREATE INDEX IF NOT EXISTS idx_disputes_created ON disputes(created_at DESC);
+
+-- FK from verifications.dispute_id to disputes (deferred since disputes is created after)
+ALTER TABLE verifications
+    ADD CONSTRAINT fk_verifications_dispute
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id);
+
+-- Stake Positions: Locked reputation stakes
+CREATE TABLE IF NOT EXISTS stake_positions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identity_id TEXT NOT NULL REFERENCES reputations(identity_id),
+    amount NUMERIC(8,6) NOT NULL CHECK (amount >= 0),
+    type TEXT NOT NULL,
+    verification_id UUID REFERENCES verifications(id),
+    dispute_id UUID REFERENCES disputes(id),
+    locked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    unlocks_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'locked',
+
+    CONSTRAINT stake_positions_valid_type CHECK (
+        type IN ('standard', 'bounty', 'challenge')
+    ),
+    CONSTRAINT stake_positions_valid_status CHECK (
+        status IN ('locked', 'pending_return', 'forfeited', 'returned')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_stake_positions_identity ON stake_positions(identity_id);
+CREATE INDEX IF NOT EXISTS idx_stake_positions_verification ON stake_positions(verification_id);
+CREATE INDEX IF NOT EXISTS idx_stake_positions_dispute ON stake_positions(dispute_id);
+CREATE INDEX IF NOT EXISTS idx_stake_positions_status ON stake_positions(status);
+CREATE INDEX IF NOT EXISTS idx_stake_positions_unlocks ON stake_positions(unlocks_at)
+    WHERE status = 'locked';
+
+-- Reputation Events: Audit trail of all reputation changes
+CREATE TABLE IF NOT EXISTS reputation_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identity_id TEXT NOT NULL REFERENCES reputations(identity_id),
+    delta NUMERIC(8,6) NOT NULL,
+    old_value NUMERIC(5,4) NOT NULL,
+    new_value NUMERIC(5,4) NOT NULL,
+    reason TEXT NOT NULL,
+    dimension TEXT NOT NULL DEFAULT 'overall',
+    verification_id UUID REFERENCES verifications(id),
+    dispute_id UUID REFERENCES disputes(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reputation_events_identity ON reputation_events(identity_id);
+CREATE INDEX IF NOT EXISTS idx_reputation_events_created ON reputation_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reputation_events_verification ON reputation_events(verification_id);
+CREATE INDEX IF NOT EXISTS idx_reputation_events_dispute ON reputation_events(dispute_id);
+
+-- Discrepancy Bounties: Bounties for finding contradictions in high-confidence beliefs
+CREATE TABLE IF NOT EXISTS discrepancy_bounties (
+    belief_id UUID PRIMARY KEY REFERENCES beliefs(id) ON DELETE CASCADE,
+    holder_id TEXT NOT NULL,
+    base_amount NUMERIC(8,6) NOT NULL,
+    confidence_premium NUMERIC(5,4) NOT NULL,
+    age_factor NUMERIC(4,2) NOT NULL DEFAULT 1.0,
+    total_bounty NUMERIC(8,6) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    claimed BOOLEAN NOT NULL DEFAULT FALSE,
+    claimed_by TEXT,
+    claimed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_bounties_holder ON discrepancy_bounties(holder_id);
+CREATE INDEX IF NOT EXISTS idx_bounties_total ON discrepancy_bounties(total_bounty DESC)
+    WHERE NOT claimed;
+CREATE INDEX IF NOT EXISTS idx_bounties_expires ON discrepancy_bounties(expires_at)
+    WHERE NOT claimed AND expires_at IS NOT NULL;
+
+-- ============================================================================
+-- VERIFICATION VIEWS
+-- ============================================================================
+
+-- Verification stats per belief
+CREATE OR REPLACE VIEW belief_verification_stats AS
+SELECT
+    b.id as belief_id,
+    b.content,
+    COUNT(v.id) as verification_count,
+    COUNT(CASE WHEN v.result = 'confirmed' THEN 1 END) as confirmed_count,
+    COUNT(CASE WHEN v.result = 'contradicted' THEN 1 END) as contradicted_count,
+    COUNT(CASE WHEN v.result = 'uncertain' THEN 1 END) as uncertain_count,
+    COUNT(CASE WHEN v.result = 'partial' THEN 1 END) as partial_count,
+    SUM((v.stake->>'amount')::NUMERIC) as total_stake,
+    AVG((v.stake->>'amount')::NUMERIC) as avg_stake,
+    COALESCE(db.total_bounty, 0) as bounty_available
+FROM beliefs b
+LEFT JOIN verifications v ON b.id = v.belief_id AND v.status = 'accepted'
+LEFT JOIN discrepancy_bounties db ON b.id = db.belief_id AND NOT db.claimed
+GROUP BY b.id, b.content, db.total_bounty;
+
+-- Verifier leaderboard
+CREATE OR REPLACE VIEW verifier_leaderboard AS
+SELECT
+    r.identity_id,
+    r.overall as reputation,
+    r.verification_count,
+    r.discrepancy_finds,
+    CASE WHEN r.verification_count > 0
+         THEN r.discrepancy_finds::NUMERIC / r.verification_count
+         ELSE 0
+    END as discrepancy_rate
+FROM reputations r
+ORDER BY r.overall DESC, r.verification_count DESC;
+
+-- Pending disputes with context
+CREATE OR REPLACE VIEW pending_disputes AS
+SELECT
+    d.*,
+    v.belief_id,
+    v.verifier_id as original_verifier,
+    v.result as original_result,
+    v.stake as original_stake,
+    b.content as belief_content
+FROM disputes d
+JOIN verifications v ON d.verification_id = v.id
+JOIN beliefs b ON v.belief_id = b.id
+WHERE d.status = 'pending'
+ORDER BY d.created_at ASC;

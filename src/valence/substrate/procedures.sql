@@ -115,7 +115,7 @@ $$ LANGUAGE plpgsql;
 -- Search beliefs with hybrid search (keyword + semantic)
 CREATE OR REPLACE FUNCTION belief_search(
     p_query TEXT,
-    p_query_embedding VECTOR(1536) DEFAULT NULL,
+    p_query_embedding VECTOR DEFAULT NULL,
     p_domain_filter TEXT[] DEFAULT NULL,
     p_entity_id UUID DEFAULT NULL,
     p_include_superseded BOOLEAN DEFAULT FALSE,
@@ -531,8 +531,8 @@ $$ LANGUAGE plpgsql;
 -- Update embedding for a belief
 CREATE OR REPLACE FUNCTION belief_set_embedding(
     p_belief_id UUID,
-    p_embedding VECTOR(1536),
-    p_embedding_type TEXT DEFAULT 'openai_text3_small'
+    p_embedding VECTOR,
+    p_embedding_type TEXT DEFAULT 'local_bge_small'
 )
 RETURNS VOID AS $$
 BEGIN
@@ -553,8 +553,8 @@ $$ LANGUAGE plpgsql;
 -- Update embedding for an exchange
 CREATE OR REPLACE FUNCTION exchange_set_embedding(
     p_exchange_id UUID,
-    p_embedding VECTOR(1536),
-    p_embedding_type TEXT DEFAULT 'openai_text3_small'
+    p_embedding VECTOR,
+    p_embedding_type TEXT DEFAULT 'local_bge_small'
 )
 RETURNS VOID AS $$
 BEGIN

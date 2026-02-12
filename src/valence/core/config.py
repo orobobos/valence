@@ -89,6 +89,11 @@ class CoreSettings(BaseSettings):
         description="Local embedding model name or path",
         validation_alias="VALENCE_EMBEDDING_MODEL_PATH",
     )
+    embedding_dims: int = Field(
+        default=384,
+        description="Embedding vector dimensions. Must match the configured model output. Source of truth is embedding_types table.",
+        validation_alias="VALENCE_EMBEDDING_DIMS",
+    )
     embedding_device: str = Field(
         default="cpu",
         description="Device for local embeddings: 'cpu' or 'cuda'",

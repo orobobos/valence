@@ -389,3 +389,218 @@ class TestEmbeddingsRouting:
         # With modular registration, args.func is set by set_defaults()
         assert hasattr(args, "func")
         assert args.func is cmd_embeddings
+
+
+# ============================================================================
+# Migrate Argument Parsing (#364)
+# ============================================================================
+
+
+class TestMigrateArgParsing:
+    """Test CLI argument parsing for embeddings migrate command."""
+
+    def test_migrate_requires_model(self):
+        """embeddings migrate requires --model."""
+        parser = app()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["embeddings", "migrate"])
+
+    def test_migrate_known_model(self):
+        """Parse known model with defaults auto-resolved."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "text-embedding-3-small"])
+        assert args.model == "text-embedding-3-small"
+        assert args.dims is None  # resolved at runtime
+        assert args.dry_run is False
+
+    def test_migrate_custom_model_with_dims(self):
+        """Parse custom model with explicit dimensions."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "my-model", "--dims", "768"])
+        assert args.model == "my-model"
+        assert args.dims == 768
+
+    def test_migrate_dry_run(self):
+        """Parse --dry-run flag."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "text-embedding-3-small", "--dry-run"])
+        assert args.dry_run is True
+
+    def test_migrate_all_flags(self):
+        """Parse all migrate flags together."""
+        parser = app()
+        args = parser.parse_args([
+            "embeddings", "migrate",
+            "--model", "custom/model",
+            "--dims", "512",
+            "--provider", "custom_provider",
+            "--type-id", "custom_512",
+            "--dry-run",
+        ])
+        assert args.model == "custom/model"
+        assert args.dims == 512
+        assert args.provider == "custom_provider"
+        assert args.type_id == "custom_512"
+        assert args.dry_run is True
+
+
+# ============================================================================
+# Migrate Command Tests (#364)
+# ============================================================================
+
+
+class TestMigrateCommand:
+    """Test embeddings migrate command logic."""
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_migrate_dry_run_known_model(self, mock_get_conn, capsys):
+        """Dry run shows migration plan without making changes."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "text-embedding-3-small", "--dry-run"])
+        result = cmd_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Dry run" in captured.out
+        assert "1536" in captured.out
+        assert "text-embedding-3-small" in captured.out
+        mock_get_conn.assert_not_called()
+
+    def test_migrate_custom_model_missing_dims(self, capsys):
+        """Custom model without --dims returns error."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "unknown-model"])
+        result = cmd_embeddings(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Unknown model" in captured.err
+        assert "--dims" in captured.err
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_migrate_already_configured(self, mock_get_conn, mock_db, capsys):
+        """Skip migration if already on the target model."""
+        mock_conn, mock_cur = mock_db
+        mock_get_conn.return_value = mock_conn
+
+        mock_cur.fetchone.return_value = {
+            "id": "local_bge_small",
+            "dimensions": 384,
+            "is_default": True,
+        }
+
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "BAAI/bge-small-en-v1.5"])
+        result = cmd_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Already configured" in captured.out
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_migrate_executes_steps(self, mock_get_conn, mock_db, capsys):
+        """Migration executes all steps via migrate_embedding_dimensions function."""
+        mock_conn, mock_cur = mock_db
+        mock_get_conn.return_value = mock_conn
+        mock_conn.autocommit = True  # will be set to False
+
+        # First fetchone: current embedding type
+        # Second fetchall: migration steps
+        mock_cur.fetchone.return_value = {
+            "id": "local_bge_small",
+            "dimensions": 384,
+            "is_default": True,
+        }
+        mock_cur.fetchall.return_value = [
+            {"step": "register_type", "detail": "Registered openai_text3_small"},
+            {"step": "complete", "detail": "Migration complete"},
+        ]
+
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "text-embedding-3-small"])
+        result = cmd_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Migration to" in captured.out
+        assert "1536" in captured.out
+        mock_conn.commit.assert_called_once()
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_migrate_error_rolls_back(self, mock_get_conn, mock_db, capsys):
+        """Migration error triggers rollback."""
+        mock_conn, mock_cur = mock_db
+        mock_get_conn.return_value = mock_conn
+
+        mock_cur.fetchone.side_effect = Exception("DB error")
+
+        parser = app()
+        args = parser.parse_args(["embeddings", "migrate", "--model", "text-embedding-3-small"])
+        result = cmd_embeddings(args)
+
+        assert result == 1
+        mock_conn.rollback.assert_called_once()
+
+
+# ============================================================================
+# Status Argument Parsing (#364)
+# ============================================================================
+
+
+class TestStatusArgParsing:
+    """Test CLI argument parsing for embeddings status command."""
+
+    def test_status_parses(self):
+        """embeddings status parses with no extra args."""
+        parser = app()
+        args = parser.parse_args(["embeddings", "status"])
+        assert args.embeddings_command == "status"
+
+
+# ============================================================================
+# Status Command Tests (#364)
+# ============================================================================
+
+
+class TestStatusCommand:
+    """Test embeddings status command logic."""
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_status_shows_info(self, mock_get_conn, mock_db, capsys):
+        """Status shows embedding types, columns, and coverage."""
+        mock_conn, mock_cur = mock_db
+        mock_get_conn.return_value = mock_conn
+
+        # Calls: embedding_types, vector columns, coverage, total beliefs, embedded beliefs
+        mock_cur.fetchall.side_effect = [
+            [{"id": "local_bge_small", "provider": "local", "model": "BAAI/bge-small-en-v1.5", "dimensions": 384, "is_default": True, "status": "active"}],
+            [{"table_name": "beliefs", "column_name": "embedding", "udt_name": "vector", "dims": 384}],
+            [{"embedding_type_id": "local_bge_small", "content_type": "belief", "count": 42}],
+        ]
+        mock_cur.fetchone.side_effect = [
+            {"count": 100},  # total beliefs
+            {"count": 42},   # embedded beliefs
+        ]
+
+        parser = app()
+        args = parser.parse_args(["embeddings", "status"])
+        result = cmd_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "local_bge_small" in captured.out
+        assert "384" in captured.out
+        assert "42/100" in captured.out
+
+    @patch("valence.cli.commands.embeddings.get_db_connection")
+    def test_status_error_handling(self, mock_get_conn, capsys):
+        """Status handles connection errors gracefully."""
+        mock_get_conn.side_effect = Exception("Cannot connect")
+
+        parser = app()
+        args = parser.parse_args(["embeddings", "status"])
+        result = cmd_embeddings(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "failed" in captured.err.lower()
