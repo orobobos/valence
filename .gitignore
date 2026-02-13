@@ -41,8 +41,13 @@ infra/.env.*
 credentials.json
 .claude/
 
-# Database dumps
+# Database dumps and backups
 *.dump
+backups/
+
+# Build artifacts
+dist/
+*.egg-info/
 
 # Test artifacts
 .coverage

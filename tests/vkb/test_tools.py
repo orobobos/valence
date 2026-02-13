@@ -54,13 +54,18 @@ def mock_cursor():
 
 @pytest.fixture
 def mock_get_cursor(mock_cursor):
-    """Mock the get_cursor context manager."""
+    """Mock the get_cursor context manager in all VKB tool submodules."""
 
     @contextmanager
     def _mock_get_cursor(dict_cursor: bool = True) -> Generator:
         yield mock_cursor
 
-    with patch("valence.vkb.tools.get_cursor", _mock_get_cursor):
+    with (
+        patch("valence.vkb.tools.sessions.get_cursor", _mock_get_cursor),
+        patch("valence.vkb.tools.exchanges.get_cursor", _mock_get_cursor),
+        patch("valence.vkb.tools.patterns.get_cursor", _mock_get_cursor),
+        patch("valence.vkb.tools.insights.get_cursor", _mock_get_cursor),
+    ):
         yield mock_cursor
 
 

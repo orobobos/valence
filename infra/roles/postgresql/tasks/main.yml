@@ -41,8 +41,6 @@
   postgresql_user:
     name: "{{ postgres_user }}"
     password: "{{ postgres_password }}"
-    db: "{{ postgres_db }}"
-    priv: ALL
     state: present
 
 - name: Grant schema permissions (PostgreSQL 15+ requirement)

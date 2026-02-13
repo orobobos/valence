@@ -1,7 +1,7 @@
 # Valence Development Makefile
 # Usage: make <target>
 
-.PHONY: help install dev lint test test-unit test-integration test-all clean docker-up docker-down docker-test
+.PHONY: help install dev lint test test-unit test-integration test-all clean docker-up docker-down docker-test test-db-up test-db-down test-db-status test-full
 
 # Default target
 help:
@@ -31,6 +31,12 @@ help:
 	@echo "Database:"
 	@echo "  make db-init        Initialize local test database"
 	@echo "  make db-reset       Reset test database"
+	@echo ""
+	@echo "Test Database (on-demand container, port 5435):"
+	@echo "  make test-db-up     Start test PostgreSQL container"
+	@echo "  make test-db-down   Stop and remove test container"
+	@echo "  make test-db-status Show test container status"
+	@echo "  make test-full      Start DB, run all tests, tear down"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean          Remove build artifacts and caches"
@@ -122,7 +128,7 @@ docker-build:
 
 # For local development with docker postgres on port 5433
 DB_HOST ?= localhost
-DB_PORT ?= 5433
+DB_PORT ?= 5435
 DB_NAME ?= valence_test
 DB_USER ?= valence
 DB_PASS ?= testpass
@@ -142,6 +148,26 @@ db-reset:
 
 db-shell:
 	PGPASSWORD=$(DB_PASS) psql -h $(DB_HOST) -p $(DB_PORT) -U $(DB_USER) -d $(DB_NAME)
+
+# =============================================================================
+# Test Database (on-demand container)
+# =============================================================================
+
+test-db-up:
+	./scripts/test-db.sh up
+
+test-db-down:
+	./scripts/test-db.sh down
+
+test-db-status:
+	./scripts/test-db.sh status
+
+test-full: test-db-up
+	@eval "$$(./scripts/test-db.sh env)" && \
+		pytest tests/ -v --timeout=120; \
+		EXIT_CODE=$$?; \
+		./scripts/test-db.sh down; \
+		exit $$EXIT_CODE
 
 # =============================================================================
 # Cleanup

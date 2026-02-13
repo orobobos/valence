@@ -33,10 +33,11 @@ import pytest
 # Configuration from environment
 VALENCE_POD_IP = os.environ.get("VALENCE_POD_IP")
 VALENCE_DOMAIN = os.environ.get("VALENCE_DOMAIN")
-VALENCE_DB_PASSWORD = os.environ.get("VALENCE_DB_PASSWORD", "")
 DB_HOST = os.environ.get("VKB_DB_HOST", "localhost")
+DB_PORT = int(os.environ.get("VKB_DB_PORT", "5432"))
 DB_NAME = os.environ.get("VKB_DB_NAME", "valence")
 DB_USER = os.environ.get("VKB_DB_USER", "valence")
+DB_PASS = os.environ.get("VKB_DB_PASSWORD", os.environ.get("VALENCE_DB_PASSWORD", ""))
 
 
 def _check_db_available():
@@ -44,9 +45,10 @@ def _check_db_available():
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
+            port=DB_PORT,
             database=DB_NAME,
             user=DB_USER,
-            password=VALENCE_DB_PASSWORD,
+            password=DB_PASS,
             connect_timeout=3,
         )
         conn.close()
@@ -70,9 +72,10 @@ def get_db_connection():
 
     return psycopg2.connect(
         host=DB_HOST,
+        port=DB_PORT,
         database=DB_NAME,
         user=DB_USER,
-        password=VALENCE_DB_PASSWORD,
+        password=DB_PASS,
     )
 
 
@@ -106,9 +109,9 @@ class TestDatabaseSchema:
         required_tables = [
             "beliefs",
             "entities",
-            "sessions",
-            "exchanges",
-            "patterns",
+            "vkb_sessions",
+            "vkb_exchanges",
+            "vkb_patterns",
             "tensions",
         ]
 
@@ -152,7 +155,7 @@ class TestDatabaseSchema:
         assert not missing, f"Beliefs table missing columns: {missing}"
 
     def test_sessions_table_columns(self):
-        """Verify sessions table has expected columns."""
+        """Verify vkb_sessions table has expected columns."""
         expected_columns = {
             "id",
             "external_room_id",
@@ -166,7 +169,7 @@ class TestDatabaseSchema:
         cursor.execute("""
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_name = 'sessions'
+            WHERE table_name = 'vkb_sessions'
         """)
         actual_columns = {row[0] for row in cursor.fetchall()}
         conn.close()
@@ -192,7 +195,7 @@ class TestBeliefOperations:
 
         cursor.execute("""
             INSERT INTO beliefs (content, confidence, domain_path)
-            VALUES ('Test belief from integration test', 0.8, ARRAY['test'])
+            VALUES ('Test belief from integration test', '{"overall": 0.8}'::jsonb, ARRAY['test'])
             RETURNING id
         """)
         belief_id = cursor.fetchone()[0]
@@ -210,7 +213,7 @@ class TestBeliefOperations:
         # Insert test data
         cursor.execute("""
             INSERT INTO beliefs (content, confidence, domain_path)
-            VALUES ('Query test belief', 0.7, ARRAY['test', 'query'])
+            VALUES ('Query test belief', '{"overall": 0.7}'::jsonb, ARRAY['test', 'query'])
             RETURNING id
         """)
         belief_id = cursor.fetchone()[0]
@@ -288,7 +291,7 @@ class TestEntityOperations:
         cursor = db_conn.cursor()
 
         cursor.execute("""
-            INSERT INTO entities (name, entity_type, aliases)
+            INSERT INTO entities (name, type, aliases)
             VALUES ('Test Entity', 'concept', ARRAY['test', 'testing'])
             RETURNING id
         """)
@@ -300,7 +303,7 @@ class TestEntityOperations:
         cursor = db_conn.cursor()
 
         cursor.execute("""
-            INSERT INTO entities (name, entity_type, aliases)
+            INSERT INTO entities (name, type, aliases)
             VALUES ('Alias Test', 'tool', ARRAY['at', 'alias-test'])
             RETURNING id
         """)

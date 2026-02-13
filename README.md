@@ -25,7 +25,7 @@ Your agent understands you. Together, agents understand *everything*.
 ## Quick Start
 
 ```bash
-pip install valence
+pip install ourochronos-valence
 
 # Initialize the database
 valence init
@@ -43,7 +43,7 @@ valence stats
 
 For P2P networking:
 ```bash
-pip install valence[p2p]
+pip install ourochronos-valence[p2p]
 ```
 
 ### Prerequisites
@@ -56,26 +56,34 @@ pip install valence[p2p]
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│                   CLI / MCP                  │
-├─────────────────────────────────────────────┤
-│  Beliefs    Trust    Resources   Attestations│
-│  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────────┐│
-│  │ 6D   │  │Multi-│  │Share │  │ Usage    ││
-│  │Conf. │  │Dim.  │  │+Gate │  │ Signals  ││
-│  └──────┘  └──────┘  └──────┘  └──────────┘│
-├─────────────────────────────────────────────┤
-│            Transport Layer                   │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
-│  │ Legacy   │  │ libp2p   │  │ Protocol  │ │
-│  │ HTTP     │  │ DHT+     │  │ Handlers  │ │
-│  │          │  │ GossipSub│  │ (VFP)     │ │
-│  └──────────┘  └──────────┘  └───────────┘ │
-├─────────────────────────────────────────────┤
-│  Identity (Multi-DID)  │  QoS (Contrib.)   │
-├─────────────────────────────────────────────┤
-│         PostgreSQL + pgvector               │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                    CLI / MCP (58 tools)              │
+├─────────────────────────────────────────────────────┤
+│  Beliefs    Trust     Verification   Consensus      │
+│  ┌──────┐  ┌──────┐  ┌──────────┐  ┌───────────┐  │
+│  │ 6D   │  │Multi-│  │ Stakes + │  │ L1→L4     │  │
+│  │Conf. │  │Dim.  │  │ Disputes │  │ Elevation │  │
+│  └──────┘  └──────┘  └──────────┘  └───────────┘  │
+│  Incentives  Sessions   Sharing     Backup         │
+│  ┌────────┐  ┌──────┐  ┌──────┐   ┌───────────┐  │
+│  │Reputa- │  │Track │  │Trust-│   │ Erasure   │  │
+│  │tion +  │  │+Learn│  │Gated │   │ Coded     │  │
+│  │Calibr. │  └──────┘  └──────┘   └───────────┘  │
+│  └────────┘                                        │
+├─────────────────────────────────────────────────────┤
+│  HTTP Server (OAuth 2.1 + PKCE)  │  Compliance     │
+├─────────────────────────────────────────────────────┤
+│              Transport Layer                        │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐        │
+│  │ Legacy   │  │ libp2p   │  │ Protocol  │        │
+│  │ HTTP     │  │ DHT+     │  │ Handlers  │        │
+│  │          │  │ GossipSub│  │ (VFP)     │        │
+│  └──────────┘  └──────────┘  └───────────┘        │
+├─────────────────────────────────────────────────────┤
+│  Identity (Multi-DID)  │  QoS (Contribution-based) │
+├─────────────────────────────────────────────────────┤
+│  13 our-* bricks  │  PostgreSQL + pgvector         │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -96,17 +104,19 @@ See [PRINCIPLES.md](docs/PRINCIPLES.md) and [GOVERNANCE.md](docs/GOVERNANCE.md).
 
 ## For Agent Developers
 
-Valence exposes 22 tools via [MCP](https://modelcontextprotocol.io) (Model Context Protocol):
+Valence exposes 58 tools via [MCP](https://modelcontextprotocol.io) (Model Context Protocol):
 
 ```python
-# belief_create — store what your agent learned
-# belief_query — semantic search across the substrate
-# belief_supersede — update beliefs with provenance
-# tension_list — find contradictions
-# trust operations — set, query, compute trust
-# resource sharing — share prompts, configs, patterns
-# attestations — track what worked
+# Beliefs — create, query, supersede, search, share, corroborate
+# Trust — multi-dimensional trust scoring and verification
+# Verification — submit, accept, dispute, resolve with stakes
+# Consensus — L1-L4 layer elevation, challenges, corroboration
+# Incentives — reputation, calibration (Brier), rewards, bounties
+# Sessions — track conversations, extract insights, find patterns
+# Backup — create, verify, restore with erasure coding
 ```
+
+See [docs/API.md](docs/API.md) for the complete tool reference.
 
 Connect any MCP-compatible agent. Claude, GPT, local models — the substrate doesn't care who's asking, it cares about the quality of what they contribute.
 
@@ -192,10 +202,17 @@ valence peer              Peer management
 - ✅ Multi-DID identity (no master key SPOF)
 - ✅ Resource sharing with trust-gated access
 - ✅ Contribution-based QoS
-- ✅ MCP server (22 tools)
+- ✅ MCP server (58 tools)
 - ✅ OAuth 2.1 + PKCE
 - ✅ Local embeddings (no external API needed)
-- ✅ 5600+ tests
+- ✅ Verification protocol with stakes + disputes
+- ✅ Incentive system (reputation, calibration, rewards)
+- ✅ Consensus mechanism (L1-L4 elevation, challenges)
+- ✅ Resilient backup with erasure coding
+- ✅ GDPR compliance (access, export, import, deletion)
+- ✅ 2,300+ tests in valence, 6,300+ including bricks
+
+See [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md) for detailed component status.
 
 ### What's Next
 

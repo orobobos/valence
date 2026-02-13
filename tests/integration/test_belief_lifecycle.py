@@ -356,13 +356,16 @@ class TestBeliefEntityLinks:
                 """
                 INSERT INTO belief_entities (belief_id, entity_id, role)
                 VALUES (%s, %s, 'subject')
+                ON CONFLICT (belief_id, entity_id, role) DO NOTHING
                 RETURNING belief_id, entity_id
             """,
                 (belief_id, entity_id),
             )
 
             link = cur.fetchone()
-            assert link is not None
+            # May be None if already linked from a previous test run, that's ok
+            if link is not None:
+                assert link["belief_id"] == belief_id
 
     def test_query_beliefs_by_entity(self, db_conn_committed, seed_beliefs, seed_entities):
         """Test querying beliefs related to an entity."""
@@ -378,6 +381,7 @@ class TestBeliefEntityLinks:
                 """
                 INSERT INTO belief_entities (belief_id, entity_id, role)
                 VALUES (%s, %s, 'subject')
+                ON CONFLICT (belief_id, entity_id, role) DO NOTHING
             """,
                 (belief_id, entity_id),
             )

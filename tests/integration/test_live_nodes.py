@@ -28,7 +28,11 @@ import pytest
 NODE_1 = os.environ.get("VALENCE_NODE_1", "https://valence.zonk1024.net")
 NODE_2 = os.environ.get("VALENCE_NODE_2", "https://valence2.zonk1024.net")
 
-# Tests are skipped via conftest.py if --live-nodes not passed
+# Skip all tests unless --live-nodes is passed
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("VALENCE_LIVE_NODES"),
+    reason="Live node tests require VALENCE_LIVE_NODES=1 (or --live-nodes flag)",
+)
 
 
 def generate_pkce():
@@ -396,3 +400,9 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests against live Valence nodes",
     )
+
+
+def pytest_configure(config):
+    """Set env var so pytestmark skipif can read it."""
+    if config.getoption("--live-nodes", default=False):
+        os.environ["VALENCE_LIVE_NODES"] = "1"

@@ -1,0 +1,17 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ourochronos/our-infra/.github/workflows/release.yml@main
+    with:
+      python-version: '3.11'
+    secrets:
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}

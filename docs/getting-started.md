@@ -152,35 +152,49 @@ Skills are invoked with `/valence:<skill-name>`:
 | `/valence:review-tensions` | Review and resolve contradictions |
 | `/valence:status` | View knowledge base dashboard |
 
-## MCP Tools
+## MCP Tools (58 total)
 
-### Knowledge Substrate
-| Tool | Description |
-|------|-------------|
-| `belief_query` | Search beliefs (keyword + ranking) |
-| `belief_search` | Semantic search (embeddings) |
-| `belief_create` | Store a new belief |
-| `belief_supersede` | Update a belief with history |
-| `belief_get` | Get belief details |
-| `entity_get` | Get entity with beliefs |
-| `entity_search` | Find entities |
-| `tension_list` | List contradictions |
-| `tension_resolve` | Resolve contradiction |
-| `belief_corroboration` | Check corroboration |
-| `trust_check` | Who to trust on a topic |
-| `confidence_explain` | Explain confidence breakdown |
+### Knowledge Substrate (45 tools)
+| Category | Tools |
+|----------|-------|
+| Beliefs | `belief_query`, `belief_search`, `belief_create`, `belief_supersede`, `belief_get`, `belief_share`, `belief_shares_list`, `belief_share_revoke`, `belief_corroboration` |
+| Entities | `entity_get`, `entity_search` |
+| Tensions | `tension_list`, `tension_resolve` |
+| Confidence & Trust | `confidence_explain`, `trust_check` |
+| Verification | `verification_submit`, `verification_accept`, `verification_get`, `verification_list`, `verification_summary` |
+| Disputes | `dispute_submit`, `dispute_resolve`, `dispute_get` |
+| Reputation | `reputation_get`, `reputation_events` |
+| Bounties | `bounty_get`, `bounty_list` |
+| Calibration & Rewards | `calibration_run`, `calibration_history`, `rewards_pending`, `reward_claim`, `rewards_claim_all`, `transfer_history`, `velocity_status` |
+| Consensus | `consensus_status`, `corroboration_submit`, `corroboration_list`, `challenge_submit`, `challenge_resolve`, `challenge_get`, `challenges_list` |
+| Backup | `backup_create`, `backup_verify`, `backup_list`, `backup_get` |
 
-### Conversation Tracking
-| Tool | Description |
-|------|-------------|
-| `session_start/end/get/list` | Manage sessions |
-| `session_find_by_room` | Find by room ID |
-| `exchange_add/list` | Record turns |
-| `pattern_record/reinforce/list/search` | Track patterns |
-| `insight_extract/list` | Extract to KB |
+### Conversation Tracking (13 tools)
+| Category | Tools |
+|----------|-------|
+| Sessions | `session_start`, `session_end`, `session_get`, `session_list`, `session_find_by_room` |
+| Exchanges | `exchange_add`, `exchange_list` |
+| Patterns | `pattern_record`, `pattern_reinforce`, `pattern_list`, `pattern_search` |
+| Insights | `insight_extract`, `insight_list` |
+
+See [API.md](API.md) for complete tool documentation with parameters and descriptions.
+
+## Demo
+
+Run the interactive demo to see the core value loop:
+
+```bash
+python examples/demo.py
+```
+
+This walks through: create beliefs, query, supersede, search entities, check trust, extract insights.
 
 ## Going Deeper
 
+- **[API Reference](API.md)** — All 58 MCP tools and REST endpoints
+- **[Implementation Status](IMPLEMENTATION-STATUS.md)** — Component-by-component status
+- **[Error Codes](ERROR-CODES.md)** — All error codes and response formats
+- **[Rate Limits](RATE-LIMITS.md)** — Rate limiting configuration
 - **Architecture**: See `CLAUDE.md` in the repo root for full architecture documentation
 - **Schema**: `src/valence/substrate/schema.sql` defines all tables
 - **Confidence Model**: Beliefs have 6 confidence dimensions, not just one score

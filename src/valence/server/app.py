@@ -29,6 +29,9 @@ from starlette.routing import Route
 
 from .auth import get_token_store, verify_token
 from .compliance_endpoints import (
+    data_access_endpoint,
+    data_export_endpoint,
+    data_import_endpoint,
     delete_user_data_endpoint,
     get_deletion_verification_endpoint,
 )
@@ -888,6 +891,10 @@ def create_app() -> Starlette:
             get_deletion_verification_endpoint,
             methods=["GET"],
         ),
+        # GDPR Article 15 (data access) and Article 20 (data portability)
+        Route(f"{API_V1}/compliance/access", data_access_endpoint, methods=["GET"]),
+        Route(f"{API_V1}/compliance/export", data_export_endpoint, methods=["GET"]),
+        Route(f"{API_V1}/compliance/import", data_import_endpoint, methods=["POST"]),
         # Sharing endpoints (Issue #50: share() API, Issue #54: revoke API)
         Route(f"{API_V1}/share", share_belief_endpoint, methods=["POST"]),
         Route(f"{API_V1}/shares", list_shares_endpoint, methods=["GET"]),
@@ -930,6 +937,10 @@ app = create_app()
 
 def run() -> None:
     """Run the server using uvicorn."""
+    from ..core.config import bridge_db_env
+
+    bridge_db_env()
+
     import uvicorn
 
     settings = get_settings()

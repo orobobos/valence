@@ -23,6 +23,9 @@ from our_compliance.deletion import (
 from starlette.requests import Request
 
 from valence.server.compliance_endpoints import (
+    data_access_endpoint,
+    data_export_endpoint,
+    data_import_endpoint,
     delete_user_data_endpoint,
     get_deletion_verification_endpoint,
 )
@@ -547,6 +550,143 @@ class TestTombstone:
 # ============================================================================
 # Integration-style tests (with mocked dependencies)
 # ============================================================================
+
+
+# ============================================================================
+# Test data_access_endpoint (GDPR Article 15)
+# ============================================================================
+
+
+class TestDataAccessEndpoint:
+    """Test GET /api/v1/compliance/access endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_access_missing_holder_did(self, mock_request):
+        """Missing holder_did returns 400."""
+        request = mock_request(query_params={})
+        response = await data_access_endpoint(request)
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_access_success(self, mock_request):
+        """Successful data access returns all holder data."""
+        request = mock_request(query_params={"holder_did": "did:example:alice"})
+        with patch("valence.server.compliance_endpoints.get_holder_data") as mock:
+            mock.return_value = {"beliefs": [{"id": "1", "content": "test"}], "entities": [], "sessions": []}
+            response = await data_access_endpoint(request)
+        assert response.status_code == 200
+        body = json.loads(response.body)
+        assert body["success"] is True
+        assert "beliefs" in body
+
+    @pytest.mark.asyncio
+    async def test_access_server_error(self, mock_request):
+        """Server error returns 500."""
+        request = mock_request(query_params={"holder_did": "did:example:alice"})
+        with patch("valence.server.compliance_endpoints.get_holder_data", side_effect=Exception("DB error")):
+            response = await data_access_endpoint(request)
+        assert response.status_code == 500
+
+
+# ============================================================================
+# Test data_export_endpoint (GDPR Article 20)
+# ============================================================================
+
+
+class TestDataExportEndpoint:
+    """Test GET /api/v1/compliance/export endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_export_missing_holder_did(self, mock_request):
+        """Missing holder_did returns 400."""
+        request = mock_request(query_params={})
+        response = await data_export_endpoint(request)
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_export_success(self, mock_request):
+        """Successful export returns portable data."""
+        request = mock_request(query_params={"holder_did": "did:example:alice"})
+        with patch("valence.server.compliance_endpoints.export_holder_data") as mock:
+            mock.return_value = {"format_version": "1.0", "holder_did": "did:example:alice", "beliefs": []}
+            response = await data_export_endpoint(request)
+        assert response.status_code == 200
+        body = json.loads(response.body)
+        assert body["success"] is True
+        assert body["format_version"] == "1.0"
+
+    @pytest.mark.asyncio
+    async def test_export_server_error(self, mock_request):
+        """Server error returns 500."""
+        request = mock_request(query_params={"holder_did": "did:example:alice"})
+        with patch("valence.server.compliance_endpoints.export_holder_data", side_effect=Exception("fail")):
+            response = await data_export_endpoint(request)
+        assert response.status_code == 500
+
+
+# ============================================================================
+# Test data_import_endpoint (GDPR Article 20)
+# ============================================================================
+
+
+class TestDataImportEndpoint:
+    """Test POST /api/v1/compliance/import endpoint."""
+
+    @pytest.fixture
+    def mock_async_request(self):
+        """Create a mock request with async body()."""
+        from unittest.mock import AsyncMock
+
+        def _make(body_bytes: bytes, path_params=None, query_params=None):
+            request = MagicMock(spec=Request)
+            request.path_params = path_params or {}
+            qp = query_params or {}
+            mock_qp = MagicMock()
+            mock_qp.get = lambda key, default=None: qp.get(key, default)
+            request.query_params = mock_qp
+            request.body = AsyncMock(return_value=body_bytes)
+            return request
+
+        return _make
+
+    @pytest.mark.asyncio
+    async def test_import_invalid_json(self, mock_async_request):
+        """Invalid JSON returns 400."""
+        request = mock_async_request(b"not-json")
+        response = await data_import_endpoint(request)
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_import_success(self, mock_async_request):
+        """Successful import returns counts."""
+        data = json.dumps({"format_version": "1.0", "beliefs": []}).encode()
+        request = mock_async_request(data)
+        with patch("valence.server.compliance_endpoints.import_holder_data") as mock:
+            mock.return_value = {"success": True, "beliefs_imported": 5}
+            response = await data_import_endpoint(request)
+        assert response.status_code == 200
+        body = json.loads(response.body)
+        assert body["success"] is True
+        assert body["beliefs_imported"] == 5
+
+    @pytest.mark.asyncio
+    async def test_import_validation_failure(self, mock_async_request):
+        """Import validation failure returns 400."""
+        data = json.dumps({"format_version": "bad"}).encode()
+        request = mock_async_request(data)
+        with patch("valence.server.compliance_endpoints.import_holder_data") as mock:
+            mock.return_value = {"success": False, "error": "Invalid format version"}
+            response = await data_import_endpoint(request)
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_import_server_error(self, mock_async_request):
+        """Server error returns 500."""
+        data = json.dumps({"format_version": "1.0"}).encode()
+        request = mock_async_request(data)
+        with patch("valence.server.compliance_endpoints.import_holder_data", side_effect=Exception("fail")):
+            response = await data_import_endpoint(request)
+        assert response.status_code == 500
 
 
 class TestEndpointIntegration:

@@ -326,6 +326,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
 def run() -> None:
     """Run the MCP server."""
+    from ..core.config import bridge_db_env
+
+    bridge_db_env()
+
     parser = argparse.ArgumentParser(description="Valence Substrate MCP Server")
     parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
     parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")

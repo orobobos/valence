@@ -19,7 +19,7 @@ COPY pyproject.toml .
 COPY src/ src/
 
 # Install package with dev dependencies using uv
-RUN ~/.local/bin/uv pip install --no-cache -e ".[dev]" --system
+RUN ~/.local/bin/uv pip install --no-cache -e ".[test]" --system
 
 # Copy tests (for test-runner)
 COPY tests/ tests/

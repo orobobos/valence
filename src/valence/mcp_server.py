@@ -58,12 +58,13 @@ PERSONAL_TOOLS = {
     "pattern_list", "insight_extract",
 }
 
-# Connected mode adds trust/corroboration/federation tools
+# Connected mode adds trust/corroboration/federation/sharing tools
 CONNECTED_TOOLS = PERSONAL_TOOLS | {
     "belief_corroboration", "trust_check",
     "exchange_add", "exchange_list",
     "pattern_record", "pattern_reinforce", "pattern_search",
     "session_find_by_room", "insight_list",
+    "belief_share", "belief_shares_list", "belief_share_revoke",
 }
 
 
@@ -190,6 +191,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
 def run() -> None:
     """Run the unified MCP server."""
+    from .core.config import bridge_db_env
+
+    bridge_db_env()
+
     parser = argparse.ArgumentParser(description="Valence Unified MCP Server")
     parser.add_argument("--health-check", action="store_true", help="Run health check and exit")
     parser.add_argument("--skip-health-check", action="store_true", help="Skip startup health checks")

@@ -2,11 +2,15 @@
 
 Implements:
 - DELETE /api/v1/users/{id}/data - GDPR Article 17 deletion (Issue #25)
+- GET /api/v1/compliance/access - GDPR Article 15 data access
+- GET /api/v1/compliance/export - GDPR Article 20 data portability
+- POST /api/v1/compliance/import - GDPR Article 20 data import
 - Deletion verification endpoint
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from uuid import UUID
 
@@ -18,11 +22,13 @@ from our_compliance.deletion import (
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from ..compliance.data_access import export_holder_data, get_holder_data, import_holder_data
 from .errors import (
     NOT_FOUND_TOMBSTONE,
     VALIDATION_INVALID_VALUE,
     internal_error,
     invalid_format_error,
+    invalid_json_error,
     missing_field_error,
     not_found_error,
     validation_error,
@@ -83,6 +89,86 @@ async def delete_user_data_endpoint(request: Request) -> JSONResponse:
 
     except Exception as e:
         logger.exception(f"Error deleting user data: {e}")
+        return internal_error("Internal server error")
+
+
+async def data_access_endpoint(request: Request) -> JSONResponse:
+    """GET /api/v1/compliance/access - GDPR Article 15 data access.
+
+    Returns all data held about a data subject.
+
+    Query Parameters:
+        holder_did: DID of the data subject (required)
+
+    Returns:
+        200: All holder data organized by category
+        400: Missing holder_did parameter
+        500: Server error
+    """
+    holder_did = request.query_params.get("holder_did")
+
+    if not holder_did:
+        return missing_field_error("holder_did")
+
+    try:
+        data = get_holder_data(holder_did)
+        return JSONResponse({"success": True, **data}, status_code=200)
+    except Exception as e:
+        logger.exception(f"Error accessing holder data: {e}")
+        return internal_error("Internal server error")
+
+
+async def data_export_endpoint(request: Request) -> JSONResponse:
+    """GET /api/v1/compliance/export - GDPR Article 20 data portability.
+
+    Returns holder data in a portable, machine-readable format.
+
+    Query Parameters:
+        holder_did: DID of the data subject (required)
+
+    Returns:
+        200: Portable export with format version and all data
+        400: Missing holder_did parameter
+        500: Server error
+    """
+    holder_did = request.query_params.get("holder_did")
+
+    if not holder_did:
+        return missing_field_error("holder_did")
+
+    try:
+        export = export_holder_data(holder_did)
+        return JSONResponse({"success": True, **export}, status_code=200)
+    except Exception as e:
+        logger.exception(f"Error exporting holder data: {e}")
+        return internal_error("Internal server error")
+
+
+async def data_import_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/compliance/import - GDPR Article 20 data import.
+
+    Imports data from a portable export.
+
+    Body:
+        JSON export data (from data_export_endpoint)
+
+    Returns:
+        200: Import results with counts
+        400: Invalid JSON or format
+        500: Server error
+    """
+    try:
+        body = await request.body()
+        data = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return invalid_json_error()
+
+    try:
+        result = import_holder_data(data)
+        status_code = 200 if result.get("success") else 400
+        return JSONResponse(result, status_code=status_code)
+    except Exception as e:
+        logger.exception(f"Error importing data: {e}")
         return internal_error("Internal server error")
 
 

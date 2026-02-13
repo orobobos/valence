@@ -282,10 +282,6 @@ class TestConfiguration:
 class TestRequestSigning:
     """Tests for VFP request signing."""
 
-    @pytest.mark.skipif(
-        not os.environ.get("VALENCE_FEDERATION_PRIVATE_KEY"),
-        reason="Requires cryptography library and private key",
-    )
     def test_sign_request(self, monkeypatch):
         """Test request signing produces valid headers."""
         # Generate a test key pair
@@ -303,6 +299,7 @@ class TestRequestSigning:
             )
 
             monkeypatch.setenv("VALENCE_FEDERATION_DID", "did:vkb:web:test")
+            clear_config_cache()
 
             headers = sign_request(
                 method="POST",

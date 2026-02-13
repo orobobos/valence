@@ -260,3 +260,25 @@ def clear_config_cache() -> None:
     """Clear the config cache. Useful for testing."""
     global _config
     _config = None
+
+
+def bridge_db_env() -> None:
+    """Bridge VKB_DB_* env vars to ORO_DB_* for our_db compatibility.
+
+    Valence uses VKB_DB_* env vars. The our_db brick reads ORO_DB_*.
+    This function copies VKB_DB_* values to ORO_DB_* so our_db picks
+    them up. Only sets ORO_DB_* if not already set (user override wins).
+    """
+    import os
+
+    mapping = {
+        "VKB_DB_HOST": "ORO_DB_HOST",
+        "VKB_DB_PORT": "ORO_DB_PORT",
+        "VKB_DB_NAME": "ORO_DB_NAME",
+        "VKB_DB_USER": "ORO_DB_USER",
+        "VKB_DB_PASSWORD": "ORO_DB_PASSWORD",
+    }
+    for vkb_key, oro_key in mapping.items():
+        val = os.environ.get(vkb_key)
+        if val is not None and not os.environ.get(oro_key):
+            os.environ[oro_key] = val

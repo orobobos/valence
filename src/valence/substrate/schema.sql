@@ -92,6 +92,22 @@ CREATE TABLE IF NOT EXISTS beliefs (
     -- Archival tracking
     archived_at TIMESTAMPTZ,
 
+    -- Legacy: inline corroboration tracking (superseded by corroboration tables)
+    corroboration_count INTEGER NOT NULL DEFAULT 0,
+    corroborating_sources JSONB NOT NULL DEFAULT '[]',
+
+    -- Legacy: federation locality
+    is_local BOOLEAN NOT NULL DEFAULT TRUE,
+    origin_node_id UUID,
+
+    -- Legacy: inline dimensional confidence (superseded by confidence JSONB)
+    confidence_source REAL DEFAULT 0.5,
+    confidence_method REAL DEFAULT 0.5,
+    confidence_consistency REAL DEFAULT 1.0,
+    confidence_freshness REAL DEFAULT 1.0,
+    confidence_corroboration REAL DEFAULT 0.1,
+    confidence_applicability REAL DEFAULT 0.8,
+
     -- Vector embedding for similarity search (384-dim, BAAI/bge-small-en-v1.5)
     embedding VECTOR(384),
 
@@ -1187,7 +1203,7 @@ CREATE OR REPLACE VIEW federated_beliefs AS
 SELECT
     b.*,
     bp.federation_id,
-    bp.origin_node_id,
+    bp.origin_node_id as provenance_origin_node_id,
     bp.hop_count,
     bp.federation_path,
     bp.share_level as received_share_level,
@@ -1231,26 +1247,31 @@ ON CONFLICT (id) DO NOTHING;
 -- Consent chains track the provenance and permissions for shared beliefs
 CREATE TABLE IF NOT EXISTS consent_chains (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
+
     -- Link to the shared belief
     belief_id UUID NOT NULL REFERENCES beliefs(id) ON DELETE CASCADE,
-    
+
+    -- Legacy: simple grant/revoke model
+    granted_by TEXT,
+    granted_at TIMESTAMPTZ,
+    reason TEXT,
+
     -- Origin information (first sharer in the chain)
-    origin_sharer TEXT NOT NULL,  -- DID of original sharer
-    origin_timestamp TIMESTAMPTZ NOT NULL,
-    origin_policy JSONB NOT NULL,  -- SharePolicy as JSON
-    origin_signature BYTEA NOT NULL,  -- Ed25519 signature
-    
+    origin_sharer TEXT,  -- DID of original sharer
+    origin_timestamp TIMESTAMPTZ,
+    origin_policy JSONB,  -- SharePolicy as JSON
+    origin_signature BYTEA,  -- Ed25519 signature
+
     -- Chain integrity
-    chain_hash BYTEA NOT NULL,  -- SHA256(consent_origin + signature)
+    chain_hash BYTEA,  -- SHA256(consent_origin + signature)
     hops JSONB NOT NULL DEFAULT '[]',  -- Array of hop records for BOUNDED/CASCADING
-    
+
     -- Status
     revoked BOOLEAN NOT NULL DEFAULT FALSE,
     revoked_at TIMESTAMPTZ,
     revoked_by TEXT,  -- DID
     revocation_reason TEXT,
-    
+
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
