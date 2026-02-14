@@ -3,9 +3,8 @@
 Tests cover:
 1. CLI argument parsing
 2. Command dispatch
-3. Derivation chain visibility
-4. Conflict detection
-5. Init/add/query/list happy paths
+3. Pure utility functions (format_confidence, format_age, ranking)
+4. REST client commands (mocked HTTP)
 """
 
 from __future__ import annotations
@@ -102,10 +101,8 @@ class TestFormatAge:
 
     def test_format_naive_datetime(self):
         """Format naive datetime (no timezone) - gets treated as UTC."""
-        # Note: naive datetime gets treated as UTC, so the result depends on local TZ
         now = datetime.now()
         result = format_age(now - timedelta(hours=2))
-        # Just verify it returns something reasonable (not "?")
         assert result != "?"
         assert any(c in result for c in ["h", "m", "d", "y", "now", "mo"])
 
@@ -118,13 +115,6 @@ class TestArgumentParser:
         parser = app()
         args = parser.parse_args(["init"])
         assert args.command == "init"
-        assert args.force is False
-
-    def test_init_force(self):
-        """Parse init with force flag."""
-        parser = app()
-        args = parser.parse_args(["init", "--force"])
-        assert args.force is True
 
     def test_add_command(self):
         """Parse add command."""
@@ -134,7 +124,7 @@ class TestArgumentParser:
         assert args.content == "Test belief content"
 
     def test_add_with_options(self):
-        """Parse add with all options."""
+        """Parse add with options."""
         parser = app()
         args = parser.parse_args(
             [
@@ -148,18 +138,12 @@ class TestArgumentParser:
                 "python",
                 "--derivation-type",
                 "inference",
-                "--derived-from",
-                "12345678-1234-1234-1234-123456789abc",
-                "--method",
-                "Derived from observation",
             ]
         )
         assert args.content == "Test belief"
         assert args.confidence == "0.9"
         assert args.domain == ["tech", "python"]
         assert args.derivation_type == "inference"
-        assert args.derived_from == "12345678-1234-1234-1234-123456789abc"
-        assert args.method == "Derived from observation"
 
     def test_query_command(self):
         """Parse query command."""
@@ -168,10 +152,9 @@ class TestArgumentParser:
         assert args.command == "query"
         assert args.query == "search terms"
         assert args.limit == 10  # default
-        assert args.threshold == 0.3  # default
 
     def test_query_with_options(self):
-        """Parse query with all options."""
+        """Parse query with options."""
         parser = app()
         args = parser.parse_args(
             [
@@ -179,17 +162,14 @@ class TestArgumentParser:
                 "search terms",
                 "--limit",
                 "20",
-                "--threshold",
-                "0.5",
                 "--domain",
                 "tech",
-                "--chain",
+                "--explain",
             ]
         )
         assert args.limit == 20
-        assert args.threshold == 0.5
         assert args.domain == "tech"
-        assert args.chain is True
+        assert args.explain is True
 
     def test_list_command(self):
         """Parse list command."""
@@ -226,419 +206,261 @@ class TestArgumentParser:
         args = parser.parse_args(["stats"])
         assert args.command == "stats"
 
+    def test_global_flags(self):
+        """Parse global flags."""
+        parser = app()
+        args = parser.parse_args(["--server", "http://example.com:8420", "--token", "vt_xxx", "--json", "stats"])
+        assert args.server == "http://example.com:8420"
+        assert args.token == "vt_xxx"
+        assert args.output == "json"
+
 
 # ============================================================================
-# Integration Tests with Mocked Database
+# REST Client Command Tests
 # ============================================================================
 
 
-@pytest.fixture
-def mock_db():
-    """Create a mock database connection."""
-    mock_conn = MagicMock()
-    mock_cur = MagicMock()
-    mock_conn.cursor.return_value = mock_cur
-    mock_cur.__enter__ = MagicMock(return_value=mock_cur)
-    mock_cur.__exit__ = MagicMock(return_value=False)
-    return mock_conn, mock_cur
+@pytest.fixture(autouse=True)
+def _reset_config():
+    """Reset CLI config singleton for each test."""
+    from valence.cli.config import reset_cli_config
+    reset_cli_config()
+    yield
+    reset_cli_config()
 
 
 class TestInitCommand:
-    """Test init command."""
+    """Test init command (now delegates to server)."""
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    def test_init_already_exists(self, mock_get_conn, mock_db):
-        """Init when schema already exists."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        # Schema exists
-        mock_cur.fetchone.side_effect = [
-            {"exists": True},  # beliefs table exists
-            {"count": 42},  # belief count
-        ]
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_init_happy_path(self, mock_get_client):
+        """Init calls POST /admin/migrate/up."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "applied": ["001_init"], "dry_run": False}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["init"])
         result = cmd_init(args)
 
         assert result == 0
+        mock_client.post.assert_called_once_with("/admin/migrate/up", body={"dry_run": False})
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    def test_init_creates_schema(self, mock_get_conn, mock_db):
-        """Init creates schema when not exists."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        # Schema doesn't exist, then creation succeeds
-        mock_cur.fetchone.side_effect = [
-            {"exists": False},  # beliefs table doesn't exist
-        ]
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_init_connection_error(self, mock_get_client):
+        """Init handles connection error."""
+        from valence.cli.http_client import ValenceConnectionError
+        mock_client = MagicMock()
+        mock_client.post.side_effect = ValenceConnectionError("http://127.0.0.1:8420")
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["init"])
         result = cmd_init(args)
 
-        # Should have executed CREATE TABLE statements
-        assert mock_cur.execute.called
-        assert result == 0
+        assert result == 1
 
 
 class TestAddCommand:
-    """Test add command."""
+    """Test add command (now delegates to server)."""
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_add_basic(self, mock_embed, mock_get_conn, mock_db):
-        """Add basic belief."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = None  # No embedding
-
-        belief_id = uuid4()
-        mock_cur.fetchone.return_value = {
-            "id": belief_id,
-            "created_at": datetime.now(UTC),
-        }
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_add_basic(self, mock_get_client):
+        """Add basic belief via REST."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "belief": {"id": "abc"}}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["add", "Test belief content"])
         result = cmd_add(args)
 
         assert result == 0
-        # Verify INSERT was called
-        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO beliefs" in str(c)]
-        assert len(insert_calls) >= 1
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["content"] == "Test belief content"
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_add_with_derivation(self, mock_embed, mock_get_conn, mock_db):
-        """Add belief with derivation info."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536  # Mock embedding
-
-        belief_id = uuid4()
-        mock_cur.fetchone.return_value = {
-            "id": belief_id,
-            "created_at": datetime.now(UTC),
-        }
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_add_with_options(self, mock_get_client):
+        """Add belief with confidence, domains, derivation type."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "belief": {"id": "abc"}}
+        mock_get_client.return_value = mock_client
 
         parser = app()
-        args = parser.parse_args(
-            [
-                "add",
-                "Derived belief",
-                "--derivation-type",
-                "inference",
-                "--method",
-                "Derived from logic",
-            ]
-        )
+        args = parser.parse_args(["add", "Test", "-c", "0.9", "-d", "tech", "-t", "inference"])
         result = cmd_add(args)
 
         assert result == 0
-        # extraction_method should be set via the beliefs INSERT
-        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO beliefs" in str(c)]
-        assert len(insert_calls) == 1
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["confidence"] == {"overall": 0.9}
+        assert call_body["domain_path"] == ["tech"]
+        assert call_body["source_type"] == "inference"
+
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_add_api_error(self, mock_get_client):
+        """Add handles API error."""
+        from valence.cli.http_client import ValenceAPIError
+        mock_client = MagicMock()
+        mock_client.post.side_effect = ValenceAPIError(400, "VALIDATION", "Content too short")
+        mock_get_client.return_value = mock_client
+
+        parser = app()
+        args = parser.parse_args(["add", "x"])
+        result = cmd_add(args)
+
+        assert result == 1
 
 
 class TestQueryCommand:
-    """Test query command with derivation chains."""
+    """Test query command (now delegates to server)."""
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_query_shows_derivation(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Query results show derivation chains."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536
-
-        source_id = uuid4()
-        belief_id = uuid4()
-
-        # Query result with extraction method
-        mock_cur.fetchall.return_value = [
-            {
-                "id": belief_id,
-                "content": "Test belief content that was derived",
-                "confidence": {"overall": 0.8},
-                "domain_path": ["tech"],
-                "created_at": datetime.now(UTC),
-                "extraction_method": "inference",
-                "supersedes_id": None,
-                "similarity": 0.95,
-                "confidence_source": 0.5,
-                "confidence_method": 0.5,
-                "confidence_consistency": 1.0,
-                "confidence_freshness": 1.0,
-                "confidence_corroboration": 0.1,
-                "confidence_applicability": 0.8,
-            }
-        ]
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_query_happy_path(self, mock_get_client):
+        """Query calls GET /beliefs with params."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "beliefs": []}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["query", "test"])
         result = cmd_query(args)
 
         assert result == 0
+        call_params = mock_client.get.call_args[1]["params"]
+        assert call_params["query"] == "test"
+        assert call_params["limit"] == "10"
 
-        captured = capsys.readouterr()
-        # Verify extraction method is shown
-        assert "Method: inference" in captured.out
-
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_query_no_results(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Query with no results."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = None
-
-        mock_cur.fetchall.return_value = []
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_query_with_domain(self, mock_get_client):
+        """Query with domain filter."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "beliefs": []}
+        mock_get_client.return_value = mock_client
 
         parser = app()
-        args = parser.parse_args(["query", "nonexistent"])
+        args = parser.parse_args(["query", "test", "-d", "tech"])
         result = cmd_query(args)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "No beliefs found" in captured.out
+        call_params = mock_client.get.call_args[1]["params"]
+        assert call_params["domain_filter"] == "tech"
+
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_query_with_ranking(self, mock_get_client):
+        """Query with ranking params."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "beliefs": []}
+        mock_get_client.return_value = mock_client
+
+        parser = app()
+        args = parser.parse_args(["query", "test", "-r", "0.3", "-c", "0.7", "-e"])
+        result = cmd_query(args)
+
+        assert result == 0
+        call_params = mock_client.get.call_args[1]["params"]
+        assert "ranking" in call_params
 
 
 class TestConflictsCommand:
-    """Test conflict detection."""
+    """Test conflict detection (now delegates to server)."""
 
-    @patch("valence.cli.commands.conflicts.get_db_connection")
-    def test_conflicts_detects_negation(self, mock_get_conn, mock_db, capsys):
-        """Detect conflicts with negation asymmetry."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        # Similar beliefs with opposite conclusions
-        mock_cur.fetchall.return_value = [
-            {
-                "id_a": uuid4(),
-                "content_a": "Python is good for data science",
-                "confidence_a": {"overall": 0.8},
-                "created_a": datetime.now(UTC),
-                "id_b": uuid4(),
-                "content_b": "Python is not good for data science",
-                "confidence_b": {"overall": 0.7},
-                "created_b": datetime.now(UTC),
-                "similarity": 0.92,
-            }
-        ]
+    @patch("valence.cli.commands.conflicts.get_client")
+    def test_conflicts_happy_path(self, mock_get_client):
+        """Conflicts calls GET /beliefs/conflicts."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "conflicts": [], "count": 0}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["conflicts"])
         result = cmd_conflicts(args)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "potential conflict" in captured.out.lower() or "Conflict" in captured.out
 
-    @patch("valence.cli.commands.conflicts.get_db_connection")
-    def test_conflicts_no_conflicts(self, mock_get_conn, mock_db, capsys):
-        """No conflicts found."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        mock_cur.fetchall.return_value = []
+    @patch("valence.cli.commands.conflicts.get_client")
+    def test_conflicts_with_options(self, mock_get_client):
+        """Conflicts passes threshold and auto_record."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "conflicts": [], "count": 0}
+        mock_get_client.return_value = mock_client
 
         parser = app()
-        args = parser.parse_args(["conflicts"])
+        args = parser.parse_args(["conflicts", "-t", "0.9", "--auto-record"])
         result = cmd_conflicts(args)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "No potential conflicts" in captured.out or "no" in captured.out.lower()
-
-    @patch("valence.cli.commands.conflicts.get_db_connection")
-    def test_conflicts_auto_record(self, mock_get_conn, mock_db):
-        """Auto-record detected conflicts as tensions."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        conflict_pair = {
-            "id_a": uuid4(),
-            "content_a": "X is always true",
-            "confidence_a": {"overall": 0.8},
-            "created_a": datetime.now(UTC),
-            "id_b": uuid4(),
-            "content_b": "X is never true",
-            "confidence_b": {"overall": 0.7},
-            "created_b": datetime.now(UTC),
-            "similarity": 0.90,
-        }
-
-        mock_cur.fetchall.return_value = [conflict_pair]
-        mock_cur.fetchone.return_value = {"id": uuid4()}
-
-        parser = app()
-        args = parser.parse_args(["conflicts", "--auto-record"])
-        result = cmd_conflicts(args)
-
-        assert result == 0
-        # Verify tension was inserted
-        insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO tensions" in str(c)]
-        assert len(insert_calls) >= 1
+        call_params = mock_client.get.call_args[1]["params"]
+        assert call_params["threshold"] == "0.9"
+        assert call_params["auto_record"] == "true"
 
 
 class TestListCommand:
-    """Test list command."""
+    """Test list command (now delegates to server)."""
 
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    def test_list_basic(self, mock_get_conn, mock_db, capsys):
-        """List beliefs."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        mock_cur.fetchall.return_value = [
-            {
-                "id": uuid4(),
-                "content": "First belief",
-                "confidence": {"overall": 0.9},
-                "domain_path": ["tech"],
-                "created_at": datetime.now(UTC),
-                "derivation_type": "observation",
-            },
-            {
-                "id": uuid4(),
-                "content": "Second belief",
-                "confidence": {"overall": 0.7},
-                "domain_path": [],
-                "created_at": datetime.now(UTC) - timedelta(hours=2),
-                "derivation_type": "inference",
-            },
-        ]
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_list_basic(self, mock_get_client):
+        """List calls GET /beliefs with query=*."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "beliefs": []}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["list"])
         result = cmd_list(args)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "First belief" in captured.out
-        assert "Second belief" in captured.out
+        call_params = mock_client.get.call_args[1]["params"]
+        assert call_params["query"] == "*"
+        assert call_params["limit"] == "10"
+
+    @patch("valence.cli.commands.beliefs.get_client")
+    def test_list_with_domain(self, mock_get_client):
+        """List with domain filter."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "beliefs": []}
+        mock_get_client.return_value = mock_client
+
+        parser = app()
+        args = parser.parse_args(["list", "-d", "tech", "-n", "20"])
+        result = cmd_list(args)
+
+        assert result == 0
+        call_params = mock_client.get.call_args[1]["params"]
+        assert call_params["domain_filter"] == "tech"
+        assert call_params["limit"] == "20"
 
 
 class TestStatsCommand:
-    """Test stats command."""
+    """Test stats command (now delegates to server)."""
 
-    @patch("valence.cli.commands.stats.get_db_connection")
-    def test_stats_basic(self, mock_get_conn, mock_db, capsys):
-        """Show stats."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-
-        mock_cur.fetchone.side_effect = [
-            {"total": 100},
-            {"active": 95},
-            {"with_emb": 80},
-            {"tensions": 3},
-            {"count": 5},
-            {"derivations": 50},
-        ]
+    @patch("valence.cli.commands.stats.get_client")
+    def test_stats_happy_path(self, mock_get_client):
+        """Stats calls GET /stats."""
+        mock_client = MagicMock()
+        mock_client.get.return_value = {"success": True, "stats": {"total_beliefs": 100}}
+        mock_get_client.return_value = mock_client
 
         parser = app()
         args = parser.parse_args(["stats"])
         result = cmd_stats(args)
 
         assert result == 0
-        captured = capsys.readouterr()
-        assert "100" in captured.out  # total beliefs
-        assert "Statistics" in captured.out
+        mock_client.get.assert_called_once()
+        assert "/stats" in mock_client.get.call_args[0][0]
 
-
-# ============================================================================
-# Derivation Chain Tests
-# ============================================================================
-
-
-class TestExtractionMethod:
-    """Test extraction method visibility in query results."""
-
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_shows_extraction_method(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Show extraction method in query output."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536
-
-        mock_cur.fetchall.return_value = [
-            {
-                "id": uuid4(),
-                "content": "Belief from external source",
-                "confidence": {"overall": 0.8},
-                "domain_path": [],
-                "created_at": datetime.now(UTC),
-                "extraction_method": "hearsay",
-                "supersedes_id": None,
-                "similarity": 0.9,
-                "confidence_source": 0.5,
-                "confidence_method": 0.5,
-                "confidence_consistency": 1.0,
-                "confidence_freshness": 1.0,
-                "confidence_corroboration": 0.1,
-                "confidence_applicability": 0.8,
-            }
-        ]
+    @patch("valence.cli.commands.stats.get_client")
+    def test_stats_connection_error(self, mock_get_client):
+        """Stats handles connection error."""
+        from valence.cli.http_client import ValenceConnectionError
+        mock_client = MagicMock()
+        mock_client.get.side_effect = ValenceConnectionError("http://127.0.0.1:8420")
+        mock_get_client.return_value = mock_client
 
         parser = app()
-        args = parser.parse_args(["query", "external"])
-        result = cmd_query(args)
+        args = parser.parse_args(["stats"])
+        result = cmd_stats(args)
 
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Method: hearsay" in captured.out
-
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_shows_supersession_chain(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Show supersession chain when --chain flag used."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536
-
-        old_id = uuid4()
-
-        mock_cur.fetchall.return_value = [
-            {
-                "id": uuid4(),
-                "content": "Updated belief",
-                "confidence": {"overall": 0.9},
-                "domain_path": [],
-                "created_at": datetime.now(UTC),
-                "extraction_method": "correction",
-                "supersedes_id": old_id,
-                "similarity": 0.95,
-                "confidence_source": 0.5,
-                "confidence_method": 0.5,
-                "confidence_consistency": 1.0,
-                "confidence_freshness": 1.0,
-                "confidence_corroboration": 0.1,
-                "confidence_applicability": 0.8,
-            }
-        ]
-
-        # Chain lookup
-        mock_cur.fetchone.side_effect = [
-            {
-                "id": old_id,
-                "content": "Original incorrect belief",
-                "supersedes_id": None,
-            },
-        ]
-
-        parser = app()
-        args = parser.parse_args(["query", "updated", "--chain"])
-        result = cmd_query(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "Supersedes" in captured.out
+        assert result == 1
 
 
 # ============================================================================
@@ -647,7 +469,7 @@ class TestExtractionMethod:
 
 
 class TestHappyPath:
-    """Test the full happy path: pip install && valence init works."""
+    """Test the full happy path."""
 
     def test_cli_module_imports(self):
         """Verify CLI module can be imported."""
@@ -660,7 +482,6 @@ class TestHappyPath:
         """Verify help output works."""
         parser = app()
 
-        # This should not raise
         with pytest.raises(SystemExit) as exc:
             parser.parse_args(["--help"])
 
@@ -691,22 +512,18 @@ class TestComputeConfidenceScore:
             "confidence_applicability": 0.8,
         }
         score = compute_confidence_score(belief)
-        # Geometric mean with weights: should be around 0.78
         assert 0.7 < score < 0.9
 
     def test_6d_penalizes_weak_dimension(self):
         """Geometric mean penalizes beliefs with one weak dimension."""
-        # All strong except corroboration
         belief_weak = {
             "confidence_source": 0.9,
             "confidence_method": 0.9,
             "confidence_consistency": 0.9,
             "confidence_freshness": 0.9,
-            "confidence_corroboration": 0.1,  # Very weak
+            "confidence_corroboration": 0.1,
             "confidence_applicability": 0.9,
         }
-
-        # All moderate
         belief_moderate = {
             "confidence_source": 0.7,
             "confidence_method": 0.7,
@@ -718,15 +535,11 @@ class TestComputeConfidenceScore:
 
         score_weak = compute_confidence_score(belief_weak)
         score_moderate = compute_confidence_score(belief_moderate)
-
-        # Moderate should beat weak despite higher average
         assert score_moderate > score_weak
 
     def test_fallback_to_jsonb_overall(self):
         """Fall back to JSONB overall when 6D not populated."""
-        belief = {
-            "confidence": {"overall": 0.85},
-        }
+        belief = {"confidence": {"overall": 0.85}}
         score = compute_confidence_score(belief)
         assert score == 0.85
 
@@ -757,28 +570,22 @@ class TestComputeRecencyScore:
         score_month = compute_recency_score(one_month_ago)
         score_year = compute_recency_score(one_year_ago)
 
-        # Scores should decrease with age
         assert score_week > score_month > score_year
-
-        # With default decay (0.01), half-life ~69 days
-        assert score_week > 0.9  # ~0.93
-        assert 0.6 < score_month < 0.8  # ~0.74
-        assert score_year < 0.05  # ~0.025
+        assert score_week > 0.9
+        assert 0.6 < score_month < 0.8
+        assert score_year < 0.05
 
     def test_custom_decay_rate(self):
         """Custom decay rate adjusts half-life."""
         now = datetime.now(UTC)
         one_week_ago = now - timedelta(days=7)
 
-        # High decay (news): half-life ~7 days
         score_high = compute_recency_score(one_week_ago, decay_rate=0.10)
-
-        # Low decay (science): half-life ~346 days
         score_low = compute_recency_score(one_week_ago, decay_rate=0.002)
 
         assert score_low > score_high
-        assert score_high < 0.6  # ~0.50
-        assert score_low > 0.98  # ~0.986
+        assert score_high < 0.6
+        assert score_low > 0.98
 
     def test_none_returns_default(self):
         """None datetime returns default score."""
@@ -789,7 +596,6 @@ class TestComputeRecencyScore:
         """Naive datetime (no timezone) is handled correctly."""
         naive_dt = datetime.now()
         score = compute_recency_score(naive_dt)
-        # Should still return a valid score close to 1.0
         assert 0.9 < score <= 1.0
 
 
@@ -817,14 +623,8 @@ class TestMultiSignalRank:
 
         ranked = multi_signal_rank(results)
 
-        # Both should have final_score
         assert all("final_score" in r for r in ranked)
-
-        # High semantic (0.9) vs High confidence+recency (0.95, recent)
-        # First belief: 0.50×0.9 + 0.35×0.5 + 0.15×0.74 = 0.45 + 0.175 + 0.11 = 0.735
-        # Second belief: 0.50×0.7 + 0.35×0.95 + 0.15×1.0 = 0.35 + 0.333 + 0.15 = 0.833
-        # Second should rank higher with default weights
-        assert ranked[0]["similarity"] == 0.7  # High confidence wins
+        assert ranked[0]["similarity"] == 0.7
 
     def test_high_recency_weight(self):
         """High recency weight prefers newer beliefs."""
@@ -835,20 +635,17 @@ class TestMultiSignalRank:
                 "id": uuid4(),
                 "similarity": 0.95,
                 "confidence": {"overall": 0.9},
-                "created_at": now - timedelta(days=60),  # Old but great
+                "created_at": now - timedelta(days=60),
             },
             {
                 "id": uuid4(),
                 "similarity": 0.7,
                 "confidence": {"overall": 0.7},
-                "created_at": now,  # New
+                "created_at": now,
             },
         ]
 
-        # With high recency weight
         ranked = multi_signal_rank(results, recency_weight=0.5)
-
-        # New belief should rank first with high recency weight
         assert ranked[0]["created_at"] == now
 
     def test_min_confidence_filter(self):
@@ -871,8 +668,6 @@ class TestMultiSignalRank:
         ]
 
         ranked = multi_signal_rank(results, min_confidence=0.5)
-
-        # Only high-confidence belief should remain
         assert len(ranked) == 1
         assert ranked[0]["confidence"]["overall"] == 0.8
 
@@ -900,12 +695,10 @@ class TestMultiSignalRank:
         assert "recency" in bd
         assert "final" in bd
 
-        # Verify breakdown structure
         assert "value" in bd["semantic"]
         assert "weight" in bd["semantic"]
         assert "contribution" in bd["semantic"]
 
-        # Contributions should sum to final
         total = bd["semantic"]["contribution"] + bd["confidence"]["contribution"] + bd["recency"]["contribution"]
         assert abs(total - bd["final"]) < 0.001
 
@@ -922,7 +715,6 @@ class TestMultiSignalRank:
             },
         ]
 
-        # Pass non-normalized weights
         ranked = multi_signal_rank(
             results,
             semantic_weight=1.0,
@@ -932,8 +724,6 @@ class TestMultiSignalRank:
         )
 
         bd = ranked[0]["score_breakdown"]
-
-        # Each weight should be 1/3 after normalization
         assert abs(bd["semantic"]["weight"] - 0.333) < 0.01
         assert abs(bd["confidence"]["weight"] - 0.333) < 0.01
         assert abs(bd["recency"]["weight"] - 0.333) < 0.01
@@ -948,28 +738,12 @@ class TestMultiSignalRank:
         now = datetime.now(UTC)
 
         results = [
-            {
-                "id": uuid4(),
-                "similarity": 0.5,
-                "confidence": {"overall": 0.5},
-                "created_at": now,
-            },
-            {
-                "id": uuid4(),
-                "similarity": 0.9,
-                "confidence": {"overall": 0.9},
-                "created_at": now,
-            },
-            {
-                "id": uuid4(),
-                "similarity": 0.7,
-                "confidence": {"overall": 0.7},
-                "created_at": now,
-            },
+            {"id": uuid4(), "similarity": 0.5, "confidence": {"overall": 0.5}, "created_at": now},
+            {"id": uuid4(), "similarity": 0.9, "confidence": {"overall": 0.9}, "created_at": now},
+            {"id": uuid4(), "similarity": 0.7, "confidence": {"overall": 0.7}, "created_at": now},
         ]
 
         ranked = multi_signal_rank(results)
-
         scores = [r["final_score"] for r in ranked]
         assert scores == sorted(scores, reverse=True)
 
@@ -1007,118 +781,6 @@ class TestQueryMultiSignalArgs:
         """Default values for multi-signal args."""
         parser = app()
         args = parser.parse_args(["query", "test"])
-        assert args.recency_weight == 0.15
+        assert args.recency_weight is None
         assert args.min_confidence is None
         assert args.explain is False
-
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_query_with_explain_output(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Query with --explain shows score breakdown."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536
-
-        now = datetime.now(UTC)
-
-        mock_cur.fetchall.return_value = [
-            {
-                "id": uuid4(),
-                "content": "Test belief content",
-                "confidence": {"overall": 0.85},
-                "domain_path": [],
-                "created_at": now,
-                "extraction_method": "observation",
-                "supersedes_id": None,
-                "confidence_source": None,
-                "confidence_method": None,
-                "confidence_consistency": None,
-                "confidence_freshness": None,
-                "confidence_corroboration": None,
-                "confidence_applicability": None,
-                "similarity": 0.9,
-                "derivation_type": "observation",
-                "method_description": None,
-                "confidence_rationale": None,
-                "derivation_sources": None,
-            }
-        ]
-
-        parser = app()
-        args = parser.parse_args(["query", "test", "--explain"])
-        result = cmd_query(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-
-        # Should show score breakdown
-        assert "Score Breakdown" in captured.out
-        assert "Semantic:" in captured.out
-        assert "Confidence:" in captured.out
-        assert "Recency:" in captured.out
-
-    @patch("valence.cli.commands.beliefs.get_db_connection")
-    @patch("valence.cli.commands.beliefs.get_embedding")
-    def test_query_min_confidence_filters(self, mock_embed, mock_get_conn, mock_db, capsys):
-        """Query with --min-confidence filters low confidence beliefs."""
-        mock_conn, mock_cur = mock_db
-        mock_get_conn.return_value = mock_conn
-        mock_embed.return_value = [0.1] * 1536
-
-        now = datetime.now(UTC)
-
-        # Return two beliefs, one below threshold
-        mock_cur.fetchall.return_value = [
-            {
-                "id": uuid4(),
-                "content": "Low confidence belief",
-                "confidence": {"overall": 0.3},
-                "domain_path": [],
-                "created_at": now,
-                "extraction_method": "hearsay",
-                "supersedes_id": None,
-                "confidence_source": None,
-                "confidence_method": None,
-                "confidence_consistency": None,
-                "confidence_freshness": None,
-                "confidence_corroboration": None,
-                "confidence_applicability": None,
-                "similarity": 0.95,
-                "derivation_type": "hearsay",
-                "method_description": None,
-                "confidence_rationale": None,
-                "derivation_sources": None,
-            },
-            {
-                "id": uuid4(),
-                "content": "High confidence belief",
-                "confidence": {"overall": 0.9},
-                "domain_path": [],
-                "created_at": now,
-                "extraction_method": "observation",
-                "supersedes_id": None,
-                "confidence_source": None,
-                "confidence_method": None,
-                "confidence_consistency": None,
-                "confidence_freshness": None,
-                "confidence_corroboration": None,
-                "confidence_applicability": None,
-                "similarity": 0.8,
-                "derivation_type": "observation",
-                "method_description": None,
-                "confidence_rationale": None,
-                "derivation_sources": None,
-            },
-        ]
-
-        parser = app()
-        args = parser.parse_args(["query", "test", "--min-confidence", "0.5"])
-        result = cmd_query(args)
-
-        assert result == 0
-        captured = capsys.readouterr()
-
-        # Should only show high confidence belief
-        assert "High confidence belief" in captured.out
-        assert "Low confidence belief" not in captured.out
-        assert "Found 1 belief" in captured.out

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import logging
 
-from ..utils import get_db_connection
-
-logger = logging.getLogger(__name__)
+from ..config import get_cli_config
+from ..http_client import ValenceAPIError, ValenceConnectionError, get_client
+from ..output import output_error, output_result
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -17,57 +16,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
 
 def cmd_stats(args: argparse.Namespace) -> int:
-    """Show database statistics."""
-    conn = None
-    cur = None
+    """Show database statistics via REST API."""
+    config = get_cli_config()
+    params: dict = {"output": config.output}
+
+    client = get_client()
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute("SELECT COUNT(*) as total FROM beliefs")
-        total = cur.fetchone()["total"]
-
-        cur.execute("SELECT COUNT(*) as active FROM beliefs WHERE status = 'active' AND superseded_by_id IS NULL")
-        active = cur.fetchone()["active"]
-
-        cur.execute("SELECT COUNT(*) as with_emb FROM beliefs WHERE embedding IS NOT NULL")
-        with_embedding = cur.fetchone()["with_emb"]
-
-        cur.execute("SELECT COUNT(*) as tensions FROM tensions WHERE status = 'detected'")
-        tensions = cur.fetchone()["tensions"]
-
-        try:
-            cur.execute("SELECT COUNT(DISTINCT d) as count FROM beliefs, LATERAL unnest(domain_path) as d")
-            domains = cur.fetchone()["count"]
-        except (Exception,) as e:
-            logger.debug(f"Could not count domains (column may not exist): {e}")
-            domains = 0
-
-        # Count federated beliefs
-        try:
-            cur.execute("SELECT COUNT(*) as federated FROM beliefs WHERE is_local = FALSE")
-            federated = cur.fetchone()["federated"]
-        except (Exception,) as e:
-            logger.debug(f"Could not count federated beliefs (column may not exist): {e}")
-            federated = 0
-
-        print("📊 Valence Statistics")
-        print("─" * 30)
-        print(f"  Total beliefs:      {total}")
-        print(f"  Active beliefs:     {active}")
-        print(f"  Local beliefs:      {active - federated}")
-        print(f"  Federated beliefs:  {federated}")
-        print(f"  With embeddings:    {with_embedding}")
-        print(f"  Unique domains:     {domains}")
-        print(f"  Unresolved tensions:{tensions}")
-
+        result = client.get("/stats", params=params)
+        output_result(result)
         return 0
-
-    except Exception as e:
-        print(f"❌ Stats failed: {e}")
+    except ValenceConnectionError as e:
+        output_error(str(e))
         return 1
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
+    except ValenceAPIError as e:
+        output_error(e.message)
+        return 1

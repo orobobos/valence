@@ -272,20 +272,20 @@ class TestCompactExchanges:
 class TestCmdMaintenanceCompact:
     """Test --compact CLI flag."""
 
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_compact_flag(self, mock_conn_fn):
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_compact_flag(self, mock_get_client):
         from valence.cli.commands.maintenance import cmd_maintenance
 
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
-        mock_cur.fetchall.return_value = []  # No candidates
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "results": [], "count": 0, "dry_run": False}
+        mock_get_client.return_value = mock_client
 
         args = argparse.Namespace(
             run_all=False, retention=False, archive=False,
             tombstones=False, compact=True, views=False, vacuum=False,
-            dry_run=False, output_json=False,
+            dry_run=False,
         )
         result = cmd_maintenance(args)
         assert result == 0
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["compact"] is True
