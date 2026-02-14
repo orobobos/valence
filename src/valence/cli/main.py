@@ -33,7 +33,6 @@ from .commands import (
     cmd_list,
     cmd_maintenance,
     cmd_migrate,
-    cmd_migrate_visibility,
     cmd_peer,
     cmd_peer_add,
     cmd_peer_list,
@@ -47,13 +46,12 @@ from .commands import (
     cmd_trust,
     register_identity_commands,
 )
+from .config import CLIConfig, set_cli_config
 from .utils import (
     compute_confidence_score,
     compute_recency_score,
     format_age,
     format_confidence,
-    get_db_connection,
-    get_embedding,
     multi_signal_rank,
 )
 
@@ -71,7 +69,6 @@ __all__ = [
     "cmd_list",
     "cmd_maintenance",
     "cmd_migrate",
-    "cmd_migrate_visibility",
     "cmd_peer",
     "cmd_peer_add",
     "cmd_peer_list",
@@ -87,8 +84,6 @@ __all__ = [
     "compute_recency_score",
     "format_age",
     "format_confidence",
-    "get_db_connection",
-    "get_embedding",
     "main",
     "multi_signal_rank",
     "register_identity_commands",
@@ -119,25 +114,33 @@ def app() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  valence init                            Initialize database
-  valence add "Fact here" -d tech         Add belief with domain
   valence query "search terms"            Search beliefs
-  valence query "terms" --scope federated Include peer beliefs
+  valence add "Fact here" -d tech         Add belief with domain
   valence list -n 20                      List recent beliefs
-  valence conflicts                       Detect contradictions
   valence stats                           Show statistics
+  valence conflicts                       Detect contradictions
+
+  valence --json stats                    Output as JSON
+  valence --server http://host:8420 query Search remote server
 
 Network:
   valence discover                        Discover network routers
   valence discover --seed <url>           Use custom seed
 
-Federation (Week 2):
+Federation:
   valence peer add <did> --trust 0.8      Add trusted peer
   valence peer list                       Show trusted peers
   valence export --to <did> -o file.json  Export beliefs for peer
   valence import file.json --from <did>   Import from peer
         """,
     )
+
+    # Global flags for REST client mode
+    parser.add_argument("--server", metavar="URL", help="Server URL (env: VALENCE_SERVER_URL, default: http://127.0.0.1:8420)")
+    parser.add_argument("--token", metavar="TOKEN", help="Auth token (env: VALENCE_TOKEN)")
+    parser.add_argument("--output", choices=["json", "text", "table"], help="Output format (env: VALENCE_OUTPUT, default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="output", help="Shorthand for --output json")
+    parser.add_argument("--timeout", type=float, metavar="SECS", help="Request timeout in seconds (default: 30)")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -152,6 +155,15 @@ def main() -> int:
     """Main entry point."""
     parser = app()
     args = parser.parse_args()
+
+    # Initialize CLI config from global flags (overrides env and file)
+    config = CLIConfig.load(
+        server_url=getattr(args, "server", None),
+        token=getattr(args, "token", None),
+        output=getattr(args, "output", None),
+        timeout=getattr(args, "timeout", None),
+    )
+    set_cli_config(config)
 
     # Dispatch via the func default set by each command's register()
     handler = getattr(args, "func", None)

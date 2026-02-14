@@ -1,29 +1,34 @@
 """Tests for unified maintenance CLI (#363).
 
 Tests cover:
-1. Argument parsing: --retention, --archive, --tombstones, --views, --vacuum, --all, --dry-run, --json
+1. Argument parsing: --retention, --archive, --tombstones, --views, --vacuum, --all, --dry-run
 2. No-op when no flags given (prints help, returns 1)
-3. Individual operations dispatch correctly
-4. --all runs full maintenance
-5. --dry-run skips vacuum and views
-6. --json produces valid JSON output
-7. refresh_views function
+3. REST client calls to server
+4. refresh_views function (core module, not CLI)
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from valence.cli.commands.maintenance import cmd_maintenance
-from valence.core.maintenance import MaintenanceResult, refresh_views
+from valence.core.maintenance import refresh_views
+
+
+@pytest.fixture(autouse=True)
+def _reset_config():
+    """Reset CLI config singleton for each test."""
+    from valence.cli.config import reset_cli_config
+    reset_cli_config()
+    yield
+    reset_cli_config()
 
 
 class TestRefreshViews:
-    """Test the refresh_views function."""
+    """Test the refresh_views function (core module, unchanged)."""
 
     def test_calls_stored_procedure(self):
         cur = MagicMock()
@@ -62,7 +67,7 @@ class TestCmdMaintenanceNoOp:
         args = argparse.Namespace(
             run_all=False, retention=False, archive=False,
             tombstones=False, compact=False, views=False, vacuum=False,
-            dry_run=False, output_json=False,
+            dry_run=False,
         )
         result = cmd_maintenance(args)
         assert result == 1
@@ -70,117 +75,89 @@ class TestCmdMaintenanceNoOp:
         assert "--all" in captured.out
 
 
-class TestCmdMaintenanceAll:
-    """Test --all flag."""
+class TestCmdMaintenanceREST:
+    """Test maintenance commands via REST client."""
 
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_all_calls_run_full_maintenance(self, mock_conn_fn):
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
-
-        mock_cur.fetchone.side_effect = [
-            {"archived_count": 5, "freed_embeddings": 3},
-            {"count": 1},
-        ]
-        # fetchall: retention, compaction candidates, refresh_views
-        mock_cur.fetchall.side_effect = [
-            [{"table_name": "belief_retrievals", "deleted_count": 10}],
-            [],  # No compaction candidates
-            [{"view_name": "beliefs_current_mat", "refreshed": True, "error_msg": None}],
-        ]
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_all_calls_server(self, mock_get_client):
+        """--all sends POST /admin/maintenance with all=True."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "results": [], "count": 0, "dry_run": False}
+        mock_get_client.return_value = mock_client
 
         args = argparse.Namespace(
             run_all=True, retention=False, archive=False,
             tombstones=False, compact=False, views=False, vacuum=False,
-            dry_run=False, output_json=False,
+            dry_run=False,
         )
         result = cmd_maintenance(args)
         assert result == 0
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["all"] is True
 
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_all_dry_run(self, mock_conn_fn):
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_retention_only(self, mock_get_client):
+        """--retention sends retention=True."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "results": [], "count": 1, "dry_run": False}
+        mock_get_client.return_value = mock_client
 
-        mock_cur.fetchall.return_value = []  # Used for both retention and compaction
-        mock_cur.fetchone.side_effect = [
-            {"archived_count": 0, "freed_embeddings": 0},
-            {"count": 0},
-        ]
+        args = argparse.Namespace(
+            run_all=False, retention=True, archive=False,
+            tombstones=False, compact=False, views=False, vacuum=False,
+            dry_run=False,
+        )
+        result = cmd_maintenance(args)
+        assert result == 0
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["retention"] is True
+        assert "all" not in call_body
+
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_dry_run(self, mock_get_client):
+        """--dry-run passes dry_run=True."""
+        mock_client = MagicMock()
+        mock_client.post.return_value = {"success": True, "results": [], "count": 0, "dry_run": True}
+        mock_get_client.return_value = mock_client
 
         args = argparse.Namespace(
             run_all=True, retention=False, archive=False,
             tombstones=False, compact=False, views=False, vacuum=False,
-            dry_run=True, output_json=False,
+            dry_run=True,
         )
         result = cmd_maintenance(args)
         assert result == 0
+        call_body = mock_client.post.call_args[1]["body"]
+        assert call_body["dry_run"] is True
 
-
-class TestCmdMaintenanceIndividual:
-    """Test individual operation flags."""
-
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_retention_only(self, mock_conn_fn):
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
-        mock_cur.fetchall.return_value = [
-            {"table_name": "belief_retrievals", "deleted_count": 5},
-        ]
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_connection_error(self, mock_get_client):
+        """Handles connection error."""
+        from valence.cli.http_client import ValenceConnectionError
+        mock_client = MagicMock()
+        mock_client.post.side_effect = ValenceConnectionError("http://127.0.0.1:8420")
+        mock_get_client.return_value = mock_client
 
         args = argparse.Namespace(
-            run_all=False, retention=True, archive=False,
+            run_all=True, retention=False, archive=False,
             tombstones=False, compact=False, views=False, vacuum=False,
-            dry_run=False, output_json=False,
+            dry_run=False,
         )
         result = cmd_maintenance(args)
-        assert result == 0
+        assert result == 1
 
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_views_dry_run_skipped(self, mock_conn_fn, capsys):
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
-
-        args = argparse.Namespace(
-            run_all=False, retention=False, archive=False,
-            tombstones=False, compact=False, views=True, vacuum=False,
-            dry_run=True, output_json=False,
-        )
-        result = cmd_maintenance(args)
-        assert result == 0
-        captured = capsys.readouterr()
-        assert "dry run" in captured.out.lower()
-
-
-class TestCmdMaintenanceJsonOutput:
-    """Test --json output."""
-
-    @patch("valence.cli.commands.maintenance.get_db_connection")
-    def test_json_output(self, mock_conn_fn, capsys):
-        mock_conn = MagicMock()
-        mock_conn_fn.return_value = mock_conn
-        mock_cur = MagicMock()
-        mock_conn.cursor.return_value = mock_cur
-        mock_cur.fetchall.return_value = [
-            {"table_name": "belief_retrievals", "deleted_count": 10},
-        ]
+    @patch("valence.cli.commands.maintenance.get_client")
+    def test_api_error(self, mock_get_client):
+        """Handles API error."""
+        from valence.cli.http_client import ValenceAPIError
+        mock_client = MagicMock()
+        mock_client.post.side_effect = ValenceAPIError(403, "FORBIDDEN", "Insufficient scope")
+        mock_get_client.return_value = mock_client
 
         args = argparse.Namespace(
-            run_all=False, retention=True, archive=False,
+            run_all=True, retention=False, archive=False,
             tombstones=False, compact=False, views=False, vacuum=False,
-            dry_run=False, output_json=True,
+            dry_run=False,
         )
         result = cmd_maintenance(args)
-        assert result == 0
-        captured = capsys.readouterr()
-        parsed = json.loads(captured.out)
-        assert isinstance(parsed, list)
-        assert parsed[0]["operation"] == "retention"
+        assert result == 1

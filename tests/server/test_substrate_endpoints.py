@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from starlette.applications import Starlette
@@ -17,8 +17,10 @@ from valence.server.substrate_endpoints import (
     beliefs_list_endpoint,
     beliefs_search_endpoint,
     beliefs_supersede_endpoint,
+    conflicts_endpoint,
     entities_get_endpoint,
     entities_list_endpoint,
+    stats_endpoint,
     tensions_list_endpoint,
     tensions_resolve_endpoint,
     trust_check_endpoint,
@@ -33,6 +35,7 @@ def app():
         Route("/api/v1/beliefs", beliefs_list_endpoint, methods=["GET"]),
         Route("/api/v1/beliefs", beliefs_create_endpoint, methods=["POST"]),
         Route("/api/v1/beliefs/search", beliefs_search_endpoint, methods=["GET"]),
+        Route("/api/v1/beliefs/conflicts", conflicts_endpoint, methods=["GET"]),
         Route("/api/v1/beliefs/{belief_id}", beliefs_get_endpoint, methods=["GET"]),
         Route("/api/v1/beliefs/{belief_id}/supersede", beliefs_supersede_endpoint, methods=["POST"]),
         Route("/api/v1/beliefs/{belief_id}/confidence", beliefs_confidence_endpoint, methods=["GET"]),
@@ -41,6 +44,7 @@ def app():
         Route("/api/v1/tensions", tensions_list_endpoint, methods=["GET"]),
         Route("/api/v1/tensions/{id}/resolve", tensions_resolve_endpoint, methods=["POST"]),
         Route("/api/v1/trust", trust_check_endpoint, methods=["GET"]),
+        Route("/api/v1/stats", stats_endpoint, methods=["GET"]),
     ]
     return Starlette(routes=routes)
 
@@ -277,4 +281,83 @@ class TestTrustCheckEndpoint:
     def test_happy_path(self, mock_check, client):
         mock_check.return_value = {"success": True, "trusted_entities": []}
         resp = client.get("/api/v1/trust", params={"topic": "python"})
+        assert resp.status_code == 200
+
+
+# =============================================================================
+# STATS
+# =============================================================================
+
+
+def _mock_cursor():
+    """Create a mock cursor context manager."""
+    mock_cur = MagicMock()
+    mock_cm = MagicMock()
+    mock_cm.__enter__ = MagicMock(return_value=mock_cur)
+    mock_cm.__exit__ = MagicMock(return_value=False)
+    return mock_cm, mock_cur
+
+
+class TestStatsEndpoint:
+    @patch("our_db.get_cursor")
+    def test_happy_path(self, mock_gc, client):
+        mock_cm, mock_cur = _mock_cursor()
+        mock_gc.return_value = mock_cm
+        mock_cur.fetchone.side_effect = [
+            {"total": 100},
+            {"active": 80},
+            {"with_emb": 60},
+            {"tensions": 5},
+            {"count": 10},
+            {"federated": 3},
+        ]
+
+        resp = client.get("/api/v1/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["stats"]["total_beliefs"] == 100
+        assert data["stats"]["active_beliefs"] == 80
+        assert data["stats"]["with_embeddings"] == 60
+        assert data["stats"]["unresolved_tensions"] == 5
+
+    @patch("our_db.get_cursor")
+    def test_text_output(self, mock_gc, client):
+        mock_cm, mock_cur = _mock_cursor()
+        mock_gc.return_value = mock_cm
+        mock_cur.fetchone.side_effect = [
+            {"total": 10}, {"active": 8}, {"with_emb": 6},
+            {"tensions": 1}, {"count": 3}, {"federated": 0},
+        ]
+
+        resp = client.get("/api/v1/stats", params={"output": "text"})
+        assert resp.status_code == 200
+        assert "Valence Statistics" in resp.text
+
+
+# =============================================================================
+# CONFLICT DETECTION
+# =============================================================================
+
+
+class TestConflictsEndpoint:
+    @patch("our_db.get_cursor")
+    def test_no_conflicts(self, mock_gc, client):
+        mock_cm, mock_cur = _mock_cursor()
+        mock_gc.return_value = mock_cm
+        mock_cur.fetchall.return_value = []
+
+        resp = client.get("/api/v1/beliefs/conflicts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["count"] == 0
+
+    @patch("our_db.get_cursor")
+    def test_with_threshold(self, mock_gc, client):
+        mock_cm, mock_cur = _mock_cursor()
+        mock_gc.return_value = mock_cm
+        mock_cur.fetchall.return_value = []
+
+        resp = client.get("/api/v1/beliefs/conflicts", params={"threshold": "0.9"})
         assert resp.status_code == 200

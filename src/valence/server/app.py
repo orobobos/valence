@@ -26,6 +26,16 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
+from .admin_endpoints import (
+    admin_embeddings_backfill,
+    admin_embeddings_migrate,
+    admin_embeddings_status,
+    admin_maintenance,
+    admin_migrate_down,
+    admin_migrate_status,
+    admin_migrate_up,
+    admin_verify_chains,
+)
 from .auth import get_token_store, verify_token
 from .auth_helpers import AuthenticatedClient  # noqa: F401 — re-exported for backwards compat
 from .compliance_endpoints import (
@@ -76,8 +86,10 @@ from .substrate_endpoints import (
     beliefs_list_endpoint,
     beliefs_search_endpoint,
     beliefs_supersede_endpoint,
+    conflicts_endpoint,
     entities_get_endpoint,
     entities_list_endpoint,
+    stats_endpoint,
     tensions_list_endpoint,
     tensions_resolve_endpoint,
     trust_check_endpoint,
@@ -943,6 +955,7 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/beliefs", beliefs_list_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs", beliefs_create_endpoint, methods=["POST"]),
         Route(f"{API_V1}/beliefs/search", beliefs_search_endpoint, methods=["GET"]),
+        Route(f"{API_V1}/beliefs/conflicts", conflicts_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs/{{belief_id}}", beliefs_get_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs/{{belief_id}}/supersede", beliefs_supersede_endpoint, methods=["POST"]),
         Route(f"{API_V1}/beliefs/{{belief_id}}/confidence", beliefs_confidence_endpoint, methods=["GET"]),
@@ -951,6 +964,17 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/tensions", tensions_list_endpoint, methods=["GET"]),
         Route(f"{API_V1}/tensions/{{id}}/resolve", tensions_resolve_endpoint, methods=["POST"]),
         Route(f"{API_V1}/trust", trust_check_endpoint, methods=["GET"]),
+        # Stats (Issue #396)
+        Route(f"{API_V1}/stats", stats_endpoint, methods=["GET"]),
+        # Admin endpoints (Issue #396)
+        Route(f"{API_V1}/admin/migrate/status", admin_migrate_status, methods=["GET"]),
+        Route(f"{API_V1}/admin/migrate/up", admin_migrate_up, methods=["POST"]),
+        Route(f"{API_V1}/admin/migrate/down", admin_migrate_down, methods=["POST"]),
+        Route(f"{API_V1}/admin/maintenance", admin_maintenance, methods=["POST"]),
+        Route(f"{API_V1}/admin/embeddings/status", admin_embeddings_status, methods=["GET"]),
+        Route(f"{API_V1}/admin/embeddings/backfill", admin_embeddings_backfill, methods=["POST"]),
+        Route(f"{API_V1}/admin/embeddings/migrate", admin_embeddings_migrate, methods=["POST"]),
+        Route(f"{API_V1}/admin/verify-chains", admin_verify_chains, methods=["GET"]),
         # VKB REST endpoints (Issue #380)
         Route(f"{API_V1}/sessions", sessions_create_endpoint, methods=["POST"]),
         Route(f"{API_V1}/sessions", sessions_list_endpoint, methods=["GET"]),
