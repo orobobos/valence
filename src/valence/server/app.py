@@ -51,6 +51,7 @@ from .corroboration_endpoints import (
     most_corroborated_beliefs_endpoint,
 )
 from .federation_endpoints import (
+    FEDERATION_ROUTES,
     federation_status,
     vfp_node_metadata,
     vfp_trust_anchors,
@@ -935,11 +936,15 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/oauth/register", register_client, methods=["POST"]),
         Route(f"{API_V1}/oauth/authorize", authorize, methods=["GET", "POST"]),
         Route(f"{API_V1}/oauth/token", token, methods=["POST"]),
-        # Federation discovery endpoints (well-known paths, no version prefix)
-        Route("/.well-known/vfp-node-metadata", vfp_node_metadata, methods=["GET"]),
-        Route("/.well-known/vfp-trust-anchors", vfp_trust_anchors, methods=["GET"]),
-        # Federation API endpoints (versioned)
-        Route(f"{API_V1}/federation/status", federation_status, methods=["GET"]),
+        # Federation endpoints (discovery + API)
+        *[
+            Route(
+                path if path.startswith("/.well-known") else f"{API_V1}{path}",
+                handler,
+                methods=methods,
+            )
+            for path, handler, methods in FEDERATION_ROUTES
+        ],
         # Corroboration endpoints (versioned)
         Route(
             f"{API_V1}/beliefs/{{belief_id}}/corroboration",

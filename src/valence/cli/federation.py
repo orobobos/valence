@@ -2,6 +2,8 @@
 """
 Valence Federation CLI - Node management and federation operations.
 
+All commands use the Valence REST API via ValenceClient.
+
 Commands:
   valence-federation discover <endpoint>     Discover and register a remote node
   valence-federation list                    List known federation nodes
@@ -10,9 +12,8 @@ Commands:
   valence-federation sync <node_id>          Trigger sync with a node
 
 Environment Variables:
-  VALENCE_FEDERATION_PRIVATE_KEY   Ed25519 private key (hex) for request signing
-  VALENCE_FEDERATION_PUBLIC_KEY    Ed25519 public key (multibase) for DID
-  VALENCE_FEDERATION_ENDPOINT      Local federation endpoint URL
+  VALENCE_SERVER_URL    Valence server URL (default: http://127.0.0.1:8420)
+  VALENCE_AUTH_TOKEN    Authentication token
 
 Example:
   # Discover a remote node
@@ -31,165 +32,14 @@ Example:
 from __future__ import annotations
 
 import argparse
-import asyncio
-import base64
-import hashlib
 import json
 import logging
 import sys
 import time
-from typing import Any
 
-import aiohttp
+from .http_client import ValenceAPIError, ValenceClient, ValenceConnectionError, get_client
 
 logger = logging.getLogger(__name__)
-
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-
-def get_private_key() -> bytes | None:
-    """Get the Ed25519 private key from config."""
-    from ..core.config import get_config
-
-    config = get_config()
-    key_hex = config.federation_private_key
-    if key_hex:
-        return bytes.fromhex(key_hex)
-    return None
-
-
-def get_public_key_multibase() -> str | None:
-    """Get the Ed25519 public key in multibase format."""
-    from ..core.config import get_config
-
-    return get_config().federation_public_key
-
-
-def get_local_did() -> str | None:
-    """Get the local node's DID."""
-    from ..core.config import get_config
-
-    return get_config().federation_did
-
-
-# =============================================================================
-# REQUEST SIGNING (VFP Protocol)
-# =============================================================================
-
-
-def sign_request(
-    method: str,
-    path: str,
-    body: bytes,
-    private_key: bytes,
-) -> dict[str, str]:
-    """Sign a federation request per VFP protocol.
-
-    Returns headers to include in the request:
-    - X-VFP-DID: The sender's DID
-    - X-VFP-Signature: Base64-encoded Ed25519 signature
-    - X-VFP-Timestamp: Unix timestamp
-    - X-VFP-Nonce: Random nonce
-
-    The signature covers: method + path + timestamp + nonce + body_hash
-    """
-    try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    except ImportError:
-        print("Error: cryptography library required for request signing", file=sys.stderr)
-        print("Install with: pip install cryptography", file=sys.stderr)
-        sys.exit(1)
-
-    import secrets
-
-    timestamp = str(int(time.time()))
-    nonce = secrets.token_hex(16)
-    body_hash = hashlib.sha256(body).hexdigest()
-
-    # Construct message to sign
-    message = f"{method} {path} {timestamp} {nonce} {body_hash}"
-    message_bytes = message.encode("utf-8")
-
-    # Sign with Ed25519
-    private_key_obj = Ed25519PrivateKey.from_private_bytes(private_key)
-    signature = private_key_obj.sign(message_bytes)
-    signature_b64 = base64.b64encode(signature).decode("ascii")
-
-    did = get_local_did()
-
-    return {
-        "X-VFP-DID": did or "",
-        "X-VFP-Signature": signature_b64,
-        "X-VFP-Timestamp": timestamp,
-        "X-VFP-Nonce": nonce,
-    }
-
-
-# =============================================================================
-# HTTP CLIENT
-# =============================================================================
-
-
-async def federation_request(
-    method: str,
-    url: str,
-    body: dict[str, Any] | None = None,
-    sign: bool = False,
-) -> dict[str, Any]:
-    """Make a federation HTTP request.
-
-    Args:
-        method: HTTP method (GET, POST, etc.)
-        url: Full URL to request
-        body: Optional JSON body
-        sign: Whether to sign the request with VFP headers
-
-    Returns:
-        Response JSON or error dict
-    """
-    headers = {"Content-Type": "application/json"}
-    body_bytes = json.dumps(body).encode() if body else b""
-
-    if sign:
-        private_key = get_private_key()
-        if not private_key:
-            return {
-                "error": "VALENCE_FEDERATION_PRIVATE_KEY not set",
-                "hint": "Set the environment variable with your Ed25519 private key (hex)",
-            }
-
-        # Extract path from URL for signing
-        from urllib.parse import urlparse
-
-        parsed = urlparse(url)
-        path = parsed.path
-
-        vfp_headers = sign_request(method, path, body_bytes, private_key)
-        headers.update(vfp_headers)
-
-    try:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.request(
-                method,
-                url,
-                headers=headers,
-                data=body_bytes if body else None,
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    text = await response.text()
-                    return {
-                        "error": f"HTTP {response.status}",
-                        "message": text[:500],
-                    }
-    except aiohttp.ClientError as e:
-        return {"error": f"Network error: {e}"}
-    except Exception as e:
-        return {"error": str(e)}
 
 
 # =============================================================================
@@ -197,8 +47,9 @@ async def federation_request(
 # =============================================================================
 
 
-async def cmd_discover(args: argparse.Namespace) -> int:
+def cmd_discover(args: argparse.Namespace) -> int:
     """Discover and register a remote node."""
+    client = get_client()
     endpoint = args.endpoint
 
     # Normalize endpoint
@@ -206,248 +57,161 @@ async def cmd_discover(args: argparse.Namespace) -> int:
         endpoint = f"https://{endpoint}"
     endpoint = endpoint.rstrip("/")
 
-    # Fetch node metadata
-    metadata_url = f"{endpoint}/.well-known/vfp-node-metadata"
     if not args.json:
-        print(f"Discovering node at {metadata_url}...")
+        print(f"Discovering node at {endpoint}...")
 
-    result = await federation_request("GET", metadata_url)
-
-    if "error" in result:
-        print(f"❌ Discovery failed: {result['error']}", file=sys.stderr)
-        if "message" in result:
-            print(f"   {result['message']}", file=sys.stderr)
+    try:
+        result = client.post(
+            "/federation/nodes/discover",
+            body={
+                "url_or_did": endpoint,
+                "auto_register": args.register,
+            },
+        )
+    except ValenceConnectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+    except ValenceAPIError as e:
+        print(f"❌ Discovery failed: {e.message}", file=sys.stderr)
         return 1
 
-    # JSON output mode - just print and return
     if args.json:
-        print(json.dumps(result, indent=2))
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
-    # Display discovered node info (human-readable)
-    did = result.get("id", "unknown")
+    if not result.get("success"):
+        print(f"❌ Discovery failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        return 1
+
+    node = result.get("node", result)
+    did = node.get("did", "unknown")
     print(f"\n✅ Discovered node: {did}")
 
-    # Profile info
-    profile = result.get("vfp:profile", {})
-    if profile.get("name"):
-        print(f"   Name: {profile['name']}")
-    if profile.get("domains"):
-        print(f"   Domains: {', '.join(profile['domains'])}")
-
-    # Capabilities
-    capabilities = result.get("vfp:capabilities", [])
-    if capabilities:
-        print(f"   Capabilities: {', '.join(capabilities)}")
-
-    # Services
-    services = result.get("service", [])
-    for svc in services:
-        svc_type = svc.get("type", "unknown")
-        svc_endpoint = svc.get("serviceEndpoint", "")
-        print(f"   Service ({svc_type}): {svc_endpoint}")
-
-    # Verification method
-    vms = result.get("verificationMethod", [])
-    if vms:
-        print(f"   Public Key: {vms[0].get('publicKeyMultibase', 'unknown')[:20]}...")
-
-    # Register if requested
-    if args.register:
-        print("\nRegistering node...")
-        # Use the federation tools to register
-        try:
-            from our_federation.discovery import register_node
-            from our_federation.identity import DIDDocument
-
-            did_doc = DIDDocument.from_dict(result)
-            node = register_node(did_doc)
-
-            if node:
-                print(f"✅ Registered as node ID: {node.id}")
-                print(f"   Status: {node.status.value}")
-                print(f"   Trust Phase: {node.trust_phase.value}")
-            else:
-                print("⚠️  Registration failed (node may already exist)", file=sys.stderr)
-        except Exception as e:
-            print(f"❌ Registration error: {e}", file=sys.stderr)
-            return 1
+    if node.get("id"):
+        print(f"   Node ID: {node['id']}")
+    if node.get("status"):
+        print(f"   Status: {node['status']}")
 
     return 0
 
 
-async def cmd_list(args: argparse.Namespace) -> int:
+def cmd_list(args: argparse.Namespace) -> int:
     """List known federation nodes."""
+    client = get_client()
+
+    params = {"limit": args.limit}
+    if args.status:
+        params["status"] = args.status
+    if args.trust_phase:
+        params["trust_phase"] = args.trust_phase
+
     try:
-        from our_federation.tools import federation_node_list
+        result = client.get("/federation/nodes", params=params)
+    except ValenceConnectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+    except ValenceAPIError as e:
+        print(f"❌ Error: {e.message}", file=sys.stderr)
+        return 1
 
-        result = federation_node_list(
-            status=args.status,
-            trust_phase=args.trust_phase,
-            include_trust=True,
-            limit=args.limit,
-        )
+    if not result.get("success"):
+        print(f"❌ Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        return 1
 
-        if not result.get("success"):
-            print(f"❌ Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
-            return 1
+    nodes = result.get("nodes", [])
 
-        nodes = result.get("nodes", [])
-
-        if args.json:
-            print(json.dumps(result, indent=2, default=str))
-            return 0
-
-        if not nodes:
-            print("No federation nodes found.")
-            return 0
-
-        print(f"Federation Nodes ({len(nodes)}):\n")
-        print(f"{'ID':<36}  {'DID':<40}  {'Status':<12}  {'Trust':<8}  {'Phase':<12}")
-        print("-" * 120)
-
-        for entry in nodes:
-            node = entry.get("node", entry)
-            trust = entry.get("trust", {})
-
-            node_id = node.get("id", "?")[:36]
-            did = node.get("did", "?")
-            if len(did) > 40:
-                did = did[:37] + "..."
-            status = node.get("status", "?")
-            trust_score = trust.get("trust", {}).get("overall", 0) if trust else 0
-            phase = node.get("trust_phase", "?")
-
-            print(f"{node_id}  {did:<40}  {status:<12}  {trust_score:>6.1%}  {phase:<12}")
-
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
-    except ImportError:
-        print(
-            "❌ Federation libraries not installed (our-federation).",
-            file=sys.stderr,
-        )
-        print("   Install with: pip install our-federation", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        return 1
+    if not nodes:
+        print("No federation nodes found.")
+        return 0
+
+    print(f"Federation Nodes ({len(nodes)}):\n")
+    print(f"{'ID':<36}  {'DID':<40}  {'Status':<12}  {'Trust':<8}  {'Phase':<12}")
+    print("-" * 120)
+
+    for entry in nodes:
+        node = entry.get("node", entry)
+        trust = entry.get("trust", {})
+
+        node_id = node.get("id", "?")[:36]
+        did = node.get("did", "?")
+        if len(did) > 40:
+            did = did[:37] + "..."
+        status = node.get("status", "?")
+        trust_score = trust.get("trust", {}).get("overall", 0) if trust else 0
+        phase = node.get("trust_phase", "?")
+
+        print(f"{node_id}  {did:<40}  {status:<12}  {trust_score:>6.1%}  {phase:<12}")
+
+    return 0
 
 
-async def cmd_status(args: argparse.Namespace) -> int:
+def cmd_status(args: argparse.Namespace) -> int:
     """Show federation status."""
+    client = get_client()
+
     try:
-        from our_db import get_cursor
+        result = client.get("/federation/status")
+    except ValenceConnectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+    except ValenceAPIError as e:
+        print(f"❌ Error: {e.message}", file=sys.stderr)
+        return 1
 
-        # Get overall federation stats
-        with get_cursor() as cur:
-            # Node counts by status
-            cur.execute(
-                """
-                SELECT status, COUNT(*) as count
-                FROM federation_nodes
-                GROUP BY status
-            """
-            )
-            nodes_by_status = {row["status"]: row["count"] for row in cur.fetchall()}
-
-            # Total sync stats
-            cur.execute(
-                """
-                SELECT
-                    COUNT(*) as total_peers,
-                    SUM(beliefs_sent) as beliefs_sent,
-                    SUM(beliefs_received) as beliefs_received,
-                    MAX(last_sync_at) as last_sync
-                FROM sync_state
-            """
-            )
-            sync_stats = cur.fetchone()
-
-            # Belief counts
-            cur.execute(
-                """
-                SELECT
-                    COUNT(*) FILTER (WHERE is_local = TRUE) as local_beliefs,
-                    COUNT(*) FILTER (WHERE is_local = FALSE) as federated_beliefs
-                FROM beliefs
-                WHERE status = 'active'
-            """
-            )
-            belief_stats = cur.fetchone()
-
-        if args.json:
-            result = {
-                "nodes": {
-                    "total": sum(nodes_by_status.values()),
-                    "by_status": nodes_by_status,
-                },
-                "sync": {
-                    "peers": sync_stats["total_peers"] or 0,
-                    "beliefs_sent": sync_stats["beliefs_sent"] or 0,
-                    "beliefs_received": sync_stats["beliefs_received"] or 0,
-                    "last_sync": (sync_stats["last_sync"].isoformat() if sync_stats["last_sync"] else None),
-                },
-                "beliefs": {
-                    "local": belief_stats["local_beliefs"] or 0,
-                    "federated": belief_stats["federated_beliefs"] or 0,
-                },
-            }
-            print(json.dumps(result, indent=2, default=str))
-            return 0
-
-        # Human-readable output
-        print("═══════════════════════════════════════════════════════════════")
-        print("                     FEDERATION STATUS")
-        print("═══════════════════════════════════════════════════════════════\n")
-
-        total_nodes = sum(nodes_by_status.values())
-        print(f"📡 Nodes: {total_nodes} total")
-        for status, count in sorted(nodes_by_status.items()):
-            icon = {
-                "active": "🟢",
-                "discovered": "🔵",
-                "connecting": "🟡",
-                "suspended": "🟠",
-                "unreachable": "🔴",
-            }.get(status, "⚪")
-            print(f"   {icon} {status}: {count}")
-
-        print("\n🔄 Sync:")
-        print(f"   Peers: {sync_stats['total_peers'] or 0}")
-        print(f"   Beliefs sent: {sync_stats['beliefs_sent'] or 0}")
-        print(f"   Beliefs received: {sync_stats['beliefs_received'] or 0}")
-        if sync_stats["last_sync"]:
-            print(f"   Last sync: {sync_stats['last_sync']}")
-
-        print("\n📚 Beliefs:")
-        print(f"   Local: {belief_stats['local_beliefs'] or 0}")
-        print(f"   Federated: {belief_stats['federated_beliefs'] or 0}")
-
-        # Show local node identity
-        did = get_local_did()
-        pub_key = get_public_key_multibase()
-        if did or pub_key:
-            print("\n🔑 Local Identity:")
-            if did:
-                print(f"   DID: {did}")
-            if pub_key:
-                print(f"   Public Key: {pub_key[:30]}...")
-
-        print()
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
-    except ImportError as e:
-        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
-        print("   Install with: pip install our-federation our-db", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        return 1
+    # Human-readable output
+    print("═══════════════════════════════════════════════════════════════")
+    print("                     FEDERATION STATUS")
+    print("═══════════════════════════════════════════════════════════════\n")
+
+    nodes = result.get("nodes", {})
+    total_nodes = nodes.get("total", 0)
+    print(f"📡 Nodes: {total_nodes} total")
+    for status, count in sorted(nodes.get("by_status", {}).items()):
+        icon = {
+            "active": "🟢",
+            "discovered": "🔵",
+            "connecting": "🟡",
+            "suspended": "🟠",
+            "unreachable": "🔴",
+        }.get(status, "⚪")
+        print(f"   {icon} {status}: {count}")
+
+    sync = result.get("sync", {})
+    print(f"\n🔄 Sync:")
+    print(f"   Peers: {sync.get('peers', 0)}")
+    print(f"   Beliefs sent: {sync.get('beliefs_sent', 0)}")
+    print(f"   Beliefs received: {sync.get('beliefs_received', 0)}")
+    if sync.get("last_sync"):
+        print(f"   Last sync: {sync['last_sync']}")
+
+    beliefs = result.get("beliefs", {})
+    print(f"\n📚 Beliefs:")
+    print(f"   Local: {beliefs.get('local', 0)}")
+    print(f"   Federated: {beliefs.get('federated', 0)}")
+
+    identity = result.get("identity", {})
+    if identity.get("did") or identity.get("public_key"):
+        print("\n🔑 Local Identity:")
+        if identity.get("did"):
+            print(f"   DID: {identity['did']}")
+        if identity.get("public_key"):
+            print(f"   Public Key: {identity['public_key'][:30]}...")
+
+    print()
+    return 0
 
 
-async def cmd_trust(args: argparse.Namespace) -> int:
+def cmd_trust(args: argparse.Namespace) -> int:
     """Set trust level for a node."""
+    client = get_client()
     node_id = args.node_id
     level = args.level
 
@@ -458,107 +222,103 @@ async def cmd_trust(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        from our_federation.tools import (
-            federation_trust_get,
-            federation_trust_set_preference,
-        )
-
         # Get current trust first
-        current = federation_trust_get(node_id, include_details=True)
-
-        if not current.get("success"):
-            print(f"❌ Node not found: {node_id}", file=sys.stderr)
-            return 1
+        current = client.get(f"/federation/nodes/{node_id}/trust", params={"details": "true"})
 
         # Set new preference
-        result = federation_trust_set_preference(
-            node_id=node_id,
-            preference=level,
-            manual_score=args.score,
-            reason=args.reason,
-        )
-
-        if not result.get("success"):
-            print(f"❌ Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
-            return 1
-
-        if args.json:
-            print(json.dumps(result, indent=2, default=str))
-            return 0
-
-        print(f"✅ Trust preference updated for node {node_id}")
-        print(f"   Previous: {current.get('effective_trust', 0):.1%}")
-        print(f"   New level: {level}")
-        print(f"   Effective trust: {result.get('effective_trust', 0):.1%}")
+        body = {"preference": level}
+        if args.score is not None:
+            body["manual_score"] = args.score
         if args.reason:
-            print(f"   Reason: {args.reason}")
+            body["reason"] = args.reason
 
+        result = client.post(f"/federation/nodes/{node_id}/trust", body=body)
+
+    except ValenceConnectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+    except ValenceAPIError as e:
+        if e.status_code == 404:
+            print(f"❌ Node not found: {node_id}", file=sys.stderr)
+        else:
+            print(f"❌ Error: {e.message}", file=sys.stderr)
+        return 1
+
+    if not result.get("success"):
+        print(f"❌ Error: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
-    except ImportError as e:
-        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
-        print("   Install with: pip install our-federation our-db", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        return 1
+    print(f"✅ Trust preference updated for node {node_id}")
+    print(f"   Previous: {current.get('effective_trust', 0):.1%}")
+    print(f"   New level: {level}")
+    print(f"   Effective trust: {result.get('effective_trust', 0):.1%}")
+    if args.reason:
+        print(f"   Reason: {args.reason}")
+
+    return 0
 
 
-async def cmd_sync(args: argparse.Namespace) -> int:
+def cmd_sync(args: argparse.Namespace) -> int:
     """Trigger sync with a node or all active nodes."""
+    client = get_client()
+    node_id = args.node_id
+
+    if node_id:
+        print(f"Triggering sync with node {node_id}...")
+    else:
+        print("Triggering sync with all active nodes...")
+
     try:
-        from our_federation.tools import federation_sync_status, federation_sync_trigger
+        body = {"node_id": node_id} if node_id else {}
+        result = client.post("/federation/sync", body=body)
 
-        node_id = args.node_id
+    except ValenceConnectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+    except ValenceAPIError as e:
+        print(f"❌ Sync failed: {e.message}", file=sys.stderr)
+        return 1
 
-        if node_id:
-            print(f"Triggering sync with node {node_id}...")
-        else:
-            print("Triggering sync with all active nodes...")
+    if not result.get("success"):
+        print(f"❌ Sync failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        return 1
 
-        result = federation_sync_trigger(node_id=node_id)
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
 
-        if not result.get("success"):
-            print(
-                f"❌ Sync failed: {result.get('error', 'Unknown error')}",
-                file=sys.stderr,
-            )
-            return 1
+    print("✅ Sync triggered")
 
-        if args.json:
-            print(json.dumps(result, indent=2, default=str))
-            return 0
+    if result.get("queued_nodes"):
+        print(f"   Queued nodes: {result['queued_nodes']}")
+    if result.get("beliefs_queued"):
+        print(f"   Beliefs queued: {result['beliefs_queued']}")
 
-        print("✅ Sync triggered")
-
-        if result.get("queued_nodes"):
-            print(f"   Queued nodes: {result['queued_nodes']}")
-        if result.get("beliefs_queued"):
-            print(f"   Beliefs queued: {result['beliefs_queued']}")
-
-        # Show current sync status
-        if args.wait:
-            print("\nWaiting for sync to complete...")
-            # Simple polling (in production, use websockets or events)
-            for _ in range(30):  # 30 second timeout
-                await asyncio.sleep(1)
-                status = federation_sync_status(node_id=node_id)
-                syncing = any(s.get("status") == "syncing" for s in status.get("sync_states", []))
+    # Poll for completion if --wait
+    if args.wait:
+        print("\nWaiting for sync to complete...")
+        for _ in range(30):
+            time.sleep(1)
+            try:
+                params = {"node_id": node_id} if node_id else {}
+                status = client.get("/federation/sync", params=params)
+                syncing = any(
+                    s.get("status") == "syncing"
+                    for s in status.get("sync_states", [])
+                )
                 if not syncing:
                     print("✅ Sync completed")
                     break
-            else:
-                print("⚠️  Sync still in progress (timeout)")
+            except (ValenceConnectionError, ValenceAPIError):
+                pass
+        else:
+            print("⚠️  Sync still in progress (timeout)")
 
-        return 0
-
-    except ImportError as e:
-        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
-        print("   Install with: pip install our-federation our-db", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        return 1
+    return 0
 
 
 # =============================================================================
@@ -590,9 +350,8 @@ Examples:
   valence-federation sync
 
 Environment Variables:
-  VALENCE_FEDERATION_PRIVATE_KEY   Ed25519 private key (hex) for signing
-  VALENCE_FEDERATION_PUBLIC_KEY    Ed25519 public key (multibase)
-  VALENCE_FEDERATION_DID           Local node's DID
+  VALENCE_SERVER_URL    Server URL (default: http://127.0.0.1:8420)
+  VALENCE_AUTH_TOKEN    Authentication token
         """,
     )
 
@@ -607,6 +366,11 @@ Environment Variables:
         action="store_true",
         help="Verbose output",
     )
+    parser.add_argument(
+        "--server",
+        metavar="URL",
+        help="Server URL (env: VALENCE_SERVER_URL)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -614,7 +378,6 @@ Environment Variables:
     discover_parser = subparsers.add_parser(
         "discover",
         help="Discover and register a remote node",
-        description="Discover a federation node from its URL or DID and optionally register it.",
     )
     discover_parser.add_argument(
         "endpoint",
@@ -636,14 +399,13 @@ Environment Variables:
     discover_parser.add_argument(
         "--json",
         action="store_true",
-        help="Output DID document as JSON",
+        help="Output as JSON",
     )
 
     # list command
     list_parser = subparsers.add_parser(
         "list",
         help="List known federation nodes",
-        description="List all known federation nodes with their status and trust levels.",
     )
     list_parser.add_argument(
         "--status",
@@ -674,7 +436,6 @@ Environment Variables:
     status_parser = subparsers.add_parser(
         "status",
         help="Show federation status",
-        description="Show overall federation status including node counts, sync stats, and local identity.",
     )
     status_parser.add_argument(
         "--json",
@@ -686,7 +447,6 @@ Environment Variables:
     trust_parser = subparsers.add_parser(
         "trust",
         help="Set trust level for a node",
-        description="Set the trust preference for a federation node.",
     )
     trust_parser.add_argument(
         "node_id",
@@ -716,7 +476,6 @@ Environment Variables:
     sync_parser = subparsers.add_parser(
         "sync",
         help="Trigger sync with a node or all active nodes",
-        description="Trigger synchronization with federation nodes.",
     )
     sync_parser.add_argument(
         "node_id",
@@ -738,39 +497,34 @@ Environment Variables:
     return parser
 
 
-async def async_main(args: argparse.Namespace) -> int:
-    """Async main entry point."""
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.WARNING)
-
-    if args.command == "discover":
-        return await cmd_discover(args)
-    elif args.command == "list":
-        return await cmd_list(args)
-    elif args.command == "status":
-        return await cmd_status(args)
-    elif args.command == "trust":
-        return await cmd_trust(args)
-    elif args.command == "sync":
-        return await cmd_sync(args)
-    else:
-        parser = create_parser()
-        parser.print_help()
-        return 0
-
-
 def main() -> int:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.WARNING)
+
     if not args.command:
         parser.print_help()
         return 0
 
-    return asyncio.run(async_main(args))
+    commands = {
+        "discover": cmd_discover,
+        "list": cmd_list,
+        "status": cmd_status,
+        "trust": cmd_trust,
+        "sync": cmd_sync,
+    }
+
+    handler = commands.get(args.command)
+    if handler:
+        return handler(args)
+    else:
+        parser.print_help()
+        return 0
 
 
 # For CLI entry point
