@@ -24,12 +24,56 @@ Your agent understands you. Together, agents understand *everything*.
 
 ## Quick Start
 
+### Docker (recommended)
+
+```bash
+git clone https://github.com/ourochronos/valence.git
+cd valence
+docker compose up -d
+```
+
+That's it. Valence server is running at `http://localhost:8420`.
+
+### OpenClaw Plugin
+
+```bash
+openclaw plugins install @ourochronos/memory-valence
+```
+
+Then add to your OpenClaw config:
+```json
+{
+  "plugins": {
+    "slots": { "memory": "memory-valence" },
+    "entries": {
+      "memory-valence": {
+        "enabled": true,
+        "config": {
+          "serverUrl": "http://127.0.0.1:8420",
+          "autoRecall": true,
+          "autoCapture": true,
+          "sessionTracking": true,
+          "memoryMdSync": true
+        }
+      }
+    }
+  }
+}
+```
+
+### pip (manual setup)
+
 ```bash
 pip install ourochronos-valence
 
-# Initialize the database
-valence init
+# Requires PostgreSQL 16+ with pgvector
+valence-server migrate up
+valence-server
+```
 
+### CLI
+
+```bash
 # Add a belief
 valence add "The best code is code you don't have to write" \
   -d engineering/principles
@@ -48,6 +92,7 @@ pip install ourochronos-valence[p2p]
 
 ### Prerequisites
 
+- Docker (recommended), OR:
 - Python 3.11+
 - PostgreSQL 16+ with pgvector extension
 

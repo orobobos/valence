@@ -1,9 +1,9 @@
-# Docker Compose for Valence local development
+# Docker Compose for Valence
 # Usage: docker compose up -d
-# Then:  valence-mcp --health-check
+# This starts PostgreSQL + pgvector and the Valence server.
+# The server is ready at http://localhost:8420
 #
-# Optional: docker compose --profile server up -d
-# (also starts the HTTP MCP server)
+# For development (DB only): docker compose up -d postgres
 
 services:
   postgres:
@@ -29,7 +29,6 @@ services:
 
   server:
     build: .
-    profiles: ["server"]
     environment:
       VKB_DB_HOST: postgres
       VKB_DB_PORT: 5432
