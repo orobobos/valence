@@ -2,11 +2,7 @@
 
 ## Overview
 
-Valence exposes a **unified MCP server** that provides all tools in a single process. The `VALENCE_MODE` environment variable controls which tools are exposed:
-
-- **`personal`** (16 core tools) — For personal knowledge management
-- **`connected`** (+ trust/federation tools) — For connected deployments
-- **`full`** (all 25 tools, default) — Everything
+Valence exposes a **unified MCP server** that provides all tools in a single process. All tools are always available.
 
 Legacy: The individual `valence-substrate` and `valence-vkb` stdio servers are still available for backward compatibility but the unified server is the recommended approach.
 

@@ -185,7 +185,7 @@ curl -X POST http://localhost:8420/api/v1/mcp \
 
 ### MCP Tools
 
-All tools are served by the unified `valence` MCP server. `VALENCE_MODE` env var controls which tools are exposed: `personal` (16 core), `connected` (+ trust), `full` (all 58, default).
+All tools are served by the unified `valence` MCP server. All tools are always available.
 
 **Knowledge Substrate:**
 - `belief_query` - Search beliefs (supports `ranking` param with configurable weights + `explain` mode)

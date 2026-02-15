@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -47,35 +46,6 @@ server = Server("valence")
 # Combined tool list (no duplicates since substrate and VKB tool names don't overlap)
 ALL_TOOLS = SUBSTRATE_TOOLS + VKB_TOOLS
 
-# Core tools for "personal" mode (16 tools — the essentials)
-PERSONAL_TOOLS = {
-    # Substrate core
-    "belief_query", "belief_create", "belief_supersede", "belief_get",
-    "belief_search", "entity_get", "entity_search",
-    "tension_list", "tension_resolve", "confidence_explain",
-    # VKB core
-    "session_start", "session_end", "session_get", "session_list",
-    "pattern_list", "insight_extract",
-}
-
-# Connected mode adds trust/corroboration/federation/sharing tools
-CONNECTED_TOOLS = PERSONAL_TOOLS | {
-    "belief_corroboration", "trust_check",
-    "exchange_add", "exchange_list",
-    "pattern_record", "pattern_reinforce", "pattern_search",
-    "session_find_by_room", "insight_list",
-    "belief_share", "belief_shares_list", "belief_share_revoke",
-}
-
-
-def _filter_tools(mode: str) -> list:
-    """Filter tools based on VALENCE_MODE."""
-    if mode == "personal":
-        return [t for t in ALL_TOOLS if t.name in PERSONAL_TOOLS]
-    elif mode == "connected":
-        return [t for t in ALL_TOOLS if t.name in CONNECTED_TOOLS]
-    return ALL_TOOLS  # "full" or unrecognized
-
 
 # ============================================================================
 # Tool Definitions
@@ -84,9 +54,8 @@ def _filter_tools(mode: str) -> list:
 
 @server.list_tools()
 async def list_tools():
-    """List available tools based on VALENCE_MODE."""
-    mode = os.environ.get("VALENCE_MODE", "full")
-    return _filter_tools(mode)
+    """List all available tools."""
+    return ALL_TOOLS
 
 
 # ============================================================================

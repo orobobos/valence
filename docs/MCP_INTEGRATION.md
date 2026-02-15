@@ -31,8 +31,7 @@ Add Valence to your Claude Desktop configuration file:
         "VKB_DB_NAME": "valence",
         "VKB_DB_USER": "valence",
         "VKB_DB_PASSWORD": "your-password",
-        "OPENAI_API_KEY": "sk-...",
-        "VALENCE_MODE": "full"
+        "OPENAI_API_KEY": "sk-..."
       }
     }
   }

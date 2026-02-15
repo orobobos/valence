@@ -303,14 +303,13 @@ Present tensions for review and help resolve them.
         "VKB_DB_HOST": "localhost",
         "VKB_DB_NAME": "valence",
         "VKB_DB_USER": "valence",
-        "VALENCE_MODE": "full"
       }
     }
   }
 }
 ```
 
-The legacy split servers (`valence-substrate`, `valence-vkb`) are still supported but the unified server is recommended.
+All tools are available. The legacy split servers (`valence-substrate`, `valence-vkb`) are still supported but the unified server is recommended.
 
 ## Installation
 

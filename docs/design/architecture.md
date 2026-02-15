@@ -53,7 +53,7 @@ The key architectural insight is that Claude Code's session resumption, plugins,
 │  │ - confidence_explain       │                         │   │
 │  │ - belief_corroboration     │                         │   │
 │  └──────────────────────────────────────────────────────┘   │
-│  VALENCE_MODE: personal | connected | full                   │
+│  All tools available                                         │
 └─────────────────────────────────────────────────────────────┘
           │
           ▼
