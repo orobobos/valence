@@ -37,7 +37,7 @@ import logging
 import sys
 import time
 
-from .http_client import ValenceAPIError, ValenceClient, ValenceConnectionError, get_client
+from .http_client import ValenceAPIError, ValenceConnectionError, get_client
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"   {icon} {status}: {count}")
 
     sync = result.get("sync", {})
-    print(f"\n🔄 Sync:")
+    print("\n🔄 Sync:")
     print(f"   Peers: {sync.get('peers', 0)}")
     print(f"   Beliefs sent: {sync.get('beliefs_sent', 0)}")
     print(f"   Beliefs received: {sync.get('beliefs_received', 0)}")
@@ -193,7 +193,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"   Last sync: {sync['last_sync']}")
 
     beliefs = result.get("beliefs", {})
-    print(f"\n📚 Beliefs:")
+    print("\n📚 Beliefs:")
     print(f"   Local: {beliefs.get('local', 0)}")
     print(f"   Federated: {beliefs.get('federated', 0)}")
 

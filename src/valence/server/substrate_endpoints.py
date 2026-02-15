@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse
 from .auth_helpers import authenticate, require_scope
 from .endpoint_utils import _parse_bool, _parse_float, _parse_int, format_response, parse_output_format
 from .errors import internal_error, invalid_json_error, missing_field_error, validation_error
-from .formatters import format_beliefs_list_text, format_conflicts_text, format_stats_text
+from .formatters import format_conflicts_text, format_stats_text
 
 logger = logging.getLogger(__name__)
 

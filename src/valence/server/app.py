@@ -50,12 +50,7 @@ from .corroboration_endpoints import (
     belief_corroboration_endpoint,
     most_corroborated_beliefs_endpoint,
 )
-from .federation_endpoints import (
-    FEDERATION_ROUTES,
-    federation_status,
-    vfp_node_metadata,
-    vfp_trust_anchors,
-)
+from .federation_endpoints import FEDERATION_ROUTES
 from .metrics import MetricsMiddleware, metrics_endpoint
 from .notification_endpoints import (
     acknowledge_notification_endpoint,
