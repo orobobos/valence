@@ -324,9 +324,10 @@ async def cmd_list(args: argparse.Namespace) -> int:
 
     except ImportError:
         print(
-            "❌ Federation module not available. Is the database configured?",
+            "❌ Federation libraries not installed (our-federation).",
             file=sys.stderr,
         )
+        print("   Install with: pip install our-federation", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
@@ -436,6 +437,10 @@ async def cmd_status(args: argparse.Namespace) -> int:
         print()
         return 0
 
+    except ImportError as e:
+        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
+        print("   Install with: pip install our-federation our-db", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
         return 1
@@ -490,6 +495,10 @@ async def cmd_trust(args: argparse.Namespace) -> int:
 
         return 0
 
+    except ImportError as e:
+        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
+        print("   Install with: pip install our-federation our-db", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
         return 1
@@ -543,6 +552,10 @@ async def cmd_sync(args: argparse.Namespace) -> int:
 
         return 0
 
+    except ImportError as e:
+        print(f"❌ Federation libraries not installed: {e}", file=sys.stderr)
+        print("   Install with: pip install our-federation our-db", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"❌ Error: {e}", file=sys.stderr)
         return 1
