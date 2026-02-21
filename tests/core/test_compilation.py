@@ -627,7 +627,7 @@ class TestUpdateArticleFromSource:
         cur = _make_cursor(fetchone_seq=[art, src, updated])
 
         async def mock_llm(prompt, **_kw):
-            return json.dumps({"content": "Updated.", "relationship": "invented_type", "summary": "x"})
+            return json.dumps({"content": "Updated.", "relationship": "invented_type", "changes_summary": "x"})
 
         with patch("valence.core.compilation.get_cursor", return_value=cur), \
              _patch_rs(), \
@@ -691,7 +691,7 @@ class TestUpdateArticleFromSource:
         cur.execute.side_effect = track_execute
 
         async def mock_llm(prompt, **_kw):
-            return json.dumps({"content": big_content, "relationship": "confirms", "summary": "Big."})
+            return json.dumps({"content": big_content, "relationship": "confirms", "changes_summary": "Big."})
 
         tiny_rs = {"max_tokens": 10, "min_tokens": 1, "target_tokens": 5}
         with patch("valence.core.compilation.get_cursor", return_value=cur), \

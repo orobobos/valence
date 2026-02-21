@@ -142,10 +142,10 @@ def _llm_contends(
 ) -> str:
     return json.dumps(
         {
-            "contends": True,
-            "contention_type": contention_type,
+            "is_contention": True,
+            "contention_type": contention_type,  # extra field, ignored by schema
             "materiality": materiality,
-            "description": description,
+            "explanation": description,
         }
     )
 
@@ -153,10 +153,10 @@ def _llm_contends(
 def _llm_no_contention() -> str:
     return json.dumps(
         {
-            "contends": False,
-            "contention_type": "contradiction",
+            "is_contention": False,
+            "contention_type": "contradiction",  # extra field, ignored by schema
             "materiality": 0.0,
-            "description": None,
+            "explanation": None,
         }
     )
 
@@ -205,9 +205,9 @@ class TestBuildDetectionPrompt:
 
     def test_includes_json_schema_keys(self):
         prompt = _build_detection_prompt("A", "B")
-        assert "contends" in prompt
+        assert "is_contention" in prompt
         assert "materiality" in prompt
-        assert "contention_type" in prompt
+        assert "explanation" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -679,10 +679,10 @@ class TestLLMBackend:
         )
         llm_resp = json.dumps(
             {
-                "contends": True,
-                "contention_type": "total_annihilation",  # unknown type
+                "is_contention": True,
+                "contention_type": "total_annihilation",  # unknown type, extra field ignored
                 "materiality": 0.8,
-                "description": "Conflicts.",
+                "explanation": "Conflicts.",
             }
         )
         set_llm_backend(lambda _p: llm_resp)

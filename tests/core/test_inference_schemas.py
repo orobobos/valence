@@ -86,14 +86,17 @@ class TestTaskOutputSchemas:
 # ---------------------------------------------------------------------------
 
 
+_UNSET = object()
+
+
 class TestValidateCompile:
-    def _valid(self, source_relationships=None) -> dict:
+    def _valid(self, source_relationships=_UNSET) -> dict:
+        if source_relationships is _UNSET:
+            source_relationships = [{"source_id": "abc-123", "relationship": "originates"}]
         return {
             "title": "Test Article",
             "content": "Some content.",
-            "source_relationships": source_relationships or [
-                {"source_id": "abc-123", "relationship": "originates"}
-            ],
+            "source_relationships": source_relationships,
         }
 
     def test_valid_output_returns_dict(self):
@@ -552,7 +555,11 @@ class TestInferenceProviderSchemaValidation:
 
     async def test_backend_exception_sets_degraded_no_parsed(self):
         p = InferenceProvider()
-        p.configure(lambda prompt: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        def boom(prompt):
+            raise RuntimeError("boom")
+
+        p.configure(boom)
         result = await p.infer(TASK_COMPILE, "prompt")
         assert result.degraded
         assert result.parsed is None
