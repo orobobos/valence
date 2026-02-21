@@ -115,7 +115,7 @@ class TestToolDefinitions:
             "entity_search",
             "tension_list",
             "tension_resolve",
-            "belief_corroboration",
+            "belief_search",
         ]
 
         tool_names = [t.name for t in SUBSTRATE_TOOLS]

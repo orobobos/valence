@@ -15,7 +15,6 @@ from starlette.responses import JSONResponse
 from .auth import verify_token
 from .config import get_settings
 from .errors import AUTH_MISSING_TOKEN, FORBIDDEN_INSUFFICIENT_PERMISSION, auth_error, forbidden_error
-from .oauth_models import verify_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +47,7 @@ def authenticate(request: Request) -> AuthenticatedClient | JSONResponse:
     if not auth_header.startswith("Bearer "):
         return auth_error("Missing or invalid authentication token", code=AUTH_MISSING_TOKEN)
 
-    token_value = auth_header[7:]
-
-    # Try legacy Bearer token first
+    # Try legacy Bearer token
     legacy_token = verify_token(auth_header)
     if legacy_token is not None:
         return AuthenticatedClient(
@@ -59,17 +56,6 @@ def authenticate(request: Request) -> AuthenticatedClient | JSONResponse:
             scope=None,
             auth_method="bearer",
         )
-
-    # Try OAuth JWT token
-    if settings.oauth_enabled:
-        payload = verify_access_token(token_value, settings.mcp_resource_url)
-        if payload is not None:
-            return AuthenticatedClient(
-                client_id=payload.get("client_id", "unknown"),
-                user_id=payload.get("sub"),
-                scope=payload.get("scope"),
-                auth_method="oauth",
-            )
 
     return auth_error("Invalid authentication token", code=AUTH_MISSING_TOKEN)
 

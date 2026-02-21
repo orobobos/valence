@@ -25,8 +25,6 @@ import pytest
 from valence.substrate.tools import (
     SUBSTRATE_HANDLERS,
     SUBSTRATE_TOOLS,
-    _corroboration_label,
-    belief_corroboration,
     belief_create,
     belief_get,
     belief_query,
@@ -164,7 +162,6 @@ class TestToolDefinitions:
         assert "entity_search" in tool_names
         assert "tension_list" in tool_names
         assert "tension_resolve" in tool_names
-        assert "belief_corroboration" in tool_names
 
     def test_handlers_map(self):
         """Test that all tools have handlers."""
@@ -716,96 +713,3 @@ class TestTensionResolve:
         assert "not found" in result["error"]
 
 
-# =============================================================================
-# BELIEF CORROBORATION TESTS
-# =============================================================================
-
-
-class TestBeliefCorroboration:
-    """Tests for belief_corroboration function."""
-
-    def test_belief_corroboration_success(self, mock_get_cursor):
-        """Test getting corroboration details."""
-        belief_id = uuid4()
-
-        with patch("our_federation.corroboration.get_corroboration") as mock_corr:
-            mock_corr.return_value = MagicMock(
-                belief_id=belief_id,
-                corroboration_count=3,
-                confidence_corroboration=0.47,
-                sources=[{"source_did": "did:vkb:web:example.com", "similarity": 0.95}],
-            )
-
-            result = belief_corroboration(belief_id=str(belief_id))
-
-        assert result["success"] is True
-        assert result["corroboration_count"] == 3
-        assert result["confidence_label"] == "moderately corroborated"
-
-    def test_belief_corroboration_not_found(self):
-        """Test corroboration for non-existent belief."""
-        with patch("our_federation.corroboration.get_corroboration") as mock_corr:
-            mock_corr.return_value = None
-
-            result = belief_corroboration(belief_id=str(uuid4()))
-
-        assert result["success"] is False
-        assert "not found" in result["error"]
-
-    def test_belief_corroboration_invalid_uuid(self):
-        """Test with invalid UUID."""
-        result = belief_corroboration(belief_id="not-a-uuid")
-
-        assert result["success"] is False
-        assert "Invalid" in result["error"]
-
-
-class TestCorroborationLabel:
-    """Tests for _corroboration_label helper."""
-
-    def test_uncorroborated(self):
-        assert _corroboration_label(0) == "uncorroborated"
-
-    def test_single(self):
-        assert _corroboration_label(1) == "single corroboration"
-
-    def test_moderate(self):
-        assert _corroboration_label(2) == "moderately corroborated"
-        assert _corroboration_label(3) == "moderately corroborated"
-
-    def test_well(self):
-        assert _corroboration_label(4) == "well corroborated"
-        assert _corroboration_label(6) == "well corroborated"
-
-    def test_highly(self):
-        assert _corroboration_label(7) == "highly corroborated"
-        assert _corroboration_label(100) == "highly corroborated"
-
-
-# =============================================================================
-# HANDLER ROUTING TESTS
-# =============================================================================
-
-
-class TestHandleSubstrateTool:
-    """Tests for handle_substrate_tool routing function."""
-
-    def test_routes_to_correct_handler(self, mock_get_cursor, sample_belief_row):
-        """Test that tool calls are routed correctly."""
-        mock_get_cursor.fetchall.return_value = []
-
-        result = handle_substrate_tool("belief_query", {"query": "test"})
-
-        assert result["success"] is True
-
-    def test_unknown_tool(self):
-        """Test handling unknown tool name."""
-        result = handle_substrate_tool("nonexistent_tool", {})
-
-        assert result["success"] is False
-        assert "Unknown" in result["error"]
-
-    def test_all_handlers_are_callable(self):
-        """Test that all registered handlers work."""
-        for name in SUBSTRATE_HANDLERS:
-            assert callable(SUBSTRATE_HANDLERS[name])

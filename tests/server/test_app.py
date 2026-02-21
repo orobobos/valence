@@ -15,12 +15,8 @@ def reset_stores():
     import valence.server.app as app_module
     import valence.server.auth as auth_module
     import valence.server.config as config_module
-    import valence.server.oauth_models as oauth_module
 
     config_module._settings = None
-    oauth_module._client_store = None
-    oauth_module._code_store = None
-    oauth_module._refresh_store = None
     auth_module._token_store = None
     # Reset rate limits
     app_module._rate_limits.clear()
@@ -28,9 +24,6 @@ def reset_stores():
     yield
 
     config_module._settings = None
-    oauth_module._client_store = None
-    oauth_module._code_store = None
-    oauth_module._refresh_store = None
     auth_module._token_store = None
     app_module._rate_limits.clear()
 

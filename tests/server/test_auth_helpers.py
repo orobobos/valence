@@ -50,22 +50,6 @@ class TestAuthenticate:
         assert result.client_id == "test-client"
         assert result.auth_method == "bearer"
 
-    @patch("valence.server.auth_helpers.verify_access_token")
-    @patch("valence.server.auth_helpers.verify_token")
-    @patch("valence.server.auth_helpers.get_settings")
-    def test_valid_oauth_token_returns_client(self, mock_settings, mock_verify_token, mock_verify_jwt, mock_request):
-        mock_verify_token.return_value = None
-        mock_settings.return_value.oauth_enabled = True
-        mock_settings.return_value.mcp_resource_url = "http://localhost:8420"
-        mock_verify_jwt.return_value = {"client_id": "oauth-client", "sub": "user1", "scope": "substrate:read vkb:read"}
-
-        request = mock_request("Bearer eyJhbGciOiJIUzI1NiJ9.test")
-        result = authenticate(request)
-        assert isinstance(result, AuthenticatedClient)
-        assert result.client_id == "oauth-client"
-        assert result.auth_method == "oauth"
-        assert result.scope == "substrate:read vkb:read"
-
     @patch("valence.server.auth_helpers.verify_token")
     def test_invalid_token_returns_401(self, mock_verify, mock_request):
         mock_verify.return_value = None

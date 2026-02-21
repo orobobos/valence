@@ -1,25 +1,8 @@
 """Valence Core - Shared primitives for the knowledge substrate."""
 
-from .attestation_service import (
-    AttestationFilter,
-    AttestationService,
-    AttestationStats,
-    TrustSignal,
-)
 from .config import (
     clear_config_cache,
     get_config,
-)
-from .dimension_registry import (
-    DimensionRegistry,
-    DimensionSchema,
-    ValidationResult,
-)
-from .dimension_registry import (
-    get_registry as get_dimension_registry,
-)
-from .dimension_registry import (
-    reset_registry as reset_dimension_registry,
 )
 from .exceptions import (
     ConfigException,
@@ -30,26 +13,6 @@ from .exceptions import (
     NotFoundError,
     ValenceException,
     ValidationException,
-)
-from .external_sources import (
-    ContentMatchResult,
-    DOIPrefix,
-    DOIStatus,
-    DOIVerificationResult,
-    ExternalSourceConstants,
-    ExternalSourceVerification,
-    ExternalSourceVerificationService,
-    L4SourceRequirements,
-    LivenessCheckResult,
-    SourceCategory,
-    SourceLivenessStatus,
-    SourceReliabilityScore,
-    SourceVerificationStatus,
-    TrustedDomain,
-    TrustedSourceRegistry,
-    check_belief_l4_readiness,
-    get_registry,
-    verify_external_source,
 )
 from .health import (
     HealthStatus,
@@ -70,15 +33,6 @@ from .lru_cache import (
     BoundedList,
     LRUDict,
     get_cache_max_size,
-)
-from .resource_sharing import (
-    AccessResult,
-    DefaultTrustProvider,
-    InMemoryResourceStore,
-    ResourceSharingService,
-    SafetyScanResult,
-    ShareResult,
-    scan_content,
 )
 from .resources import (
     Resource,
@@ -115,17 +69,6 @@ __all__ = [
     # Config
     "get_config",
     "clear_config_cache",
-    # Attestation Service
-    "AttestationService",
-    "AttestationFilter",
-    "AttestationStats",
-    "TrustSignal",
-    # Dimension Registry
-    "DimensionSchema",
-    "DimensionRegistry",
-    "ValidationResult",
-    "get_dimension_registry",
-    "reset_dimension_registry",
     # Exceptions
     "ValenceException",
     "DatabaseException",
@@ -135,25 +78,6 @@ __all__ = [
     "ConflictError",
     "EmbeddingException",
     "MCPException",
-    # External Source Verification
-    "ExternalSourceConstants",
-    "SourceCategory",
-    "SourceVerificationStatus",
-    "DOIStatus",
-    "SourceLivenessStatus",
-    "TrustedDomain",
-    "DOIPrefix",
-    "TrustedSourceRegistry",
-    "get_registry",
-    "LivenessCheckResult",
-    "ContentMatchResult",
-    "DOIVerificationResult",
-    "SourceReliabilityScore",
-    "ExternalSourceVerification",
-    "L4SourceRequirements",
-    "ExternalSourceVerificationService",
-    "verify_external_source",
-    "check_belief_l4_readiness",
     # Health
     "HealthStatus",
     "run_health_check",
@@ -177,13 +101,6 @@ __all__ = [
     "SafetyStatus",
     "ResourceReport",
     "UsageAttestation",
-    "ResourceSharingService",
-    "InMemoryResourceStore",
-    "DefaultTrustProvider",
-    "ShareResult",
-    "AccessResult",
-    "SafetyScanResult",
-    "scan_content",
     # Temporal
     "TemporalValidity",
     # Verification Protocol

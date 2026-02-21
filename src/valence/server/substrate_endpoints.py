@@ -222,29 +222,6 @@ async def beliefs_supersede_endpoint(request: Request) -> JSONResponse:
         return internal_error()
 
 
-async def beliefs_confidence_endpoint(request: Request) -> JSONResponse:
-    """GET /api/v1/beliefs/{belief_id}/confidence — Explain confidence score."""
-    client = authenticate(request)
-    if isinstance(client, JSONResponse):
-        return client
-    if err := require_scope(client, "substrate:read"):
-        return err
-
-    belief_id = request.path_params.get("belief_id")
-    if not belief_id:
-        return missing_field_error("belief_id")
-
-    try:
-        from ..substrate.tools.confidence import confidence_explain
-
-        result = confidence_explain(belief_id=belief_id)
-        status_code = 200 if result.get("success") else 404
-        return JSONResponse(result, status_code=status_code)
-    except Exception:
-        logger.exception(f"Error explaining confidence for {belief_id}")
-        return internal_error()
-
-
 # =============================================================================
 # ENTITIES
 # =============================================================================
@@ -368,40 +345,6 @@ async def tensions_resolve_endpoint(request: Request) -> JSONResponse:
         return JSONResponse(result, status_code=status_code)
     except Exception:
         logger.exception(f"Error resolving tension {tension_id}")
-        return internal_error()
-
-
-# =============================================================================
-# TRUST
-# =============================================================================
-
-
-async def trust_check_endpoint(request: Request) -> JSONResponse:
-    """GET /api/v1/trust — Check trust levels for a topic."""
-    client = authenticate(request)
-    if isinstance(client, JSONResponse):
-        return client
-    if err := require_scope(client, "substrate:read"):
-        return err
-
-    topic = request.query_params.get("topic")
-    if not topic:
-        return missing_field_error("topic")
-
-    try:
-        from ..substrate.tools.trust import trust_check
-
-        result = trust_check(
-            topic=topic,
-            entity_name=request.query_params.get("entity_name"),
-            include_federated=_parse_bool(request.query_params.get("include_federated"), True),
-            min_trust=_parse_float(request.query_params.get("min_trust"), 0.3) or 0.3,
-            limit=_parse_int(request.query_params.get("limit"), 10, 100),
-            domain=request.query_params.get("domain"),
-        )
-        return JSONResponse(result)
-    except Exception:
-        logger.exception("Error checking trust")
         return internal_error()
 
 

@@ -11,7 +11,6 @@ from starlette.testclient import TestClient
 
 from valence.server.auth_helpers import AuthenticatedClient
 from valence.server.substrate_endpoints import (
-    beliefs_confidence_endpoint,
     beliefs_create_endpoint,
     beliefs_get_endpoint,
     beliefs_list_endpoint,
@@ -23,7 +22,6 @@ from valence.server.substrate_endpoints import (
     stats_endpoint,
     tensions_list_endpoint,
     tensions_resolve_endpoint,
-    trust_check_endpoint,
 )
 
 MOCK_CLIENT = AuthenticatedClient(client_id="test", auth_method="bearer")
@@ -38,12 +36,10 @@ def app():
         Route("/api/v1/beliefs/conflicts", conflicts_endpoint, methods=["GET"]),
         Route("/api/v1/beliefs/{belief_id}", beliefs_get_endpoint, methods=["GET"]),
         Route("/api/v1/beliefs/{belief_id}/supersede", beliefs_supersede_endpoint, methods=["POST"]),
-        Route("/api/v1/beliefs/{belief_id}/confidence", beliefs_confidence_endpoint, methods=["GET"]),
         Route("/api/v1/entities", entities_list_endpoint, methods=["GET"]),
         Route("/api/v1/entities/{id}", entities_get_endpoint, methods=["GET"]),
         Route("/api/v1/tensions", tensions_list_endpoint, methods=["GET"]),
         Route("/api/v1/tensions/{id}/resolve", tensions_resolve_endpoint, methods=["POST"]),
-        Route("/api/v1/trust", trust_check_endpoint, methods=["GET"]),
         Route("/api/v1/stats", stats_endpoint, methods=["GET"]),
     ]
     return Starlette(routes=routes)
@@ -191,14 +187,6 @@ class TestBeliefsSupersede:
         assert mock_supersede.call_args.kwargs["old_belief_id"] == "abc"
 
 
-class TestBeliefsConfidence:
-    @patch("valence.substrate.tools.confidence.confidence_explain")
-    def test_happy_path(self, mock_explain, client):
-        mock_explain.return_value = {"success": True, "overall": 0.8}
-        resp = client.get("/api/v1/beliefs/abc/confidence")
-        assert resp.status_code == 200
-
-
 # =============================================================================
 # ENTITIES
 # =============================================================================
@@ -264,23 +252,6 @@ class TestTensionsResolveEndpoint:
             "/api/v1/tensions/abc/resolve",
             json={"resolution": "A is correct", "action": "supersede_b"},
         )
-        assert resp.status_code == 200
-
-
-# =============================================================================
-# TRUST
-# =============================================================================
-
-
-class TestTrustCheckEndpoint:
-    def test_missing_topic_returns_400(self, client):
-        resp = client.get("/api/v1/trust")
-        assert resp.status_code == 400
-
-    @patch("valence.substrate.tools.trust.trust_check")
-    def test_happy_path(self, mock_check, client):
-        mock_check.return_value = {"success": True, "trusted_entities": []}
-        resp = client.get("/api/v1/trust", params={"topic": "python"})
         assert resp.status_code == 200
 
 

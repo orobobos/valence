@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${VALENCE_DB_PASSWORD:-valence}
       POSTGRES_DB: ${VALENCE_DB_NAME:-valence}
     ports:
-      - "${VALENCE_DB_PORT:-5433}:5432"
+      - "127.0.0.1:${VALENCE_DB_PORT:-5433}:5432"
     volumes:
       - valence-data:/var/lib/postgresql/data
       - ./src/valence/substrate/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -39,7 +39,7 @@ services:
       VALENCE_PORT: 8420
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
-      - "${VALENCE_PORT:-8420}:8420"
+      - "127.0.0.1:${VALENCE_PORT:-8420}:8420"
     depends_on:
       postgres:
         condition: service_healthy

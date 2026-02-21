@@ -38,45 +38,9 @@ from .admin_endpoints import (
 )
 from .auth import get_token_store, verify_token
 from .auth_helpers import AuthenticatedClient  # noqa: F401 — re-exported for backwards compat
-from .compliance_endpoints import (
-    data_access_endpoint,
-    data_export_endpoint,
-    data_import_endpoint,
-    delete_user_data_endpoint,
-    get_deletion_verification_endpoint,
-)
 from .config import get_settings
-from .corroboration_endpoints import (
-    belief_corroboration_endpoint,
-    most_corroborated_beliefs_endpoint,
-)
-from .federation_endpoints import FEDERATION_ROUTES
 from .metrics import MetricsMiddleware, metrics_endpoint
-from .notification_endpoints import (
-    acknowledge_notification_endpoint,
-    list_notifications_endpoint,
-)
-from .oauth import (
-    authorization_server_metadata,
-    authorize,
-    protected_resource_metadata,
-    register_client,
-    token,
-)
-from .oauth_models import (
-    get_client_store,
-    get_code_store,
-    get_refresh_store,
-    verify_access_token,
-)
-from .sharing_endpoints import (
-    get_share_endpoint,
-    list_shares_endpoint,
-    revoke_share_endpoint,
-    share_belief_endpoint,
-)
 from .substrate_endpoints import (
-    beliefs_confidence_endpoint,
     beliefs_create_endpoint,
     beliefs_get_endpoint,
     beliefs_list_endpoint,
@@ -88,22 +52,6 @@ from .substrate_endpoints import (
     stats_endpoint,
     tensions_list_endpoint,
     tensions_resolve_endpoint,
-    trust_check_endpoint,
-)
-from .vkb_endpoints import (
-    exchanges_add_endpoint,
-    exchanges_list_endpoint,
-    insights_extract_endpoint,
-    insights_list_endpoint,
-    patterns_create_endpoint,
-    patterns_list_endpoint,
-    patterns_reinforce_endpoint,
-    patterns_search_endpoint,
-    sessions_by_room_endpoint,
-    sessions_create_endpoint,
-    sessions_end_endpoint,
-    sessions_get_endpoint,
-    sessions_list_endpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -214,9 +162,7 @@ def _authenticate_request(request: Request) -> AuthenticatedClient | None:
     if not auth_header.startswith("Bearer "):
         return None
 
-    token_value = auth_header[7:]  # Strip "Bearer "
-
-    # Try legacy Bearer token first
+    # Try legacy Bearer token
     legacy_token = verify_token(auth_header)
     if legacy_token is not None:
         return AuthenticatedClient(
@@ -225,17 +171,6 @@ def _authenticate_request(request: Request) -> AuthenticatedClient | None:
             scope=None,
             auth_method="bearer",
         )
-
-    # Try OAuth JWT token
-    if settings.oauth_enabled:
-        payload = verify_access_token(token_value, settings.mcp_resource_url)
-        if payload is not None:
-            return AuthenticatedClient(
-                client_id=payload.get("client_id", "unknown"),
-                user_id=payload.get("sub"),
-                scope=payload.get("scope"),
-                auth_method="oauth",
-            )
 
     return None
 
@@ -875,7 +810,6 @@ async def info_endpoint(request: Request) -> JSONResponse:
     return JSONResponse(response_data)
 
 
-@asynccontextmanager
 async def _embedding_backfill_loop(interval_seconds: int = 300) -> None:
     """Periodically check for and backfill beliefs missing embeddings.
 
@@ -930,6 +864,7 @@ async def _embedding_backfill_loop(interval_seconds: int = 300) -> None:
         await asyncio.sleep(interval)
 
 
+@asynccontextmanager
 async def lifespan(app: Starlette):
     """Application lifespan handler."""
     import asyncio
@@ -940,16 +875,6 @@ async def lifespan(app: Starlette):
     # Initialize legacy token store
     get_token_store(settings.token_file)
     logger.info(f"Token store initialized from {settings.token_file}")
-
-    # Initialize OAuth stores if enabled
-    if settings.oauth_enabled:
-        get_client_store()
-        get_code_store()
-        get_refresh_store()
-        logger.info(f"OAuth stores initialized (clients file: {settings.oauth_clients_file})")
-
-        if not settings.oauth_password:
-            logger.warning("OAuth password not configured! Set VALENCE_OAUTH_PASSWORD environment variable.")
 
     # Start background embedding backfill task (#399)
     backfill_task = asyncio.create_task(_embedding_backfill_loop())
@@ -978,40 +903,6 @@ def create_app() -> Starlette:
         # OpenAPI documentation
         Route(f"{API_V1}/openapi.json", openapi_spec_endpoint, methods=["GET"]),
         Route(f"{API_V1}/docs", swagger_ui_endpoint, methods=["GET"]),
-        # OAuth 2.1 endpoints (well-known paths per RFC, no version prefix)
-        Route(
-            "/.well-known/oauth-protected-resource",
-            protected_resource_metadata,
-            methods=["GET"],
-        ),
-        Route(
-            "/.well-known/oauth-authorization-server",
-            authorization_server_metadata,
-            methods=["GET"],
-        ),
-        Route(f"{API_V1}/oauth/register", register_client, methods=["POST"]),
-        Route(f"{API_V1}/oauth/authorize", authorize, methods=["GET", "POST"]),
-        Route(f"{API_V1}/oauth/token", token, methods=["POST"]),
-        # Federation endpoints (discovery + API)
-        *[
-            Route(
-                path if path.startswith("/.well-known") else f"{API_V1}{path}",
-                handler,
-                methods=methods,
-            )
-            for path, handler, methods in FEDERATION_ROUTES
-        ],
-        # Corroboration endpoints (versioned)
-        Route(
-            f"{API_V1}/beliefs/{{belief_id}}/corroboration",
-            belief_corroboration_endpoint,
-            methods=["GET"],
-        ),
-        Route(
-            f"{API_V1}/beliefs/most-corroborated",
-            most_corroborated_beliefs_endpoint,
-            methods=["GET"],
-        ),
         # Substrate REST endpoints (Issue #381)
         Route(f"{API_V1}/beliefs", beliefs_list_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs", beliefs_create_endpoint, methods=["POST"]),
@@ -1019,12 +910,10 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/beliefs/conflicts", conflicts_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs/{{belief_id}}", beliefs_get_endpoint, methods=["GET"]),
         Route(f"{API_V1}/beliefs/{{belief_id}}/supersede", beliefs_supersede_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/beliefs/{{belief_id}}/confidence", beliefs_confidence_endpoint, methods=["GET"]),
         Route(f"{API_V1}/entities", entities_list_endpoint, methods=["GET"]),
         Route(f"{API_V1}/entities/{{id}}", entities_get_endpoint, methods=["GET"]),
         Route(f"{API_V1}/tensions", tensions_list_endpoint, methods=["GET"]),
         Route(f"{API_V1}/tensions/{{id}}/resolve", tensions_resolve_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/trust", trust_check_endpoint, methods=["GET"]),
         # Stats (Issue #396)
         Route(f"{API_V1}/stats", stats_endpoint, methods=["GET"]),
         # Admin endpoints (Issue #396)
@@ -1036,43 +925,6 @@ def create_app() -> Starlette:
         Route(f"{API_V1}/admin/embeddings/backfill", admin_embeddings_backfill, methods=["POST"]),
         Route(f"{API_V1}/admin/embeddings/migrate", admin_embeddings_migrate, methods=["POST"]),
         Route(f"{API_V1}/admin/verify-chains", admin_verify_chains, methods=["GET"]),
-        # VKB REST endpoints (Issue #380)
-        Route(f"{API_V1}/sessions", sessions_create_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/sessions", sessions_list_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/sessions/by-room/{{room_id}}", sessions_by_room_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/sessions/{{id}}", sessions_get_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/sessions/{{id}}/end", sessions_end_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/sessions/{{id}}/exchanges", exchanges_add_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/sessions/{{id}}/exchanges", exchanges_list_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/sessions/{{id}}/insights", insights_extract_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/sessions/{{id}}/insights", insights_list_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/patterns", patterns_create_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/patterns", patterns_list_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/patterns/search", patterns_search_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/patterns/{{id}}/reinforce", patterns_reinforce_endpoint, methods=["POST"]),
-        # Compliance endpoints (Issue #25: GDPR deletion)
-        Route(f"{API_V1}/users/{{id}}/data", delete_user_data_endpoint, methods=["DELETE"]),
-        Route(
-            f"{API_V1}/tombstones/{{id}}/verification",
-            get_deletion_verification_endpoint,
-            methods=["GET"],
-        ),
-        # GDPR Article 15 (data access) and Article 20 (data portability)
-        Route(f"{API_V1}/compliance/access", data_access_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/compliance/export", data_export_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/compliance/import", data_import_endpoint, methods=["POST"]),
-        # Sharing endpoints (Issue #50: share() API, Issue #54: revoke API)
-        Route(f"{API_V1}/share", share_belief_endpoint, methods=["POST"]),
-        Route(f"{API_V1}/shares", list_shares_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/shares/{{id}}", get_share_endpoint, methods=["GET"]),
-        Route(f"{API_V1}/shares/{{id}}/revoke", revoke_share_endpoint, methods=["POST"]),
-        # Notification endpoints (Issue #55: revocation propagation)
-        Route(f"{API_V1}/notifications", list_notifications_endpoint, methods=["GET"]),
-        Route(
-            f"{API_V1}/notifications/{{id}}/acknowledge",
-            acknowledge_notification_endpoint,
-            methods=["POST"],
-        ),
         # Prometheus metrics endpoint (Issue #138)
         Route("/metrics", metrics_endpoint, methods=["GET"]),
         Route(f"{API_V1}/metrics", metrics_endpoint, methods=["GET"]),
