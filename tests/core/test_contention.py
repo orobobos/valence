@@ -503,10 +503,10 @@ class TestResolveContention:
     async def test_accept_both_annotates_article(self):
         """accept_both → contention resolved, article extraction_metadata updated."""
         updated_row = _contention_row(status="resolved")
+        # accept_both branch: UPDATE articles (no fetchone call), then UPDATE contentions RETURNING
         cur = _make_cursor(
             fetchone_seq=[
                 _contention_row(),   # load contention
-                None,                 # UPDATE articles (returns nothing in this test)
                 updated_row,          # UPDATE contentions RETURNING
             ]
         )
@@ -525,13 +525,15 @@ class TestResolveContention:
         updated_article = _article_row(content="The sky is green.")
         updated_contention = _contention_row(status="resolved")
 
+        # Sequence: load contention, load article A, load source,
+        # UPDATE articles RETURNING, (INSERT mutations — no fetchone),
+        # UPDATE contentions RETURNING
         cur = _make_cursor(
             fetchone_seq=[
                 contention,           # load contention
-                article,              # load article A
+                article,              # load article A (in _apply_supersede_b)
                 source,               # load source
                 updated_article,      # UPDATE articles RETURNING
-                None,                 # article_mutations INSERT
                 updated_contention,   # UPDATE contentions RETURNING
             ]
         )
@@ -558,7 +560,6 @@ class TestResolveContention:
                 article,
                 source,
                 updated_article,
-                None,
                 updated_contention,
             ]
         )
