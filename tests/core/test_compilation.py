@@ -326,16 +326,16 @@ class TestGetRightSizing:
 class TestCompileArticle:
     async def test_empty_source_ids_returns_error(self):
         result = await compile_article([])
-        assert result["success"] is False
-        assert "source_id" in result["error"].lower()
+        assert result.success is False
+        assert "source_id" in result.error.lower()
 
     async def test_source_not_found_returns_error(self):
         cur = _make_cursor(fetchone_seq=[None])
         with patch("valence.core.compilation.get_cursor", return_value=cur), \
              _patch_rs():
             result = await compile_article([SOURCE_ID_1])
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     async def test_success_with_llm(self):
         """Successful compilation creates article and links source."""
@@ -355,8 +355,8 @@ class TestCompileArticle:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await compile_article([SOURCE_ID_1])
 
-        assert result["success"] is True
-        assert "article" in result
+        assert result.success is True
+        assert result.data is not None
         calls_str = str(cur.execute.call_args_list)
         assert "article_sources" in calls_str
 
@@ -382,7 +382,7 @@ class TestCompileArticle:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await compile_article([SOURCE_ID_1, SOURCE_ID_2])
 
-        assert result["success"] is True
+        assert result.success is True
         calls_str = str(cur.execute.call_args_list)
         assert "originates" in calls_str
         assert "confirms" in calls_str
@@ -419,7 +419,7 @@ class TestCompileArticle:
              patch.object(compilation_mod, "_call_llm", side_effect=fail_llm):
             result = await compile_article([SOURCE_ID_1], title_hint="Fallback Title")
 
-        assert result["success"] is True
+        assert result.success is True
 
     async def test_llm_fallback_on_json_error(self):
         """When LLM returns invalid JSON, falls back gracefully."""
@@ -435,7 +435,7 @@ class TestCompileArticle:
              patch.object(compilation_mod, "_call_llm", side_effect=bad_llm):
             result = await compile_article([SOURCE_ID_1])
 
-        assert result["success"] is True
+        assert result.success is True
 
     async def test_title_hint_forwarded_to_prompt(self):
         """Title hint is forwarded in the LLM prompt."""
@@ -494,7 +494,7 @@ class TestCompileArticleRightSizing:
             result = await compile_article([SOURCE_ID_1])
 
         # Compilation must succeed (split is deferred, DR-6)
-        assert result["success"] is True
+        assert result.success is True
         # Verify that a mutation_queue INSERT was issued (it's a 'split' operation)
         assert len(queued_ops) > 0
 
@@ -526,7 +526,7 @@ class TestCompileArticleRightSizing:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await compile_article([SOURCE_ID_1])
 
-        assert result["success"] is True
+        assert result.success is True
         assert len(split_queued) == 0
 
 
@@ -541,8 +541,8 @@ class TestUpdateArticleFromSource:
         with patch("valence.core.compilation.get_cursor", return_value=cur), \
              _patch_rs():
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     async def test_source_not_found(self):
         art = _article_row()
@@ -550,8 +550,8 @@ class TestUpdateArticleFromSource:
         with patch("valence.core.compilation.get_cursor", return_value=cur), \
              _patch_rs():
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     async def test_success_confirms(self):
         art = _article_row(ARTICLE_ID, "Existing content about Python.")
@@ -567,8 +567,8 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["success"] is True
-        assert result["relationship"] == "confirms"
+        assert result.success is True
+        assert result.data["relationship"] == "confirms"
 
     async def test_success_supersedes(self):
         art = _article_row(ARTICLE_ID, "Old Python 3.11 info.")
@@ -584,7 +584,7 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["relationship"] == "supersedes"
+        assert result.data["relationship"] == "supersedes"
 
     async def test_success_contradicts(self):
         art = _article_row(ARTICLE_ID, "Python is slow.")
@@ -600,7 +600,7 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["relationship"] == "contradicts"
+        assert result.data["relationship"] == "contradicts"
 
     async def test_success_contends(self):
         art = _article_row(ARTICLE_ID, "Use asyncio for concurrency.")
@@ -616,7 +616,7 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["relationship"] == "contends"
+        assert result.data["relationship"] == "contends"
 
     async def test_invalid_relationship_defaults_to_confirms(self):
         """LLM returning an invalid relationship type defaults to 'confirms'."""
@@ -633,8 +633,8 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["success"] is True
-        assert result["relationship"] == "confirms"
+        assert result.success is True
+        assert result.data["relationship"] == "confirms"
 
     async def test_llm_fallback_appends_content(self):
         """When LLM is unavailable, source content is appended."""
@@ -651,8 +651,8 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=fail_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["success"] is True
-        assert result["relationship"] == "confirms"
+        assert result.success is True
+        assert result.data["relationship"] == "confirms"
 
     async def test_records_updated_mutation(self):
         """update_article_from_source records an 'updated' mutation."""
@@ -698,7 +698,7 @@ class TestUpdateArticleFromSource:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             result = await update_article_from_source(ARTICLE_ID, SOURCE_ID_1)
 
-        assert result["success"] is True
+        assert result.success is True
         assert len(queued_splits) > 0
 
 
@@ -712,7 +712,7 @@ class TestProcessMutationQueue:
         cur = _make_cursor(fetchall_seq=[[]])
         with patch("valence.core.compilation.get_cursor", return_value=cur):
             count = await process_mutation_queue(batch_size=5)
-        assert count == 0
+        assert count.data == 0
 
     async def test_batch_size_passed_to_query(self):
         """The batch size is forwarded to the SQL LIMIT parameter."""
@@ -742,7 +742,7 @@ class TestProcessMutationQueue:
              patch.object(compilation_mod, "_call_llm", side_effect=mock_llm):
             count = await process_mutation_queue()
 
-        assert count == 1
+        assert count.data == 1
 
     async def test_recompile_no_sources_logs_warning_and_completes(self):
         """Recompile with no sources logs warning but marks item completed."""
@@ -754,7 +754,7 @@ class TestProcessMutationQueue:
              _patch_rs():
             count = await process_mutation_queue()
         # No sources → logs warning; still marks completed (no exception raised)
-        assert count == 1
+        assert count.data == 1
 
     async def test_unknown_operation_marks_failed(self):
         """Unknown operations cause item to be marked 'failed'."""
@@ -762,7 +762,7 @@ class TestProcessMutationQueue:
         cur = _make_cursor(fetchall_seq=[[item]])
         with patch("valence.core.compilation.get_cursor", return_value=cur):
             count = await process_mutation_queue()
-        assert count == 0
+        assert count.data == 0
         calls_str = str(cur.execute.call_args_list)
         assert "failed" in calls_str
 
@@ -779,7 +779,7 @@ class TestProcessMutationQueue:
         try:
             with patch("valence.core.compilation.get_cursor", return_value=cur):
                 count = await process_mutation_queue()
-            assert count == 0
+            assert count.data == 0
         finally:
             if original != "SENTINEL":
                 articles_mod.split_article = original
@@ -791,7 +791,7 @@ class TestProcessMutationQueue:
         with patch("valence.core.compilation.get_cursor", return_value=cur):
             count = await process_mutation_queue()
         # No candidate_id → logs warning, returns without raising
-        assert count == 1
+        assert count.data == 1
 
     async def test_decay_check_pinned_article_skips_eviction(self):
         """Pinned articles are skipped (no eviction), item marked completed."""
@@ -803,7 +803,7 @@ class TestProcessMutationQueue:
         )
         with patch("valence.core.compilation.get_cursor", return_value=cur):
             count = await process_mutation_queue()
-        assert count == 1
+        assert count.data == 1
 
     async def test_decay_check_above_threshold_no_eviction(self):
         """Articles above the threshold are not evicted."""
@@ -825,7 +825,7 @@ class TestProcessMutationQueue:
              patch.dict("sys.modules", {"valence.core.forgetting": mock_forgetting}):
             count = await process_mutation_queue()
 
-        assert count == 1
+        assert count.data == 1
         assert len(evict_called) == 0
 
     async def test_decay_check_low_score_triggers_eviction(self):
@@ -848,7 +848,7 @@ class TestProcessMutationQueue:
              patch.dict("sys.modules", {"valence.core.forgetting": mock_forgetting}):
             count = await process_mutation_queue()
 
-        assert count == 1
+        assert count.data == 1
 
     async def test_item_marked_completed_on_success(self):
         """Successfully processed items get status='completed' in the DB."""

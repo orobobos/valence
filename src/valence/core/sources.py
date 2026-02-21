@@ -5,6 +5,8 @@ code snippets, observations, tool outputs, and user inputs.
 
 Embedding computation is intentionally deferred to first retrieval need (WU-12).
 Duplicates are detected via SHA-256 fingerprint and rejected idempotently.
+
+WU-14: All public functions now return ValenceResponse (C12, DR-10).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from typing import Any
 
 from our_db import get_cursor
 
-from .exceptions import ConflictError, NotFoundError, ValidationException
+from .response import ValenceResponse, ok, err
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API — all return ValenceResponse (WU-14)
 # ---------------------------------------------------------------------------
 
 
@@ -84,7 +86,7 @@ async def ingest_source(
     title: str | None = None,
     url: str | None = None,
     metadata: dict | None = None,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Ingest a source into the knowledge substrate.
 
     Stores content, assigns a reliability score by source type, generates a
@@ -100,21 +102,16 @@ async def ingest_source(
         metadata: Optional JSON-serialisable metadata dict.
 
     Returns:
-        Dict with id, type, title, url, content, fingerprint, reliability,
-        metadata, created_at.
-
-    Raises:
-        ValidationException: If source_type is invalid or content is empty.
-        ConflictError: If a source with the same fingerprint already exists.
+        ValenceResponse with data = source dict on success.
+        On validation failure: success=False, error describes the problem.
+        On duplicate fingerprint: success=False, error contains existing_id.
     """
     if not content or not content.strip():
-        raise ValidationException("content must be non-empty", field="content")
+        return err("content must be non-empty")
 
     if source_type not in VALID_SOURCE_TYPES:
-        raise ValidationException(
-            f"Invalid source_type '{source_type}'. Must be one of: {', '.join(sorted(VALID_SOURCE_TYPES))}",
-            field="source_type",
-            value=source_type,
+        return err(
+            f"Invalid source_type '{source_type}'. Must be one of: {', '.join(sorted(VALID_SOURCE_TYPES))}"
         )
 
     fingerprint = _compute_fingerprint(content)
@@ -129,9 +126,9 @@ async def ingest_source(
         )
         existing = cur.fetchone()
         if existing:
-            raise ConflictError(
-                f"Source with fingerprint {fingerprint!r} already exists",
-                existing_id=str(existing["id"]),
+            existing_id = str(existing["id"])
+            return err(
+                f"Duplicate source: fingerprint {fingerprint!r} already exists (existing_id={existing_id})"
             )
 
         cur.execute(
@@ -157,20 +154,17 @@ async def ingest_source(
 
     result = _row_to_dict(row)
     logger.info("Ingested source id=%s type=%s fingerprint=%s", result["id"], source_type, fingerprint[:8])
-    return result
+    return ok(data=result)
 
 
-async def get_source(source_id: str) -> dict[str, Any]:
+async def get_source(source_id: str) -> ValenceResponse:
     """Retrieve a source by ID.
 
     Args:
         source_id: UUID string of the source.
 
     Returns:
-        Source record as a dict.
-
-    Raises:
-        NotFoundError: If no source with that ID exists.
+        ValenceResponse with data = source dict on success, or error when not found.
     """
     with get_cursor() as cur:
         cur.execute(
@@ -185,12 +179,12 @@ async def get_source(source_id: str) -> dict[str, Any]:
         row = cur.fetchone()
 
     if row is None:
-        raise NotFoundError("source", source_id)
+        return err(f"Source not found: {source_id}")
 
-    return _row_to_dict(row)
+    return ok(data=_row_to_dict(row))
 
 
-async def search_sources(query: str, limit: int = 20) -> list[dict[str, Any]]:
+async def search_sources(query: str, limit: int = 20) -> ValenceResponse:
     """Full-text search over source content via the content_tsv column.
 
     Args:
@@ -198,10 +192,11 @@ async def search_sources(query: str, limit: int = 20) -> list[dict[str, Any]]:
         limit: Maximum results to return (default 20).
 
     Returns:
-        List of source dicts ordered by relevance descending.
+        ValenceResponse with data = list of source dicts ordered by relevance.
+        Empty list when query is blank.
     """
     if not query or not query.strip():
-        return []
+        return ok(data=[])
 
     limit = max(1, min(limit, 200))
 
@@ -225,14 +220,14 @@ async def search_sources(query: str, limit: int = 20) -> list[dict[str, Any]]:
         d = _row_to_dict(dict(row))
         d["rank"] = float(row.get("rank", 0.0))
         results.append(d)
-    return results
+    return ok(data=results)
 
 
 async def list_sources(
     source_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict[str, Any]]:
+) -> ValenceResponse:
     """List sources, optionally filtered by type.
 
     Args:
@@ -241,7 +236,8 @@ async def list_sources(
         offset: Pagination offset (default 0).
 
     Returns:
-        List of source dicts ordered by created_at descending.
+        ValenceResponse with data = list of source dicts ordered by created_at
+        descending.
     """
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
@@ -272,4 +268,4 @@ async def list_sources(
             )
         rows = cur.fetchall()
 
-    return [_row_to_dict(row) for row in rows]
+    return ok(data=[_row_to_dict(row) for row in rows])

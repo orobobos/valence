@@ -41,13 +41,16 @@ def article_create(
     """
     from ...core.articles import create_article
 
-    return create_article(
+    result = _run_async(create_article(
         content=content,
         title=title,
         source_ids=source_ids,
         author_type=author_type,
         domain_path=domain_path,
-    )
+    ))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {"success": True, "article": result.data}
 
 
 def article_get(
@@ -67,7 +70,10 @@ def article_get(
     """
     from ...core.articles import get_article
 
-    return get_article(article_id=article_id, include_provenance=include_provenance)
+    result = _run_async(get_article(article_id=article_id, include_provenance=include_provenance))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {"success": True, "article": result.data}
 
 
 def article_update(
@@ -92,11 +98,14 @@ def article_update(
     """
     from ...core.articles import update_article
 
-    return update_article(
+    result = _run_async(update_article(
         article_id=article_id,
         content=content,
         source_id=source_id,
-    )
+    ))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {"success": True, "article": result.data}
 
 
 def article_search(
@@ -119,11 +128,14 @@ def article_search(
     from ...core.articles import search_articles
 
     limit = min(max(1, limit), 50)
-    results = search_articles(query=query, limit=limit, domain_filter=domain_filter)
+    result = _run_async(search_articles(query=query, limit=limit, domain_filter=domain_filter))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    articles = result.data or []
     return {
         "success": True,
-        "articles": results,
-        "total_count": len(results),
+        "articles": articles,
+        "total_count": len(articles),
     }
 
 
@@ -153,12 +165,15 @@ def provenance_link(
     """
     from ...core.provenance import link_source
 
-    return link_source(
+    result = _run_async(link_source(
         article_id=article_id,
         source_id=source_id,
         relationship=relationship,
         notes=notes,
-    )
+    ))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {"success": True, "link": result.data}
 
 
 def provenance_get(article_id: str) -> dict[str, Any]:
@@ -174,7 +189,10 @@ def provenance_get(article_id: str) -> dict[str, Any]:
     """
     from ...core.provenance import get_provenance
 
-    provenance = get_provenance(article_id=article_id)
+    result = _run_async(get_provenance(article_id=article_id))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    provenance = result.data or []
     return {
         "success": True,
         "provenance": provenance,
@@ -200,7 +218,10 @@ def provenance_trace(article_id: str, claim_text: str) -> dict[str, Any]:
     """
     from ...core.provenance import trace_claim
 
-    sources = trace_claim(article_id=article_id, claim_text=claim_text)
+    result = _run_async(trace_claim(article_id=article_id, claim_text=claim_text))
+    if not result.success:
+        return {"success": False, "error": result.error}
+    sources = result.data or []
     return {
         "success": True,
         "sources": sources,
@@ -254,7 +275,13 @@ def article_compile(
     try:
         from ...core.compilation import compile_article
 
-        return _run_async(compile_article(source_ids=source_ids, title_hint=title_hint))
+        result = _run_async(compile_article(source_ids=source_ids, title_hint=title_hint))
+        if not result.success:
+            return {"success": False, "error": result.error}
+        out: dict[str, Any] = {"success": True, "article": result.data}
+        if result.degraded:
+            out["degraded"] = True
+        return out
     except Exception as exc:
         logger.exception("article_compile failed")
         return {"success": False, "error": str(exc)}
@@ -282,11 +309,14 @@ def article_split(article_id: str) -> dict[str, Any]:
     try:
         from ...core.articles import split_article
 
-        original, new_article = split_article(article_id=article_id)
+        result = _run_async(split_article(article_id=article_id))
+        if not result.success:
+            return {"success": False, "error": result.error}
+        data = result.data or {}
         return {
             "success": True,
-            "original": original,
-            "new": new_article,
+            "original": data.get("original"),
+            "new": data.get("new"),
         }
     except Exception as exc:
         logger.exception("article_split failed for %s", article_id)
@@ -316,8 +346,10 @@ def article_merge(article_id_a: str, article_id_b: str) -> dict[str, Any]:
     try:
         from ...core.articles import merge_articles
 
-        merged = merge_articles(article_id_a=article_id_a, article_id_b=article_id_b)
-        return {"success": True, "article": merged}
+        result = _run_async(merge_articles(article_id_a=article_id_a, article_id_b=article_id_b))
+        if not result.success:
+            return {"success": False, "error": result.error}
+        return {"success": True, "article": result.data}
     except Exception as exc:
         logger.exception("article_merge failed for %s + %s", article_id_a, article_id_b)
         return {"success": False, "error": str(exc)}

@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
+from valence.core.response import ok
 
 # ---------------------------------------------------------------------------
 # Factories
@@ -93,9 +94,9 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source(SOURCE_ID)
 
-        assert result["success"] is True
-        assert result["source_id"] == SOURCE_ID
-        assert result["tombstone_created"] is True
+        assert result.success is True
+        assert result.data["source_id"] == SOURCE_ID
+        assert result.data["tombstone_created"] is True
 
         # Verify DELETE was called
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
@@ -133,9 +134,9 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source(SOURCE_ID)
 
-        assert result["success"] is True
-        assert result["affected_articles"] == 2
-        assert result["recompile_queued"] == 2
+        assert result.success is True
+        assert result.data["affected_articles"] == 2
+        assert result.data["recompile_queued"] == 2
 
         # Two mutation_queue inserts should appear
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
@@ -164,8 +165,8 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source(SOURCE_ID)
 
-        assert result["success"] is True
-        assert result["ghost_references"] == 0
+        assert result.success is True
+        assert result.data["ghost_references"] == 0
 
     @pytest.mark.asyncio
     async def test_returns_error_for_missing_source(self):
@@ -177,8 +178,8 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source(SOURCE_ID)
 
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_returns_error_for_empty_source_id(self):
@@ -189,8 +190,8 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source("")
 
-        assert result["success"] is False
-        assert "required" in result["error"].lower()
+        assert result.success is False
+        assert "required" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_works_when_source_has_no_linked_articles(self):
@@ -215,9 +216,9 @@ class TestRemoveSource:
         with _patch_cursor(cur):
             result = await remove_source(SOURCE_ID)
 
-        assert result["success"] is True
-        assert result["affected_articles"] == 0
-        assert result["recompile_queued"] == 0
+        assert result.success is True
+        assert result.data["affected_articles"] == 0
+        assert result.data["recompile_queued"] == 0
 
     @pytest.mark.asyncio
     async def test_tombstone_uses_admin_action_reason(self):
@@ -263,6 +264,7 @@ class TestRemoveArticle:
     @pytest.mark.asyncio
     async def test_deletes_article_and_creates_tombstone(self):
         """remove_article should DELETE the article and insert a tombstone."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         cur = _make_cursor_mock(
@@ -272,9 +274,9 @@ class TestRemoveArticle:
         with _patch_cursor(cur):
             result = await remove_article(ARTICLE_A_ID)
 
-        assert result["success"] is True
-        assert result["article_id"] == ARTICLE_A_ID
-        assert result["tombstone_created"] is True
+        assert result.success is True
+        assert result.data["article_id"] == ARTICLE_A_ID
+        assert result.data["tombstone_created"] is True
 
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
         assert "DELETE FROM articles" in all_sql
@@ -283,6 +285,7 @@ class TestRemoveArticle:
     @pytest.mark.asyncio
     async def test_sources_untouched_after_article_removal(self):
         """remove_article must NOT issue any DELETE against sources."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         cur = _make_cursor_mock(
@@ -298,6 +301,7 @@ class TestRemoveArticle:
     @pytest.mark.asyncio
     async def test_returns_error_for_missing_article(self):
         """remove_article should return an error when article ID doesn't exist."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         cur = _make_cursor_mock(fetchone=None)
@@ -305,24 +309,26 @@ class TestRemoveArticle:
         with _patch_cursor(cur):
             result = await remove_article(ARTICLE_A_ID)
 
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_returns_error_for_empty_article_id(self):
         """remove_article should reject an empty article_id."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         cur = _make_cursor_mock()
         with _patch_cursor(cur):
             result = await remove_article("")
 
-        assert result["success"] is False
-        assert "required" in result["error"].lower()
+        assert result.success is False
+        assert "required" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_tombstone_records_article_title(self):
         """Tombstone metadata should include the article's title."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         article_title = "My Important Article"
@@ -346,6 +352,7 @@ class TestRemoveArticle:
     @pytest.mark.asyncio
     async def test_tombstone_content_type_is_article(self):
         """Tombstone content_type must be 'article' (not 'source')."""
+        from valence.core.response import ok
         from valence.core.forgetting import remove_article
 
         cur = _make_cursor_mock(
@@ -375,6 +382,7 @@ class TestEvictLowest:
     @pytest.mark.asyncio
     async def test_does_not_evict_when_below_capacity(self):
         """evict_lowest should return [] when article count <= max_articles."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         cur = _make_cursor_mock()
@@ -396,16 +404,17 @@ class TestEvictLowest:
         with _patch_cursor(cur):
             result = await evict_lowest(count=10)
 
-        assert result == []
+        assert result.data == []
 
     @pytest.mark.asyncio
     async def test_evicts_when_over_capacity(self):
         """evict_lowest fires when article count > max_articles."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         # We'll mock remove_article to track calls
         with patch("valence.core.forgetting.remove_article", new_callable=AsyncMock) as mock_remove:
-            mock_remove.return_value = {"success": True}
+            mock_remove.return_value = ok()
 
             cur = _make_cursor_mock()
             call_index = {"n": 0}
@@ -433,16 +442,17 @@ class TestEvictLowest:
                 result = await evict_lowest(count=10)
 
         # Should evict 3 articles (returned by fetchall)
-        assert len(result) == 3
+        assert len(result.data) == 3
         assert mock_remove.call_count == 3
 
     @pytest.mark.asyncio
     async def test_evicts_only_overflow_amount(self):
         """evict_lowest caps eviction to the overflow, not the requested count."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         with patch("valence.core.forgetting.remove_article", new_callable=AsyncMock) as mock_remove:
-            mock_remove.return_value = {"success": True}
+            mock_remove.return_value = ok()
 
             cur = _make_cursor_mock()
             call_index = {"n": 0}
@@ -470,11 +480,12 @@ class TestEvictLowest:
                 result = await evict_lowest(count=10)
 
         # Only 2 should be evicted (overflow=2, not count=10)
-        assert len(result) == 2
+        assert len(result.data) == 2
 
     @pytest.mark.asyncio
     async def test_pinned_articles_excluded_from_candidates(self):
         """The SQL passed to get candidates must exclude pinned articles."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         cur = _make_cursor_mock()
@@ -499,11 +510,12 @@ class TestEvictLowest:
         # Check that the SQL for candidates includes pinned = FALSE
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
         assert "pinned" in all_sql.lower()
-        assert result == []
+        assert result.data == []
 
     @pytest.mark.asyncio
     async def test_uses_system_config_for_max_articles(self):
         """evict_lowest must read max_articles from system_config, not a hardcoded value."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         cur = _make_cursor_mock()
@@ -526,7 +538,7 @@ class TestEvictLowest:
             result = await evict_lowest(count=10)
 
         # Below capacity → no eviction
-        assert result == []
+        assert result.data == []
 
         # Verify system_config was queried
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
@@ -535,6 +547,7 @@ class TestEvictLowest:
     @pytest.mark.asyncio
     async def test_defaults_to_10000_when_no_config(self):
         """evict_lowest defaults to max_articles=10000 if system_config is missing."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         cur = _make_cursor_mock()
@@ -556,15 +569,16 @@ class TestEvictLowest:
             result = await evict_lowest(count=10)
 
         # 500 < 10000, so no eviction
-        assert result == []
+        assert result.data == []
 
     @pytest.mark.asyncio
     async def test_evicted_articles_returned_as_list_of_ids(self):
         """Return value must be a list of evicted article ID strings."""
+        from valence.core.response import ok
         from valence.core.forgetting import evict_lowest
 
         with patch("valence.core.forgetting.remove_article", new_callable=AsyncMock) as mock_remove:
-            mock_remove.return_value = {"success": True}
+            mock_remove.return_value = ok()
 
             cur = _make_cursor_mock()
             call_index = {"n": 0}
@@ -587,9 +601,9 @@ class TestEvictLowest:
             with _patch_cursor(cur):
                 result = await evict_lowest(count=5)
 
-        assert isinstance(result, list)
-        assert ARTICLE_A_ID in result
-        assert ARTICLE_B_ID in result
+        assert isinstance(result.data, list)
+        assert ARTICLE_A_ID in result.data
+        assert ARTICLE_B_ID in result.data
 
 
 # ---------------------------------------------------------------------------
@@ -626,7 +640,7 @@ class TestNoGhostReferences:
         # The ghost-check query should appear in executed SQL
         all_sql = " ".join(str(c.args[0]) for c in cur.execute.call_args_list if c.args)
         assert "article_sources" in all_sql
-        assert result["ghost_references"] == 0
+        assert result.data["ghost_references"] == 0
 
     @pytest.mark.asyncio
     async def test_remove_source_not_remove_article(self):

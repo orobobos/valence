@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Valence v2 smoke test — full ingest → query → compile → retrieve loop."""
+"""Valence v2 smoke test — full ingest → query → compile → retrieve loop.
+
+Updated for WU-14: all core functions now return ValenceResponse.
+"""
 import asyncio
 import json
 import os
@@ -47,149 +50,141 @@ async def smoke_test():
     
     # Step 1: Ingest sources
     print("\n--- Step 1: Ingest Sources ---")
-    try:
-        s1 = await sources.ingest_source(
-            content="Python is a high-level programming language created by Guido van Rossum in 1991. It emphasizes code readability and simplicity.",
-            source_type="document",
-            title="Python Overview"
-        )
-        print(f"  ✓ Source 1 ingested: {s1['id']}")
-    except Exception as e:
-        print(f"  ✗ Source 1 failed: {e}")
+    r = await sources.ingest_source(
+        content="Python is a high-level programming language created by Guido van Rossum in 1991. It emphasizes code readability and simplicity.",
+        source_type="document",
+        title="Python Overview"
+    )
+    if not r.success:
+        print(f"  ✗ Source 1 failed: {r.error}")
         return False
+    s1 = r.data
+    print(f"  ✓ Source 1 ingested: {s1['id']}")
 
-    try:
-        s2 = await sources.ingest_source(
-            content="Python was first released in 1991 and has become one of the most popular programming languages in the world, used extensively in AI and data science.",
-            source_type="web",
-            title="Python Popularity"
-        )
-        print(f"  ✓ Source 2 ingested: {s2['id']}")
-    except Exception as e:
-        print(f"  ✗ Source 2 failed: {e}")
+    r = await sources.ingest_source(
+        content="Python was first released in 1991 and has become one of the most popular programming languages in the world, used extensively in AI and data science.",
+        source_type="web",
+        title="Python Popularity"
+    )
+    if not r.success:
+        print(f"  ✗ Source 2 failed: {r.error}")
         return False
+    s2 = r.data
+    print(f"  ✓ Source 2 ingested: {s2['id']}")
 
-    try:
-        s3 = await sources.ingest_source(
-            content="JavaScript, not Python, is the most important programming language. Python is slow and unsuitable for production systems.",
-            source_type="conversation",
-            title="Controversial Take"
-        )
-        print(f"  ✓ Source 3 ingested: {s3['id']}")
-    except Exception as e:
-        print(f"  ✗ Source 3 failed: {e}")
+    r = await sources.ingest_source(
+        content="JavaScript, not Python, is the most important programming language. Python is slow and unsuitable for production systems.",
+        source_type="conversation",
+        title="Controversial Take"
+    )
+    if not r.success:
+        print(f"  ✗ Source 3 failed: {r.error}")
         return False
+    s3 = r.data
+    print(f"  ✓ Source 3 ingested: {s3['id']}")
 
     # Step 2: List sources
     print("\n--- Step 2: List Sources ---")
-    try:
-        all_sources = await sources.list_sources()
-        print(f"  ✓ {len(all_sources)} sources found")
-    except Exception as e:
-        print(f"  ✗ List failed: {e}")
+    r = await sources.list_sources()
+    if not r.success:
+        print(f"  ✗ List failed: {r.error}")
         return False
+    print(f"  ✓ {len(r.data)} sources found")
 
     # Step 3: Search sources
     print("\n--- Step 3: Search Sources ---")
-    try:
-        results = await sources.search_sources("Python programming")
-        print(f"  ✓ Search returned {len(results)} results")
-    except Exception as e:
-        print(f"  ✗ Search failed: {e}")
+    r = await sources.search_sources("Python programming")
+    if not r.success:
+        print(f"  ✗ Search failed: {r.error}")
         return False
+    print(f"  ✓ Search returned {len(r.data)} results")
 
     # Step 4: Compile article from sources
     print("\n--- Step 4: Compile Article ---")
-    try:
-        result = await compilation.compile_article(
-            source_ids=[s1['id'], s2['id']],
-            title_hint="Python Programming Language"
-        )
-        if not result.get('success'):
-            raise Exception(result.get('error', 'Unknown compilation error'))
-        article = result['article']
-        print(f"  ✓ Article compiled: {article['id']}")
-        print(f"    Title: {article.get('title', 'N/A')}")
-    except Exception as e:
-        print(f"  ✗ Compilation failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await compilation.compile_article(
+        source_ids=[s1['id'], s2['id']],
+        title_hint="Python Programming Language"
+    )
+    if not r.success:
+        print(f"  ✗ Compilation failed: {r.error}")
         return False
+    article = r.data
+    print(f"  ✓ Article compiled: {article['id']}")
+    print(f"    Title: {article.get('title', 'N/A')}")
 
     # Step 5: Get article with provenance
     print("\n--- Step 5: Get Article + Provenance ---")
-    try:
-        a = articles.get_article(article['id'], include_provenance=True)
-        print(f"  ✓ Article retrieved: {a.get('title', 'N/A')}")
-        prov = provenance.get_provenance(article['id'])
-        print(f"  ✓ Provenance: {len(prov)} sources linked")
-        for p in prov:
-            print(f"    - {p.get('relationship', '?')}: {p.get('title', p.get('source_id', '?'))}")
-    except Exception as e:
-        print(f"  ✗ Get/provenance failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await articles.get_article(article['id'], include_provenance=True)
+    if not r.success:
+        print(f"  ✗ Article get failed: {r.error}")
         return False
+    print(f"  ✓ Article retrieved: {r.data.get('title', 'N/A')}")
+
+    r2 = await provenance.get_provenance(article['id'])
+    if not r2.success:
+        print(f"  ✗ Provenance get failed: {r2.error}")
+        return False
+    prov = r2.data or []
+    print(f"  ✓ Provenance: {len(prov)} sources linked")
+    for p in prov:
+        print(f"    - {p.get('relationship', '?')}: {p.get('source_title', p.get('source_id', '?'))}")
 
     # Step 6: Retrieve (unified search)
     print("\n--- Step 6: Unified Retrieval ---")
-    try:
-        results = await retrieval.retrieve("Python programming language")
-        print(f"  ✓ Retrieval returned {len(results)} results")
-        for r in results[:3]:
-            print(f"    - [{r.get('type', '?')}] {r.get('title', 'N/A')} (score: {r.get('score', '?')})")
-    except Exception as e:
-        print(f"  ✗ Retrieval failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await retrieval.retrieve("Python programming language")
+    if not r.success:
+        print(f"  ✗ Retrieval failed: {r.error}")
         return False
+    results = r.data or []
+    print(f"  ✓ Retrieval returned {len(results)} results")
+    for item in results[:3]:
+        print(f"    - [{item.get('type', '?')}] {item.get('title', 'N/A')} (score: {item.get('final_score', '?')})")
 
     # Step 7: Update article with new source
     print("\n--- Step 7: Incremental Update ---")
-    try:
-        result = await compilation.update_article_from_source(article['id'], s3['id'])
-        if not result.get('success'):
-            raise Exception(result.get('error', 'Unknown update error'))
-        updated = result['article']
-        print(f"  ✓ Article updated, version: {updated.get('version', '?')}")
-    except Exception as e:
-        print(f"  ✗ Update failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await compilation.update_article_from_source(article['id'], s3['id'])
+    if not r.success:
+        print(f"  ✗ Update failed: {r.error}")
         return False
+    updated = r.data.get("article", {})
+    print(f"  ✓ Article updated, version: {updated.get('version', '?')}")
 
     # Step 8: Check contention
     print("\n--- Step 8: Contention Check ---")
-    try:
-        c = await contention.detect_contention(article['id'], s3['id'])
-        if c:
-            print(f"  ✓ Contention detected: materiality={c.get('materiality', '?')}")
-        else:
-            print(f"  ✓ No contention detected (below threshold)")
-    except Exception as e:
-        print(f"  ✗ Contention check failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await contention.detect_contention(article['id'], s3['id'])
+    if not r.success:
+        print(f"  ✗ Contention check failed: {r.error}")
         return False
+    if r.data:
+        print(f"  ✓ Contention detected: materiality={r.data.get('materiality', '?')}")
+    else:
+        print(f"  ✓ No contention detected (below threshold)")
 
     # Step 9: Usage scores
     print("\n--- Step 9: Usage Scores ---")
-    try:
-        count = await usage.compute_usage_scores()
-        print(f"  ✓ Usage scores computed for {count} articles")
-        candidates = await usage.get_decay_candidates(limit=5)
-        print(f"  ✓ Decay candidates: {len(candidates)}")
-    except Exception as e:
-        print(f"  ✗ Usage failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await usage.compute_usage_scores()
+    if not r.success:
+        print(f"  ✗ Usage scores failed: {r.error}")
         return False
+    print(f"  ✓ Usage scores computed for {r.data} articles")
+
+    r = await usage.get_decay_candidates(limit=5)
+    if not r.success:
+        print(f"  ✗ Decay candidates failed: {r.error}")
+        return False
+    print(f"  ✓ Decay candidates: {len(r.data)}")
 
     # Step 10: Forgetting
     print("\n--- Step 10: Source Removal ---")
-    try:
-        result = await forgetting.remove_source(s3['id'])
-        print(f"  ✓ Source removed, tombstone created")
-        remaining = await sources.list_sources()
-        print(f"  ✓ {len(remaining)} sources remain")
-    except Exception as e:
-        print(f"  ✗ Forgetting failed: {e}")
-        import traceback; traceback.print_exc()
+    r = await forgetting.remove_source(s3['id'])
+    if not r.success:
+        print(f"  ✗ Forgetting failed: {r.error}")
         return False
+    print(f"  ✓ Source removed, tombstone created")
+
+    r = await sources.list_sources()
+    if r.success:
+        print(f"  ✓ {len(r.data)} sources remain")
 
     print("\n" + "=" * 60)
     print("SMOKE TEST COMPLETE ✓")

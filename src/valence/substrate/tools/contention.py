@@ -66,8 +66,13 @@ def contention_detect(article_id: str, source_id: str) -> dict[str, Any]:
         return {"success": False, "error": "article_id and source_id are required"}
 
     try:
-        contention = _run(detect_contention(article_id, source_id))
-        return {"success": True, "contention": contention}
+        result = _run(detect_contention(article_id, source_id))
+        if hasattr(result, "success"):
+            if not result.success:
+                return {"success": False, "error": result.error}
+            return {"success": True, "contention": result.data}
+        # backward compat: result is already a dict
+        return {"success": True, "contention": result}
     except Exception as exc:
         logger.exception("contention_detect failed: %s", exc)
         return {"success": False, "error": str(exc)}
@@ -93,7 +98,13 @@ def contention_list(
     effective_status = status if status else None
 
     try:
-        contentions = _run(list_contentions(article_id=article_id, status=effective_status))
+        result = _run(list_contentions(article_id=article_id, status=effective_status))
+        if hasattr(result, "success"):
+            if not result.success:
+                return {"success": False, "error": result.error}
+            contentions = result.data or []
+        else:
+            contentions = result  # backward compat
         return {
             "success": True,
             "contentions": contentions,
@@ -139,6 +150,18 @@ def contention_resolve(
 
     try:
         result = _run(resolve_contention(contention_id, resolution, rationale or ""))
+        if hasattr(result, "success"):
+            if not result.success:
+                return {"success": False, "error": result.error}
+            data = result.data or {}
+            out: dict[str, Any] = {
+                "success": True,
+                "contention": data.get("contention"),
+            }
+            if "article" in data:
+                out["article"] = data["article"]
+            return out
+        # backward compat: result is already a dict
         return result
     except Exception as exc:
         logger.exception("contention_resolve failed: %s", exc)

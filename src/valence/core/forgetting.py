@@ -29,6 +29,8 @@ from typing import Any
 
 from our_db import get_cursor
 
+from .response import ValenceResponse, ok, err
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +79,7 @@ def _queue_recompile(cur: Any, article_id: str, source_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def remove_source(source_id: str) -> dict[str, Any]:
+async def remove_source(source_id: str) -> ValenceResponse:
     """Delete a source completely, with no ghost references.
 
     Steps performed in a single transaction:
@@ -95,13 +97,13 @@ async def remove_source(source_id: str) -> dict[str, Any]:
         and ``tombstone_created``.  On failure: ``success=False, error=…``.
     """
     if not source_id or not source_id.strip():
-        return {"success": False, "error": "source_id is required"}
+        return err("source_id is required")
 
     with get_cursor() as cur:
         # 1. Verify the source exists
         cur.execute("SELECT id FROM sources WHERE id = %s::uuid", (source_id,))
         if not cur.fetchone():
-            return {"success": False, "error": f"Source not found: {source_id}"}
+            return err(f"Source not found: {source_id}")
 
         # 2. Collect affected articles (before cascade deletes them from article_sources)
         cur.execute(
@@ -152,17 +154,16 @@ async def remove_source(source_id: str) -> dict[str, Any]:
         len(affected_article_ids),
     )
 
-    return {
-        "success": True,
+    return ok(data={
         "source_id": source_id,
         "affected_articles": len(affected_article_ids),
         "recompile_queued": len(affected_article_ids),
         "tombstone_created": True,
         "ghost_references": ghost_count,
-    }
+    })
 
 
-async def remove_article(article_id: str) -> dict[str, Any]:
+async def remove_article(article_id: str) -> ValenceResponse:
     """Delete an article completely.  Sources are NOT affected.
 
     Steps:
@@ -174,11 +175,10 @@ async def remove_article(article_id: str) -> dict[str, Any]:
         article_id: UUID string of the article to delete.
 
     Returns:
-        Dict with ``success``, ``article_id``, ``tombstone_created``.
-        On failure: ``success=False, error=…``.
+        ValenceResponse with data = {"article_id", "tombstone_created"} on success.
     """
     if not article_id or not article_id.strip():
-        return {"success": False, "error": "article_id is required"}
+        return err("article_id is required")
 
     with get_cursor() as cur:
         # 1. Verify the article exists and grab minimal metadata for the tombstone
@@ -188,7 +188,7 @@ async def remove_article(article_id: str) -> dict[str, Any]:
         )
         row = cur.fetchone()
         if not row:
-            return {"success": False, "error": f"Article not found: {article_id}"}
+            return err(f"Article not found: {article_id}")
 
         title = row.get("title")
         usage_score = float(row.get("usage_score") or 0.0)
@@ -210,14 +210,10 @@ async def remove_article(article_id: str) -> dict[str, Any]:
 
     logger.info("remove_article: deleted article %s (title=%r)", article_id, title)
 
-    return {
-        "success": True,
-        "article_id": article_id,
-        "tombstone_created": True,
-    }
+    return ok(data={"article_id": article_id, "tombstone_created": True})
 
 
-async def evict_lowest(count: int = 10) -> list[str]:
+async def evict_lowest(count: int = 10) -> ValenceResponse:
     """Organic forgetting: evict lowest-score non-pinned articles when over capacity.
 
     Only fires when the total active article count exceeds
@@ -230,7 +226,8 @@ async def evict_lowest(count: int = 10) -> list[str]:
         count: Maximum number of articles to evict per call (default 10).
 
     Returns:
-        List of evicted article ID strings.  Empty list if below capacity.
+        ValenceResponse with data = list of evicted article ID strings.
+        Empty list when below capacity.
     """
     count = max(1, count)
     evicted: list[str] = []
@@ -263,7 +260,7 @@ async def evict_lowest(count: int = 10) -> list[str]:
                 current_count,
                 max_articles,
             )
-            return []
+            return ok(data=[])
 
         # 3. Calculate how many to evict (capped at overflow)
         overflow = current_count - max_articles
@@ -293,14 +290,14 @@ async def evict_lowest(count: int = 10) -> list[str]:
     # 5. Remove each candidate (creates tombstones)
     for article_id in candidates:
         result = await remove_article(article_id)
-        if result.get("success"):
+        if result.success:
             evicted.append(article_id)
         else:
             logger.warning(
                 "evict_lowest: failed to evict article %s: %s",
                 article_id,
-                result.get("error"),
+                result.error,
             )
 
     logger.info("evict_lowest: evicted %d article(s)", len(evicted))
-    return evicted
+    return ok(data=evicted)

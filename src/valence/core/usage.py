@@ -29,6 +29,8 @@ from typing import Any
 
 from our_db import get_cursor
 
+from .response import ValenceResponse, ok
+
 logger = logging.getLogger(__name__)
 
 # Exponential decay rate: λ per day. Default 0.01 ≈ half-life ≈ 69 days.
@@ -86,7 +88,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-async def record_usage(article_id: str, query: str, tool: str) -> None:
+async def record_usage(article_id: str, query: str, tool: str) -> ValenceResponse:
     """Record article access in usage_traces and update usage_score.
 
     Inserts one row into usage_traces (using ``belief_id`` column for
@@ -150,9 +152,10 @@ async def record_usage(article_id: str, query: str, tool: str) -> None:
         tool,
         score,
     )
+    return ok()
 
 
-async def compute_usage_scores() -> int:
+async def compute_usage_scores() -> ValenceResponse:
     """Batch recompute usage_score for all articles.
 
     Idempotent: running multiple times produces the same result.
@@ -212,10 +215,10 @@ async def compute_usage_scores() -> int:
         updated_count = cur.rowcount
 
     logger.info("compute_usage_scores: updated %d article(s)", updated_count)
-    return updated_count
+    return ok(data=updated_count)
 
 
-async def get_decay_candidates(limit: int = 100) -> list[dict[str, Any]]:
+async def get_decay_candidates(limit: int = 100) -> ValenceResponse:
     """Return articles with the lowest usage_score, excluding pinned articles.
 
     Used by the organic forgetting subsystem (C10) to identify articles
@@ -244,4 +247,4 @@ async def get_decay_candidates(limit: int = 100) -> list[dict[str, Any]]:
         )
         rows = cur.fetchall()
 
-    return [_row_to_dict(row) for row in rows]
+    return ok(data=[_row_to_dict(row) for row in rows])

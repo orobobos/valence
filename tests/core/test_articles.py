@@ -1,5 +1,7 @@
 """Tests for valence.core.articles module (WU-04).
 
+Updated for WU-14: all public functions are now async and return ValenceResponse.
+
 Uses mock DB cursor via ``get_cursor`` patching. No real PostgreSQL required.
 """
 
@@ -68,23 +70,23 @@ def _make_cursor_mock(fetchone=None, fetchall=None):
 
 
 class TestCreateArticle:
-    """Tests for create_article()."""
+    """Tests for create_article() — now async, returns ValenceResponse."""
 
-    def test_missing_content(self):
+    async def test_missing_content(self):
         from valence.core.articles import create_article
 
-        result = create_article(content="")
-        assert result["success"] is False
-        assert "content" in result["error"]
+        result = await create_article(content="")
+        assert result.success is False
+        assert "content" in result.error
 
-    def test_invalid_author_type(self):
+    async def test_invalid_author_type(self):
         from valence.core.articles import create_article
 
-        result = create_article(content="some content", author_type="hacker")
-        assert result["success"] is False
-        assert "author_type" in result["error"]
+        result = await create_article(content="some content", author_type="hacker")
+        assert result.success is False
+        assert "author_type" in result.error
 
-    def test_create_minimal(self):
+    async def test_create_minimal(self):
         """create_article with only content succeeds."""
         from valence.core.articles import create_article
 
@@ -93,13 +95,13 @@ class TestCreateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            result = create_article(content="Test article content about Python.")
+            result = await create_article(content="Test article content about Python.")
 
-        assert result["success"] is True
-        assert "article" in result
-        assert result["article"]["content"] == "Test article content about Python."
+        assert result.success is True
+        assert result.data is not None
+        assert result.data["content"] == "Test article content about Python."
 
-    def test_create_with_sources(self):
+    async def test_create_with_sources(self):
         """create_article links sources with 'originates' relationship."""
         from valence.core.articles import create_article
 
@@ -108,19 +110,19 @@ class TestCreateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            result = create_article(
+            result = await create_article(
                 content="Test article content.",
                 source_ids=[SOURCE_ID],
                 author_type="system",
                 domain_path=["test"],
             )
 
-        assert result["success"] is True
+        assert result.success is True
         # Confirm article_sources INSERT was called
         calls_str = str(mock_cur.execute.call_args_list)
         assert "article_sources" in calls_str
 
-    def test_create_records_mutation(self):
+    async def test_create_records_mutation(self):
         """create_article records a 'created' article_mutations row."""
         from valence.core.articles import create_article
 
@@ -129,13 +131,13 @@ class TestCreateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            create_article(content="Content here.")
+            await create_article(content="Content here.")
 
         calls_str = str(mock_cur.execute.call_args_list)
         assert "article_mutations" in calls_str
         assert "created" in calls_str
 
-    def test_create_with_title(self):
+    async def test_create_with_title(self):
         """create_article stores title."""
         from valence.core.articles import create_article
 
@@ -144,10 +146,10 @@ class TestCreateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            result = create_article(content="Content here.", title="My Title")
+            result = await create_article(content="Content here.", title="My Title")
 
-        assert result["success"] is True
-        assert result["article"]["title"] == "My Title"
+        assert result.success is True
+        assert result.data["title"] == "My Title"
 
     def test_create_computes_token_count(self):
         """_count_tokens returns a reasonable integer."""
@@ -164,32 +166,32 @@ class TestCreateArticle:
 
 
 class TestGetArticle:
-    """Tests for get_article()."""
+    """Tests for get_article() — now async, returns ValenceResponse."""
 
-    def test_not_found(self):
+    async def test_not_found(self):
         from valence.core.articles import get_article
 
         mock_cur = _make_cursor_mock(fetchone=None)
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur):
-            result = get_article(article_id=str(uuid4()))
+            result = await get_article(article_id=str(uuid4()))
 
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
-    def test_found(self):
+    async def test_found(self):
         from valence.core.articles import get_article
 
         article_row = _make_article_row()
         mock_cur = _make_cursor_mock(fetchone=article_row)
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur):
-            result = get_article(article_id=ARTICLE_ID)
+            result = await get_article(article_id=ARTICLE_ID)
 
-        assert result["success"] is True
-        assert result["article"]["id"] == ARTICLE_ID
+        assert result.success is True
+        assert result.data["id"] == ARTICLE_ID
 
-    def test_include_provenance(self):
+    async def test_include_provenance(self):
         """get_article with include_provenance=True attaches provenance list."""
         from valence.core.articles import get_article
 
@@ -213,12 +215,12 @@ class TestGetArticle:
         mock_cur.fetchall.return_value = [provenance_row]
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur):
-            result = get_article(article_id=ARTICLE_ID, include_provenance=True)
+            result = await get_article(article_id=ARTICLE_ID, include_provenance=True)
 
-        assert result["success"] is True
-        assert "provenance" in result["article"]
-        assert len(result["article"]["provenance"]) == 1
-        assert result["article"]["provenance"][0]["relationship"] == "originates"
+        assert result.success is True
+        assert "provenance" in result.data
+        assert len(result.data["provenance"]) == 1
+        assert result.data["provenance"][0]["relationship"] == "originates"
 
 
 # ---------------------------------------------------------------------------
@@ -227,27 +229,27 @@ class TestGetArticle:
 
 
 class TestUpdateArticle:
-    """Tests for update_article()."""
+    """Tests for update_article() — now async, returns ValenceResponse."""
 
-    def test_missing_content(self):
+    async def test_missing_content(self):
         from valence.core.articles import update_article
 
-        result = update_article(article_id=ARTICLE_ID, content="")
-        assert result["success"] is False
+        result = await update_article(article_id=ARTICLE_ID, content="")
+        assert result.success is False
 
-    def test_not_found(self):
+    async def test_not_found(self):
         from valence.core.articles import update_article
 
         mock_cur = _make_cursor_mock(fetchone=None)
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            result = update_article(article_id=str(uuid4()), content="New content.")
+            result = await update_article(article_id=str(uuid4()), content="New content.")
 
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
-    def test_update_increments_version(self):
+    async def test_update_increments_version(self):
         """update_article returns the updated article with incremented version."""
         from valence.core.articles import update_article
 
@@ -256,12 +258,12 @@ class TestUpdateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            result = update_article(article_id=ARTICLE_ID, content="New content.")
+            result = await update_article(article_id=ARTICLE_ID, content="New content.")
 
-        assert result["success"] is True
-        assert result["article"]["version"] == 2
+        assert result.success is True
+        assert result.data["version"] == 2
 
-    def test_update_records_mutation(self):
+    async def test_update_records_mutation(self):
         """update_article inserts an 'updated' article_mutations row."""
         from valence.core.articles import update_article
 
@@ -270,13 +272,13 @@ class TestUpdateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            update_article(article_id=ARTICLE_ID, content="New content.")
+            await update_article(article_id=ARTICLE_ID, content="New content.")
 
         calls_str = str(mock_cur.execute.call_args_list)
         assert "article_mutations" in calls_str
         assert "updated" in calls_str
 
-    def test_update_with_source_links_source(self):
+    async def test_update_with_source_links_source(self):
         """update_article with source_id links source to article_sources."""
         from valence.core.articles import update_article
 
@@ -285,7 +287,7 @@ class TestUpdateArticle:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            update_article(article_id=ARTICLE_ID, content="Updated.", source_id=SOURCE_ID)
+            await update_article(article_id=ARTICLE_ID, content="Updated.", source_id=SOURCE_ID)
 
         calls_str = str(mock_cur.execute.call_args_list)
         assert "article_sources" in calls_str
@@ -297,15 +299,16 @@ class TestUpdateArticle:
 
 
 class TestSearchArticles:
-    """Tests for search_articles()."""
+    """Tests for search_articles() — now async, returns ValenceResponse."""
 
-    def test_empty_query_returns_empty(self):
+    async def test_empty_query_returns_empty(self):
         from valence.core.articles import search_articles
 
-        result = search_articles(query="")
-        assert result == []
+        result = await search_articles(query="")
+        assert result.success is True
+        assert result.data == []
 
-    def test_returns_list(self):
+    async def test_returns_list(self):
         from valence.core.articles import search_articles
 
         article_row = _make_article_row()
@@ -317,13 +320,14 @@ class TestSearchArticles:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            results = search_articles(query="python")
+            result = await search_articles(query="python")
 
-        assert isinstance(results, list)
-        assert len(results) >= 1
-        assert results[0]["content"] == "Test article content about Python."
+        assert result.success is True
+        assert isinstance(result.data, list)
+        assert len(result.data) >= 1
+        assert result.data[0]["content"] == "Test article content about Python."
 
-    def test_no_results(self):
+    async def test_no_results(self):
         from valence.core.articles import search_articles
 
         mock_cur = MagicMock()
@@ -333,9 +337,10 @@ class TestSearchArticles:
 
         with patch("valence.core.articles.get_cursor", return_value=mock_cur), \
              patch("valence.core.articles._compute_embedding", return_value=None):
-            results = search_articles(query="totally obscure xyz")
+            result = await search_articles(query="totally obscure xyz")
 
-        assert results == []
+        assert result.success is True
+        assert result.data == []
 
 
 # ---------------------------------------------------------------------------

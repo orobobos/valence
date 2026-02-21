@@ -1,5 +1,7 @@
 """Tests for core.sources module (WU-03, C1 Source Ingestion).
 
+Updated for WU-14: all public functions return ValenceResponse.
+
 Tests cover:
 1. ingest_source  — happy path, reliability defaults, fingerprint, dedup rejection
 2. get_source     — found, not found
@@ -29,7 +31,6 @@ from valence.core.sources import (
     list_sources,
     search_sources,
 )
-from valence.core.exceptions import ConflictError, NotFoundError, ValidationException
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -149,46 +150,50 @@ class TestIngestSource:
 
         result = await ingest_source("Python 3.12 adds...", "document", title="Changelog")
 
-        assert result["id"] == str(row["id"])
-        assert result["reliability"] == 0.8
-        assert result["fingerprint"] == _compute_fingerprint("Python 3.12 adds...")
-        assert result["type"] == "document"
-        assert "created_at" in result
+        assert result.success is True
+        assert result.data["id"] == str(row["id"])
+        assert result.data["reliability"] == 0.8
+        assert result.data["fingerprint"] == _compute_fingerprint("Python 3.12 adds...")
+        assert result.data["type"] == "document"
+        assert "created_at" in result.data
         # TSV and embedding stripped
-        assert "content_tsv" not in result
-        assert "embedding" not in result
+        assert "content_tsv" not in result.data
+        assert "embedding" not in result.data
 
     async def test_reliability_defaults_by_type(self, mock_get_cursor):
         for source_type, expected_reliability in RELIABILITY_DEFAULTS.items():
             row = _make_source_row("content", source_type)
             mock_get_cursor.fetchone.side_effect = [None, row]
             result = await ingest_source("content", source_type)
-            assert result["reliability"] == expected_reliability, (
-                f"Expected {expected_reliability} for {source_type}, got {result['reliability']}"
+            assert result.success is True
+            assert result.data["reliability"] == expected_reliability, (
+                f"Expected {expected_reliability} for {source_type}, got {result.data['reliability']}"
             )
 
     async def test_rejects_empty_content(self, mock_get_cursor):
-        with pytest.raises(ValidationException) as exc_info:
-            await ingest_source("", "document")
-        assert "content" in exc_info.value.message.lower()
+        result = await ingest_source("", "document")
+        assert result.success is False
+        assert "content" in result.error.lower()
 
     async def test_rejects_whitespace_only_content(self, mock_get_cursor):
-        with pytest.raises(ValidationException):
-            await ingest_source("   ", "document")
+        result = await ingest_source("   ", "document")
+        assert result.success is False
+        assert result.error is not None
 
     async def test_rejects_invalid_source_type(self, mock_get_cursor):
-        with pytest.raises(ValidationException) as exc_info:
-            await ingest_source("some content", "unknown_type")
-        assert "source_type" in exc_info.value.message.lower() or "invalid" in exc_info.value.message.lower()
+        result = await ingest_source("some content", "unknown_type")
+        assert result.success is False
+        assert result.error is not None
+        assert "unknown_type" in result.error or "source_type" in result.error.lower() or "invalid" in result.error.lower()
 
     async def test_rejects_duplicate_fingerprint(self, mock_get_cursor):
         # Simulate existing row returned by SELECT for dedup check
         existing = {"id": uuid4()}
         mock_get_cursor.fetchone.return_value = existing
 
-        with pytest.raises(ConflictError) as exc_info:
-            await ingest_source("duplicate content", "document")
-        assert exc_info.value.existing_id == str(existing["id"])
+        result = await ingest_source("duplicate content", "document")
+        assert result.success is False
+        assert str(existing["id"]) in result.error
 
     async def test_stores_metadata(self, mock_get_cursor):
         meta = {"source": "test-suite", "version": 1}
@@ -196,7 +201,8 @@ class TestIngestSource:
         mock_get_cursor.fetchone.side_effect = [None, row]
 
         result = await ingest_source("content", "web", metadata=meta)
-        assert result["metadata"] == meta
+        assert result.success is True
+        assert result.data["metadata"] == meta
 
     async def test_url_stored(self, mock_get_cursor):
         row = _make_source_row("content", "web", url="https://example.com")
@@ -204,7 +210,8 @@ class TestIngestSource:
         mock_get_cursor.fetchone.side_effect = [None, row]
 
         result = await ingest_source("content", "web", url="https://example.com")
-        assert result["url"] == "https://example.com"
+        assert result.success is True
+        assert result.data["url"] == "https://example.com"
 
     async def test_fingerprint_is_sha256_of_content(self, mock_get_cursor):
         content = "unique content for fingerprint test"
@@ -212,7 +219,8 @@ class TestIngestSource:
         mock_get_cursor.fetchone.side_effect = [None, row]
 
         result = await ingest_source(content, "document")
-        assert result["fingerprint"] == _compute_fingerprint(content)
+        assert result.success is True
+        assert result.data["fingerprint"] == _compute_fingerprint(content)
 
     async def test_insert_called_with_correct_params(self, mock_get_cursor):
         content = "The quick brown fox"
@@ -244,15 +252,17 @@ class TestGetSource:
 
         result = await get_source(str(row["id"]))
 
-        assert result["id"] == str(row["id"])
-        assert result["content"] == row["content"]
+        assert result.success is True
+        assert result.data["id"] == str(row["id"])
+        assert result.data["content"] == row["content"]
 
-    async def test_raises_not_found_when_missing(self, mock_get_cursor):
+    async def test_returns_error_when_missing(self, mock_get_cursor):
         mock_get_cursor.fetchone.return_value = None
 
-        with pytest.raises(NotFoundError) as exc_info:
-            await get_source("nonexistent-id")
-        assert exc_info.value.resource_type == "source"
+        result = await get_source("nonexistent-id")
+        assert result.success is False
+        assert result.error is not None
+        assert "not found" in result.error.lower() or "source" in result.error.lower()
 
     async def test_queries_by_id(self, mock_get_cursor):
         row = _make_source_row()
@@ -276,20 +286,23 @@ class TestSearchSources:
         row = {**_make_source_row("Python type hints", "document"), "rank": 0.8}
         mock_get_cursor.fetchall.return_value = [row]
 
-        results = await search_sources("python")
+        result = await search_sources("python")
 
-        assert len(results) == 1
-        assert results[0]["content"] == "Python type hints"
-        assert "rank" in results[0]
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0]["content"] == "Python type hints"
+        assert "rank" in result.data[0]
 
     async def test_empty_query_returns_empty_list(self, mock_get_cursor):
-        results = await search_sources("")
-        assert results == []
+        result = await search_sources("")
+        assert result.success is True
+        assert result.data == []
         mock_get_cursor.execute.assert_not_called()
 
     async def test_whitespace_query_returns_empty_list(self, mock_get_cursor):
-        results = await search_sources("   ")
-        assert results == []
+        result = await search_sources("   ")
+        assert result.success is True
+        assert result.data == []
         mock_get_cursor.execute.assert_not_called()
 
     async def test_passes_limit_to_query(self, mock_get_cursor):
@@ -323,8 +336,9 @@ class TestSearchSources:
     async def test_no_results_returns_empty_list(self, mock_get_cursor):
         mock_get_cursor.fetchall.return_value = []
 
-        results = await search_sources("nonexistent topic xyz")
-        assert results == []
+        result = await search_sources("nonexistent topic xyz")
+        assert result.success is True
+        assert result.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -337,20 +351,22 @@ class TestListSources:
         rows = [_make_source_row(f"content {i}", "document") for i in range(3)]
         mock_get_cursor.fetchall.return_value = rows
 
-        results = await list_sources()
-        assert len(results) == 3
+        result = await list_sources()
+        assert result.success is True
+        assert len(result.data) == 3
 
     async def test_filters_by_type(self, mock_get_cursor):
         row = _make_source_row("code content", "code")
         mock_get_cursor.fetchall.return_value = [row]
 
-        results = await list_sources(source_type="code")
+        result = await list_sources(source_type="code")
 
         call_args = mock_get_cursor.execute.call_args
         sql, params = call_args[0]
         assert "WHERE type = %s" in sql
         assert params[0] == "code"
-        assert len(results) == 1
+        assert result.success is True
+        assert len(result.data) == 1
 
     async def test_no_type_filter_no_where_clause(self, mock_get_cursor):
         mock_get_cursor.fetchall.return_value = []
@@ -384,8 +400,9 @@ class TestListSources:
         row["content_tsv"] = "tsvector_data"
         mock_get_cursor.fetchall.return_value = [row]
 
-        results = await list_sources()
-        assert "content_tsv" not in results[0]
+        result = await list_sources()
+        assert result.success is True
+        assert "content_tsv" not in result.data[0]
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 """Tests for valence.core.provenance module (WU-04).
 
+Updated for WU-14: all public functions are now async and return ValenceResponse.
+
 Uses mock DB cursor via ``get_cursor`` patching. No real PostgreSQL required.
 """
 
@@ -65,35 +67,35 @@ def _make_cursor_mock(fetchone=None, fetchall=None):
 
 
 class TestLinkSource:
-    """Tests for link_source()."""
+    """Tests for link_source() — now async, returns ValenceResponse."""
 
-    def test_invalid_relationship(self):
+    async def test_invalid_relationship(self):
         from valence.core.provenance import link_source
 
-        result = link_source(
+        result = await link_source(
             article_id=ARTICLE_ID,
             source_id=SOURCE_ID,
             relationship="invented_type",
         )
-        assert result["success"] is False
-        assert "relationship" in result["error"]
+        assert result.success is False
+        assert "relationship" in result.error
 
-    def test_article_not_found(self):
+    async def test_article_not_found(self):
         from valence.core.provenance import link_source
 
         mock_cur = _make_cursor_mock(fetchone=None)
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = link_source(
+            result = await link_source(
                 article_id=str(uuid4()),
                 source_id=SOURCE_ID,
                 relationship="originates",
             )
 
-        assert result["success"] is False
-        assert "Article not found" in result["error"]
+        assert result.success is False
+        assert "Article not found" in result.error
 
-    def test_source_not_found(self):
+    async def test_source_not_found(self):
         from valence.core.provenance import link_source
 
         article_row = {"id": ARTICLE_ID}
@@ -104,16 +106,16 @@ class TestLinkSource:
         mock_cur.fetchone.side_effect = [article_row, None]
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = link_source(
+            result = await link_source(
                 article_id=ARTICLE_ID,
                 source_id=str(uuid4()),
                 relationship="originates",
             )
 
-        assert result["success"] is False
-        assert "Source not found" in result["error"]
+        assert result.success is False
+        assert "Source not found" in result.error
 
-    def test_link_originates(self):
+    async def test_link_originates(self):
         """link_source with 'originates' relationship succeeds."""
         from valence.core.provenance import link_source
 
@@ -128,18 +130,18 @@ class TestLinkSource:
         ]
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = link_source(
+            result = await link_source(
                 article_id=ARTICLE_ID,
                 source_id=SOURCE_ID,
                 relationship="originates",
             )
 
-        assert result["success"] is True
-        assert "link" in result
-        assert result["link"]["relationship"] == "originates"
+        assert result.success is True
+        assert result.data is not None
+        assert result.data["relationship"] == "originates"
 
     @pytest.mark.parametrize("rel", ["originates", "confirms", "supersedes", "contradicts", "contends"])
-    def test_all_valid_relationships(self, rel: str):
+    async def test_all_valid_relationships(self, rel: str):
         """All documented relationship types should be accepted."""
         from valence.core.provenance import link_source
 
@@ -154,15 +156,15 @@ class TestLinkSource:
         ]
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = link_source(
+            result = await link_source(
                 article_id=ARTICLE_ID,
                 source_id=SOURCE_ID,
                 relationship=rel,
             )
 
-        assert result["success"] is True
+        assert result.success is True
 
-    def test_link_with_notes(self):
+    async def test_link_with_notes(self):
         """link_source propagates notes."""
         from valence.core.provenance import link_source
 
@@ -177,15 +179,15 @@ class TestLinkSource:
         ]
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = link_source(
+            result = await link_source(
                 article_id=ARTICLE_ID,
                 source_id=SOURCE_ID,
                 relationship="confirms",
                 notes="Relevant section 3.2",
             )
 
-        assert result["success"] is True
-        assert result["link"]["notes"] == "Relevant section 3.2"
+        assert result.success is True
+        assert result.data["notes"] == "Relevant section 3.2"
 
 
 # ---------------------------------------------------------------------------
@@ -194,20 +196,21 @@ class TestLinkSource:
 
 
 class TestGetProvenance:
-    """Tests for get_provenance()."""
+    """Tests for get_provenance() — now async, returns ValenceResponse."""
 
-    def test_empty_provenance(self):
+    async def test_empty_provenance(self):
         """Returns empty list when article has no sources."""
         from valence.core.provenance import get_provenance
 
         mock_cur = _make_cursor_mock(fetchall=[])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = get_provenance(article_id=ARTICLE_ID)
+            result = await get_provenance(article_id=ARTICLE_ID)
 
-        assert result == []
+        assert result.success is True
+        assert result.data == []
 
-    def test_returns_sources(self):
+    async def test_returns_sources(self):
         """Returns list of provenance dicts with source metadata."""
         from valence.core.provenance import get_provenance
 
@@ -222,14 +225,15 @@ class TestGetProvenance:
         mock_cur = _make_cursor_mock(fetchall=[row])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = get_provenance(article_id=ARTICLE_ID)
+            result = await get_provenance(article_id=ARTICLE_ID)
 
-        assert len(result) == 1
-        assert result[0]["relationship"] == "originates"
-        assert result[0]["source_type"] == "document"
-        assert result[0]["reliability"] == 0.8
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0]["relationship"] == "originates"
+        assert result.data[0]["source_type"] == "document"
+        assert result.data[0]["reliability"] == 0.8
 
-    def test_multiple_sources(self):
+    async def test_multiple_sources(self):
         """Returns all linked sources."""
         from valence.core.provenance import get_provenance
 
@@ -244,10 +248,11 @@ class TestGetProvenance:
         mock_cur = _make_cursor_mock(fetchall=rows)
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = get_provenance(article_id=ARTICLE_ID)
+            result = await get_provenance(article_id=ARTICLE_ID)
 
-        assert len(result) == 2
-        relationships = {r["relationship"] for r in result}
+        assert result.success is True
+        assert len(result.data) == 2
+        relationships = {r["relationship"] for r in result.data}
         assert "originates" in relationships
         assert "confirms" in relationships
 
@@ -258,26 +263,28 @@ class TestGetProvenance:
 
 
 class TestTraceClaim:
-    """Tests for trace_claim()."""
+    """Tests for trace_claim() — now async, returns ValenceResponse."""
 
-    def test_empty_claim_returns_empty(self):
+    async def test_empty_claim_returns_empty(self):
         from valence.core.provenance import trace_claim
 
-        result = trace_claim(article_id=ARTICLE_ID, claim_text="")
-        assert result == []
+        result = await trace_claim(article_id=ARTICLE_ID, claim_text="")
+        assert result.success is True
+        assert result.data == []
 
-    def test_no_sources_returns_empty(self):
+    async def test_no_sources_returns_empty(self):
         """Returns empty list when article has no sources with content."""
         from valence.core.provenance import trace_claim
 
         mock_cur = _make_cursor_mock(fetchall=[])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = trace_claim(article_id=ARTICLE_ID, claim_text="Python 3.12 features")
+            result = await trace_claim(article_id=ARTICLE_ID, claim_text="Python 3.12 features")
 
-        assert result == []
+        assert result.success is True
+        assert result.data == []
 
-    def test_matches_similar_source(self):
+    async def test_matches_similar_source(self):
         """Returns source with positive claim_similarity when content overlaps."""
         from valence.core.provenance import trace_claim
 
@@ -294,17 +301,18 @@ class TestTraceClaim:
         mock_cur = _make_cursor_mock(fetchall=[source_row])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = trace_claim(
+            result = await trace_claim(
                 article_id=ARTICLE_ID,
                 claim_text="Python 3.12 adds type parameter defaults",
             )
 
-        assert len(result) >= 1
-        assert result[0]["claim_similarity"] > 0
+        assert result.success is True
+        assert len(result.data) >= 1
+        assert result.data[0]["claim_similarity"] > 0
         # Best match first
-        assert result[0]["id"] == SOURCE_ID
+        assert result.data[0]["id"] == SOURCE_ID
 
-    def test_sorted_by_similarity_descending(self):
+    async def test_sorted_by_similarity_descending(self):
         """Results are sorted highest similarity first."""
         from valence.core.provenance import trace_claim
 
@@ -331,17 +339,18 @@ class TestTraceClaim:
         mock_cur = _make_cursor_mock(fetchall=[high_match, low_match])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = trace_claim(
+            result = await trace_claim(
                 article_id=ARTICLE_ID,
                 claim_text="Python 3.12 type parameter defaults PEP 695",
             )
 
+        assert result.success is True
         # Filter to only positive-similarity results
-        positive = [r for r in result if r["claim_similarity"] > 0]
+        positive = [r for r in result.data if r["claim_similarity"] > 0]
         if len(positive) >= 2:
             assert positive[0]["claim_similarity"] >= positive[1]["claim_similarity"]
 
-    def test_zero_similarity_sources_excluded(self):
+    async def test_zero_similarity_sources_excluded(self):
         """Sources with zero text overlap are excluded from results."""
         from valence.core.provenance import trace_claim
 
@@ -359,14 +368,14 @@ class TestTraceClaim:
         mock_cur = _make_cursor_mock(fetchall=[unrelated])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = trace_claim(
+            result = await trace_claim(
                 article_id=ARTICLE_ID,
                 claim_text="Python programming language features",
             )
 
-        # Result may be empty or contain sources with positive similarity
+        assert result.success is True
         # All returned sources must have claim_similarity > 0
-        for r in result:
+        for r in result.data:
             assert r["claim_similarity"] > 0
 
 
@@ -376,19 +385,20 @@ class TestTraceClaim:
 
 
 class TestGetMutationHistory:
-    """Tests for get_mutation_history()."""
+    """Tests for get_mutation_history() — now async, returns ValenceResponse."""
 
-    def test_empty_history(self):
+    async def test_empty_history(self):
         from valence.core.provenance import get_mutation_history
 
         mock_cur = _make_cursor_mock(fetchall=[])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = get_mutation_history(article_id=ARTICLE_ID)
+            result = await get_mutation_history(article_id=ARTICLE_ID)
 
-        assert result == []
+        assert result.success is True
+        assert result.data == []
 
-    def test_returns_mutations(self):
+    async def test_returns_mutations(self):
         from valence.core.provenance import get_mutation_history
 
         row = {
@@ -403,8 +413,9 @@ class TestGetMutationHistory:
         mock_cur = _make_cursor_mock(fetchall=[row])
 
         with patch("valence.core.provenance.get_cursor", return_value=mock_cur):
-            result = get_mutation_history(article_id=ARTICLE_ID)
+            result = await get_mutation_history(article_id=ARTICLE_ID)
 
-        assert len(result) == 1
-        assert result[0]["mutation_type"] == "created"
-        assert result[0]["summary"] == "Article created with 1 source(s)"
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0]["mutation_type"] == "created"
+        assert result.data[0]["summary"] == "Article created with 1 source(s)"

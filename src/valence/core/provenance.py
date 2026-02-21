@@ -4,6 +4,7 @@ Provides functions to link sources to articles, retrieve provenance chains,
 and trace which sources likely contributed a specific claim via text similarity.
 
 Implements WU-04 (C5 — provenance tracking).
+WU-14: All public functions now async and return ValenceResponse (C12, DR-10).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from uuid import UUID
 from our_db import get_cursor
 
 from .embedding_interop import text_similarity
+from .response import ValenceResponse, ok, err
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +47,16 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Public API — all async, all return ValenceResponse (WU-14)
 # ---------------------------------------------------------------------------
 
 
-def link_source(
+async def link_source(
     article_id: str,
     source_id: str,
     relationship: str,
     notes: str | None = None,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Add an article_sources provenance row.
 
     Args:
@@ -65,24 +67,21 @@ def link_source(
         notes: Optional free-text notes about the relationship.
 
     Returns:
-        Dict with ``success`` and the created ``link`` row, or ``error``.
+        ValenceResponse with data = created link row on success, or error.
     """
     if relationship not in VALID_RELATIONSHIPS:
-        return {
-            "success": False,
-            "error": f"relationship must be one of {sorted(VALID_RELATIONSHIPS)}",
-        }
+        return err(f"relationship must be one of {sorted(VALID_RELATIONSHIPS)}")
 
     with get_cursor() as cur:
         # Verify article exists
         cur.execute("SELECT id FROM articles WHERE id = %s", (article_id,))
         if not cur.fetchone():
-            return {"success": False, "error": f"Article not found: {article_id}"}
+            return err(f"Article not found: {article_id}")
 
         # Verify source exists
         cur.execute("SELECT id FROM sources WHERE id = %s", (source_id,))
         if not cur.fetchone():
-            return {"success": False, "error": f"Source not found: {source_id}"}
+            return err(f"Source not found: {source_id}")
 
         cur.execute(
             """
@@ -95,17 +94,18 @@ def link_source(
             (article_id, source_id, relationship, notes),
         )
         row = cur.fetchone()
-        return {"success": True, "link": _serialize_row(dict(row))}
+        return ok(data=_serialize_row(dict(row)))
 
 
-def get_provenance(article_id: str) -> list[dict[str, Any]]:
+async def get_provenance(article_id: str) -> ValenceResponse:
     """Return all provenance entries for an article, with source details.
 
     Args:
         article_id: UUID of the article.
 
     Returns:
-        List of provenance dicts (empty list if article has no sources).
+        ValenceResponse with data = list of provenance dicts (empty list if
+        article has no sources).
     """
     with get_cursor() as cur:
         cur.execute(
@@ -130,10 +130,10 @@ def get_provenance(article_id: str) -> list[dict[str, Any]]:
             (article_id,),
         )
         rows = cur.fetchall()
-        return [_serialize_row(dict(r)) for r in rows]
+        return ok(data=[_serialize_row(dict(r)) for r in rows])
 
 
-def trace_claim(article_id: str, claim_text: str) -> list[dict[str, Any]]:
+async def trace_claim(article_id: str, claim_text: str) -> ValenceResponse:
     """On-demand claim tracing: find sources that likely contributed a claim.
 
     Uses text-based TF-IDF cosine similarity (from embedding_interop) to
@@ -145,11 +145,11 @@ def trace_claim(article_id: str, claim_text: str) -> list[dict[str, Any]]:
         claim_text: The specific claim text to trace.
 
     Returns:
-        List of source dicts with an added ``claim_similarity`` score (0–1),
-        sorted highest-first. Only sources with similarity > 0 are returned.
+        ValenceResponse with data = list of source dicts with ``claim_similarity``
+        score (0–1), sorted highest-first. Only sources with similarity > 0 included.
     """
     if not claim_text or not claim_text.strip():
-        return []
+        return ok(data=[])
 
     with get_cursor() as cur:
         cur.execute(
@@ -173,7 +173,7 @@ def trace_claim(article_id: str, claim_text: str) -> list[dict[str, Any]]:
         rows = cur.fetchall()
 
     if not rows:
-        return []
+        return ok(data=[])
 
     results = []
     for row in rows:
@@ -185,17 +185,17 @@ def trace_claim(article_id: str, claim_text: str) -> list[dict[str, Any]]:
             results.append(row_dict)
 
     results.sort(key=lambda x: x["claim_similarity"], reverse=True)
-    return results
+    return ok(data=results)
 
 
-def get_mutation_history(article_id: str) -> list[dict[str, Any]]:
+async def get_mutation_history(article_id: str) -> ValenceResponse:
     """Return the mutation history for an article.
 
     Args:
         article_id: UUID of the article.
 
     Returns:
-        List of mutation dicts ordered by creation time.
+        ValenceResponse with data = list of mutation dicts ordered by creation time.
     """
     with get_cursor() as cur:
         cur.execute(
@@ -209,4 +209,4 @@ def get_mutation_history(article_id: str) -> list[dict[str, Any]]:
             (article_id,),
         )
         rows = cur.fetchall()
-        return [_serialize_row(dict(r)) for r in rows]
+        return ok(data=[_serialize_row(dict(r)) for r in rows])

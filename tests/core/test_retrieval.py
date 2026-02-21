@@ -273,14 +273,14 @@ class TestRetrieveEmptyQuery:
         from valence.core.retrieval import retrieve
 
         result = await retrieve("")
-        assert result == []
+        assert result.data == []
 
     @pytest.mark.asyncio
     async def test_whitespace_query_returns_empty_list(self):
         from valence.core.retrieval import retrieve
 
         result = await retrieve("   ")
-        assert result == []
+        assert result.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -302,8 +302,8 @@ class TestRetrieveArticles:
 
             results = await retrieve("python", include_sources=False)
 
-        assert len(results) == 1
-        r = results[0]
+        assert len(results.data) == 1
+        r = results.data[0]
         assert r["id"] == ARTICLE_ID
         assert r["type"] == "article"
         assert "content" in r
@@ -324,7 +324,7 @@ class TestRetrieveArticles:
 
             results = await retrieve("python")
 
-        r = results[0]
+        r = results.data[0]
         assert r["provenance_summary"]["source_count"] == 3
         assert "originates" in r["provenance_summary"]["relationship_types"]
 
@@ -339,7 +339,7 @@ class TestRetrieveArticles:
 
             results = await retrieve("python")
 
-        r = results[0]
+        r = results.data[0]
         assert isinstance(r["freshness"], float)
         assert r["freshness"] >= 0.0
         assert abs(r["freshness"] - 5.0) < 0.5  # approximate
@@ -355,7 +355,7 @@ class TestRetrieveArticles:
 
             results = await retrieve("python")
 
-        assert results[0]["active_contentions"] is False
+        assert results.data[0]["active_contentions"] is False
 
     @pytest.mark.asyncio
     async def test_active_contentions_true_when_contention_exists(self):
@@ -368,7 +368,7 @@ class TestRetrieveArticles:
 
             results = await retrieve("python")
 
-        assert results[0]["active_contentions"] is True
+        assert results.data[0]["active_contentions"] is True
 
     @pytest.mark.asyncio
     async def test_no_db_returns_empty(self):
@@ -380,7 +380,7 @@ class TestRetrieveArticles:
 
             results = await retrieve("python")
 
-        assert results == []
+        assert results.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +416,9 @@ class TestRankingOrder:
 
             results = await retrieve("python")
 
-        assert len(results) == 2
-        assert results[0]["id"] == ARTICLE_ID
-        assert results[0]["final_score"] > results[1]["final_score"]
+        assert len(results.data) == 2
+        assert results.data[0]["id"] == ARTICLE_ID
+        assert results.data[0]["final_score"] > results.data[1]["final_score"]
 
     @pytest.mark.asyncio
     async def test_higher_confidence_ranks_first_when_same_relevance(self):
@@ -444,8 +444,8 @@ class TestRankingOrder:
 
             results = await retrieve("python")
 
-        assert len(results) == 2
-        assert results[0]["id"] == ARTICLE_ID
+        assert len(results.data) == 2
+        assert results.data[0]["id"] == ARTICLE_ID
 
     @pytest.mark.asyncio
     async def test_fresher_article_ranks_above_stale(self):
@@ -471,8 +471,8 @@ class TestRankingOrder:
 
             results = await retrieve("python")
 
-        assert len(results) == 2
-        assert results[0]["id"] == ARTICLE_ID
+        assert len(results.data) == 2
+        assert results.data[0]["id"] == ARTICLE_ID
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +494,7 @@ class TestUsageTraceRecording:
 
             results = await retrieve("python")
 
-        assert len(results) == 1
+        assert len(results.data) == 1
         # Check that execute was called with usage_traces INSERT
         calls_str = str(cur.execute.call_args_list)
         assert "usage_traces" in calls_str
@@ -509,7 +509,7 @@ class TestUsageTraceRecording:
 
             results = await retrieve("python")
 
-        assert results == []
+        assert results.data == []
         calls_str = str(cur.execute.call_args_list)
         assert "usage_traces" not in calls_str
 
@@ -544,9 +544,9 @@ class TestUngroupedSourcesAndQueue:
 
             results = await retrieve("python", include_sources=True)
 
-        assert len(results) == 1
-        assert results[0]["type"] == "source"
-        assert results[0]["id"] == SOURCE_ID
+        assert len(results.data) == 1
+        assert results.data[0]["type"] == "source"
+        assert results.data[0]["id"] == SOURCE_ID
 
     @pytest.mark.asyncio
     async def test_ungrouped_source_queues_recompile(self):
@@ -590,7 +590,7 @@ class TestUngroupedSourcesAndQueue:
             if args:
                 assert "article_sources" not in str(args[0]) or "NOT EXISTS" not in str(args[0]).upper() or True
         # Main check: no source-type results
-        assert all(r.get("type") != "source" for r in results)
+        assert all(r.get("type") != "source" for r in results.data)
 
     @pytest.mark.asyncio
     async def test_recompile_skipped_when_no_sentinel_article(self):
@@ -649,7 +649,7 @@ class TestSourceResultMetadata:
 
             results = await retrieve("python", include_sources=True)
 
-        r = results[0]
+        r = results.data[0]
         assert r["confidence"]["overall"] == 0.8
 
     @pytest.mark.asyncio
@@ -673,7 +673,7 @@ class TestSourceResultMetadata:
 
             results = await retrieve("python", include_sources=True)
 
-        r = results[0]
+        r = results.data[0]
         assert "freshness" in r
         assert abs(r["freshness"] - 10.0) < 0.5
 
@@ -709,7 +709,7 @@ class TestLimitEnforcement:
 
             results = await retrieve("python", limit=3)
 
-        assert len(results) <= 3
+        assert len(results.data) <= 3
 
     @pytest.mark.asyncio
     async def test_limit_zero_clamped_to_one(self):
@@ -719,7 +719,7 @@ class TestLimitEnforcement:
             from valence.core.retrieval import retrieve
 
             results = await retrieve("python", limit=0)
-        assert isinstance(results, list)
+        assert isinstance(results.data, list)
 
 
 # ---------------------------------------------------------------------------

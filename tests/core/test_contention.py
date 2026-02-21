@@ -245,9 +245,9 @@ class TestDetectContention:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
 
-            assert result is not None
-            assert result["status"] == "detected"
-            assert float(result["materiality"]) == pytest.approx(0.6, abs=0.1)
+            assert result.data is not None
+            assert result.data["status"] == "detected"
+            assert float(result.data["materiality"]) == pytest.approx(0.6, abs=0.1)
         finally:
             set_llm_backend(None)
 
@@ -263,7 +263,7 @@ class TestDetectContention:
         try:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-            assert result is None
+            assert result.data is None
         finally:
             set_llm_backend(None)
 
@@ -279,7 +279,7 @@ class TestDetectContention:
         try:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-            assert result is None
+            assert result.data is None
         finally:
             set_llm_backend(None)
 
@@ -288,14 +288,14 @@ class TestDetectContention:
         cur = _make_cursor(fetchone_seq=[None])
         with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
             result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-        assert result is None
+        assert result.data is None
 
     async def test_returns_none_when_source_not_found(self):
         """Source missing → returns None without error."""
         cur = _make_cursor(fetchone_seq=[_article_row(), None])
         with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
             result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-        assert result is None
+        assert result.data is None
 
     async def test_returns_none_when_empty_article_content(self):
         """Empty article content → returns None."""
@@ -307,7 +307,7 @@ class TestDetectContention:
         )
         with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
             result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-        assert result is None
+        assert result.data is None
 
 
 # ---------------------------------------------------------------------------
@@ -332,8 +332,8 @@ class TestDetectContentionHeuristicFallback:
             result = await detect_contention(ARTICLE_ID, SOURCE_ID)
 
         # Heuristic returns DEFAULT_MATERIALITY_THRESHOLD + 0.05 = 0.35
-        assert result is not None
-        assert result["status"] == "detected"
+        assert result.data is not None
+        assert result.data["status"] == "detected"
 
     async def test_fallback_creates_db_row(self):
         """Verify INSERT is called on the cursor in fallback path."""
@@ -370,7 +370,7 @@ class TestMaterialityThreshold:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
             # 0.3 >= 0.3 → creates contention
-            assert result is not None
+            assert result.data is not None
         finally:
             set_llm_backend(None)
 
@@ -381,7 +381,7 @@ class TestMaterialityThreshold:
         try:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-            assert result is None
+            assert result.data is None
         finally:
             set_llm_backend(None)
 
@@ -401,7 +401,7 @@ class TestListContentions:
         cur = _make_cursor(fetchall_seq=[rows])
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await list_contentions(status="detected")
-        assert len(result) == 2
+        assert len(result.data) == 2
 
     async def test_filters_by_article_id(self):
         """list_contentions passes article_id filter to SQL."""
@@ -418,7 +418,7 @@ class TestListContentions:
         cur = _make_cursor(fetchall_seq=[[]])
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await list_contentions()
-        assert result == []
+        assert result.data == []
 
     async def test_no_status_filter(self):
         """Passing status=None skips the status filter."""
@@ -443,7 +443,7 @@ class TestListContentions:
         cur = _make_cursor(fetchall_seq=[[row_with_uuid]])
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await list_contentions()
-        assert isinstance(result[0]["id"], str)
+        assert isinstance(result.data[0]["id"], str)
 
 
 # ---------------------------------------------------------------------------
@@ -455,16 +455,16 @@ class TestResolveContention:
     async def test_invalid_resolution_returns_error(self):
         """Unknown resolution string returns error dict without DB access."""
         result = await resolve_contention(CONTENTION_ID, "explode", "rationale")
-        assert result["success"] is False
-        assert "resolution" in result["error"]
+        assert result.success is False
+        assert "resolution" in result.error
 
     async def test_not_found_returns_error(self):
         """Contention not found → error."""
         cur = _make_cursor(fetchone_seq=[None])
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await resolve_contention(CONTENTION_ID, "dismiss", "not real")
-        assert result["success"] is False
-        assert "not found" in result["error"].lower()
+        assert result.success is False
+        assert "not found" in result.error.lower()
 
     async def test_dismiss_marks_dismissed(self):
         """dismiss → contention status = 'dismissed', article unchanged."""
@@ -478,8 +478,8 @@ class TestResolveContention:
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await resolve_contention(CONTENTION_ID, "dismiss", "Not material")
 
-        assert result["success"] is True
-        assert result["contention"]["status"] == "dismissed"
+        assert result.success is True
+        assert result.data["contention"]["status"] == "dismissed"
         execute_calls = str(cur.execute.call_args_list)
         assert "UPDATE contentions" in execute_calls
         assert "dismissed" in execute_calls
@@ -496,9 +496,9 @@ class TestResolveContention:
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await resolve_contention(CONTENTION_ID, "supersede_a", "Article is authoritative")
 
-        assert result["success"] is True
-        assert result["contention"]["status"] == "resolved"
-        assert "article" not in result  # article not modified
+        assert result.success is True
+        assert result.data["contention"]["status"] == "resolved"
+        assert result.data.get("article") is None  # article not modified
 
     async def test_accept_both_annotates_article(self):
         """accept_both → contention resolved, article extraction_metadata updated."""
@@ -513,7 +513,7 @@ class TestResolveContention:
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await resolve_contention(CONTENTION_ID, "accept_both", "Both valid")
 
-        assert result["success"] is True
+        assert result.success is True
         execute_calls = str(cur.execute.call_args_list)
         assert "UPDATE articles" in execute_calls
 
@@ -542,7 +542,7 @@ class TestResolveContention:
         with _patch_cursor(cur), _skip_schema_ensure():
             result = await resolve_contention(CONTENTION_ID, "supersede_b", "Source has newer data")
 
-        assert result["success"] is True
+        assert result.success is True
         execute_calls = str(cur.execute.call_args_list)
         assert "UPDATE articles" in execute_calls
 
@@ -569,7 +569,7 @@ class TestResolveContention:
         try:
             with _patch_cursor(cur), _skip_schema_ensure():
                 result = await resolve_contention(CONTENTION_ID, "supersede_b", "Merge")
-            assert result["success"] is True
+            assert result.success is True
         finally:
             set_llm_backend(None)
 
@@ -626,7 +626,7 @@ class TestLLMBackend:
         cur = _make_cursor(fetchone_seq=[_article_row(), _source_row()])
         with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
             result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-        assert result is None  # LLM says no contention
+        assert result.data is None  # LLM says no contention
 
         set_llm_backend(None)
         # Now heuristic is used → contention may be created
@@ -652,7 +652,7 @@ class TestLLMBackend:
             cur = _make_cursor(fetchone_seq=[_article_row(), _source_row()])
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-            assert result is None
+            assert result.data is None
         finally:
             set_llm_backend(None)
 
@@ -667,7 +667,7 @@ class TestLLMBackend:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
             # Heuristic path triggers
-            assert result is not None
+            assert result.data is not None
         finally:
             set_llm_backend(None)
 
@@ -689,7 +689,7 @@ class TestLLMBackend:
         try:
             with _patch_cursor(cur), _skip_schema_ensure(), _patch_threshold(0.3):
                 result = await detect_contention(ARTICLE_ID, SOURCE_ID)
-            assert result is not None
+            assert result.data is not None
             execute_calls = str(cur.execute.call_args_list)
             assert "contradiction" in execute_calls
         finally:

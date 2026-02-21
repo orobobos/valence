@@ -20,6 +20,8 @@ from uuid import UUID
 
 from our_db import get_cursor
 
+from valence.core.response import ValenceResponse, ok, err
+
 from valence.core.inference import (
     TASK_CONTENTION,
     provider as _inference_provider,
@@ -245,7 +247,7 @@ def _parse_llm_json(response: str, required_keys: list[str]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] | None:
+async def detect_contention(article_id: str, source_id: str) -> ValenceResponse:
     """Check whether a source contradicts or contends with an article.
 
     Invokes the LLM to assess materiality if a backend is configured; falls
@@ -269,7 +271,7 @@ async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] |
         article_row = cur.fetchone()
         if article_row is None:
             logger.warning("detect_contention: article %s not found", article_id)
-            return None
+            return ok(data=None)
         article = dict(article_row)
         article["id"] = str(article["id"])
 
@@ -277,7 +279,7 @@ async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] |
         source_row = cur.fetchone()
         if source_row is None:
             logger.warning("detect_contention: source %s not found", source_id)
-            return None
+            return ok(data=None)
         source = dict(source_row)
         source["id"] = str(source["id"])
 
@@ -289,7 +291,7 @@ async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] |
             "detect_contention: empty content for article %s or source %s, skipping",
             article_id, source_id,
         )
-        return None
+        return ok(data=None)
 
     # ---- LLM detection ----
     prompt = _build_detection_prompt(article_content, source_content)
@@ -318,7 +320,7 @@ async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] |
             "detect_contention: materiality=%.2f below threshold=%.2f for article=%s source=%s; skipping",
             materiality, threshold, article_id, source_id,
         )
-        return None
+        return ok(data=None)
 
     # ---- Clamp contention_type ----
     valid_types = {"contradiction", "temporal_conflict", "scope_conflict", "partial_overlap"}
@@ -351,20 +353,20 @@ async def detect_contention(article_id: str, source_id: str) -> dict[str, Any] |
         row = cur.fetchone()
         if row is None:
             logger.error("detect_contention: INSERT returned no row")
-            return None
+            return err("Contention INSERT returned no row")
         contention = _serialize_row(dict(row))
 
     logger.info(
         "Contention created: id=%s article=%s source=%s materiality=%.2f type=%s",
         contention["id"], article_id, source_id, materiality, contention_type,
     )
-    return contention
+    return ok(data=contention)
 
 
 async def list_contentions(
     article_id: str | None = None,
     status: str = "detected",
-) -> list[dict[str, Any]]:
+) -> ValenceResponse:
     """List contentions, optionally filtered by article and status.
 
     Args:
@@ -394,14 +396,14 @@ async def list_contentions(
         cur.execute(sql, params)
         rows = cur.fetchall()
 
-    return [_serialize_row(dict(r)) for r in rows]
+    return ok(data=[_serialize_row(dict(r)) for r in rows])
 
 
 async def resolve_contention(
     contention_id: str,
     resolution: str,
     rationale: str,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Resolve a contention.
 
     Resolution types:
@@ -425,17 +427,14 @@ async def resolve_contention(
 
     valid_resolutions = {"supersede_a", "supersede_b", "accept_both", "dismiss"}
     if resolution not in valid_resolutions:
-        return {
-            "success": False,
-            "error": f"resolution must be one of {sorted(valid_resolutions)}",
-        }
+        return err(f"resolution must be one of {sorted(valid_resolutions)}")
 
     # ---- Load contention ----
     with get_cursor() as cur:
         cur.execute("SELECT * FROM contentions WHERE id = %s", (contention_id,))
         row = cur.fetchone()
     if row is None:
-        return {"success": False, "error": f"Contention not found: {contention_id}"}
+        return err(f"Contention not found: {contention_id}")
 
     contention = dict(row)
     article_id = str(contention["belief_a_id"])
@@ -493,15 +492,14 @@ async def resolve_contention(
         updated_row = cur.fetchone()
 
     if updated_row is None:
-        return {"success": False, "error": "Failed to update contention row"}
+        return err("Failed to update contention row")
 
-    result: dict[str, Any] = {
-        "success": True,
+    data: dict[str, Any] = {
         "contention": _serialize_row(dict(updated_row)),
     }
     if updated_article:
-        result["article"] = updated_article
-    return result
+        data["article"] = updated_article
+    return ok(data=data)
 
 
 # ---------------------------------------------------------------------------

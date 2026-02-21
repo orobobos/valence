@@ -245,7 +245,7 @@ class TestComputeUsageScores:
         with patch("valence.core.usage.get_cursor", return_value=mock_cur):
             count = await compute_usage_scores()
 
-        assert isinstance(count, int)
+        assert isinstance(count.data, int)
 
     async def test_returns_updated_count(self):
         """compute_usage_scores returns the rowcount from the UPDATE."""
@@ -256,7 +256,7 @@ class TestComputeUsageScores:
         with patch("valence.core.usage.get_cursor", return_value=mock_cur):
             count = await compute_usage_scores()
 
-        assert count == 42
+        assert count.data == 42
 
     async def test_idempotent_second_run_returns_zero(self):
         """Idempotency: second run with no changes returns 0 (IS DISTINCT FROM)."""
@@ -272,8 +272,8 @@ class TestComputeUsageScores:
         with patch("valence.core.usage.get_cursor", return_value=mock_cur_second):
             second_count = await compute_usage_scores()
 
-        assert first_count == 10
-        assert second_count == 0  # Nothing changed — idempotent
+        assert first_count.data == 10
+        assert second_count.data == 0  # Nothing changed — idempotent
 
     async def test_uses_is_distinct_from_for_idempotency(self):
         """SQL must contain IS DISTINCT FROM to skip unchanged rows."""
@@ -328,7 +328,7 @@ class TestGetDecayCandidates:
         with patch("valence.core.usage.get_cursor", return_value=mock_cur):
             result = await get_decay_candidates()
 
-        assert isinstance(result, list)
+        assert isinstance(result.data, list)
 
     async def test_b_before_a_in_results(self):
         """Article B (lower usage_score) appears before article A (higher score)."""
@@ -343,9 +343,9 @@ class TestGetDecayCandidates:
         with patch("valence.core.usage.get_cursor", return_value=mock_cur):
             results = await get_decay_candidates()
 
-        assert len(results) == 2
-        assert results[0]["id"] == ARTICLE_B_ID, "B (lowest score) should come first"
-        assert results[1]["id"] == ARTICLE_A_ID
+        assert len(results.data) == 2
+        assert results.data[0]["id"] == ARTICLE_B_ID, "B (lowest score) should come first"
+        assert results.data[1]["id"] == ARTICLE_A_ID
 
     async def test_sql_excludes_pinned(self):
         """SQL query must filter out pinned articles (pinned = FALSE)."""
@@ -376,7 +376,7 @@ class TestGetDecayCandidates:
             results = await get_decay_candidates()
 
         # None of the results should be pinned
-        pinned_ids = [r["id"] for r in results if r.get("pinned")]
+        pinned_ids = [r["id"] for r in results.data if r.get("pinned")]
         assert pinned_ids == [], f"Pinned articles found in decay candidates: {pinned_ids}"
 
     async def test_sql_excludes_pinned_in_where_clause(self):

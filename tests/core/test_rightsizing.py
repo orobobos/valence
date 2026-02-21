@@ -93,7 +93,7 @@ def _make_cursor(fetchone_seq=None, fetchall_seq=None):
 class TestSplitContentAtMidpoint:
     """Unit tests for the midpoint splitting helper."""
 
-    def test_splits_at_paragraph_boundary(self):
+    async def test_splits_at_paragraph_boundary(self):
         from valence.core.articles import _split_content_at_midpoint
 
         content = "First paragraph about Python.\n\nSecond paragraph about Ruby."
@@ -131,7 +131,7 @@ class TestSplitContentAtMidpoint:
 
 
 class TestSplitArticle:
-    """Tests for split_article()."""
+    """Tests for await split_article()."""
 
     def _setup_split_cursor(
         self,
@@ -165,7 +165,7 @@ class TestSplitArticle:
             fetchall_seq=[sources],
         )
 
-    def test_split_returns_two_articles(self):
+    async def test_split_returns_two_articles(self):
         from valence.core.articles import split_article
 
         mock_cur = self._setup_split_cursor()
@@ -173,12 +173,14 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            original, new_art = split_article(ARTICLE_ID)
+            split_result = await split_article(ARTICLE_ID)
+            original = split_result.data["original"]
+            new_art = split_result.data["new"]
 
         assert original is not None
         assert new_art is not None
 
-    def test_split_original_retains_id(self):
+    async def test_split_original_retains_id(self):
         from valence.core.articles import split_article
 
         mock_cur = self._setup_split_cursor()
@@ -186,11 +188,12 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            original, _ = split_article(ARTICLE_ID)
+            split_result = await split_article(ARTICLE_ID)
+            original = split_result.data["original"]
 
         assert original["id"] == ARTICLE_ID
 
-    def test_split_new_article_has_different_id(self):
+    async def test_split_new_article_has_different_id(self):
         from valence.core.articles import split_article
 
         mock_cur = self._setup_split_cursor()
@@ -198,13 +201,15 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            original, new_art = split_article(ARTICLE_ID)
+            split_result = await split_article(ARTICLE_ID)
+            original = split_result.data["original"]
+            new_art = split_result.data["new"]
 
         assert new_art["id"] != original["id"]
         # The new ID comes from the DB insert; mock returns NEW_ARTICLE_ID
         assert new_art["id"] == NEW_ARTICLE_ID
 
-    def test_split_sources_copied_to_both_articles(self):
+    async def test_split_sources_copied_to_both_articles(self):
         from valence.core.articles import split_article
 
         mock_cur = self._setup_split_cursor()
@@ -212,7 +217,7 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            split_article(ARTICLE_ID)
+            await split_article(ARTICLE_ID)
 
         calls_str = str(mock_cur.execute.call_args_list)
         # Both article_sources inserts should reference SOURCE_ID_1 and SOURCE_ID_2
@@ -221,7 +226,7 @@ class TestSplitArticle:
         # New article ID should appear in article_sources inserts
         assert NEW_ARTICLE_ID in calls_str
 
-    def test_split_records_mutations_on_both_articles(self):
+    async def test_split_records_mutations_on_both_articles(self):
         from valence.core.articles import split_article
 
         mock_cur = self._setup_split_cursor()
@@ -229,7 +234,7 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            split_article(ARTICLE_ID)
+            await split_article(ARTICLE_ID)
 
         calls_str = str(mock_cur.execute.call_args_list)
         assert "article_mutations" in calls_str
@@ -238,7 +243,7 @@ class TestSplitArticle:
         assert ARTICLE_ID in calls_str
         assert NEW_ARTICLE_ID in calls_str
 
-    def test_split_raises_on_missing_article(self):
+    async def test_split_raises_on_missing_article(self):
         from valence.core.articles import split_article
 
         mock_cur = _make_cursor(fetchone_seq=[None])  # article not found
@@ -246,10 +251,11 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            with pytest.raises(ValueError, match="not found"):
-                split_article(str(uuid4()))
+            result = await split_article(str(uuid4()))
+            assert result.success is False
+            assert "not found" in result.error.lower()
 
-    def test_split_raises_on_too_short_content(self):
+    async def test_split_raises_on_too_short_content(self):
         from valence.core.articles import split_article
 
         short_article = _article_row(content="Too short.")
@@ -258,10 +264,11 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            with pytest.raises(ValueError, match="too short"):
-                split_article(ARTICLE_ID)
+            result = await split_article(ARTICLE_ID)
+            assert result.success is False
+            assert "too short" in result.error.lower()
 
-    def test_split_sources_include_all_original_sources(self):
+    async def test_split_sources_include_all_original_sources(self):
         """Both articles should have ALL original sources — not just a subset."""
         from valence.core.articles import split_article
 
@@ -275,7 +282,7 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            split_article(ARTICLE_ID)
+            await split_article(ARTICLE_ID)
 
         calls_str = str(mock_cur.execute.call_args_list)
         # All three sources appear in the SQL calls
@@ -291,7 +298,7 @@ class TestSplitArticle:
         new_art_source_calls = [c for c in article_sources_calls if NEW_ARTICLE_ID in c]
         assert len(new_art_source_calls) == 3  # one insert per source
 
-    def test_split_mutation_has_cross_references(self):
+    async def test_split_mutation_has_cross_references(self):
         """Mutation for original should reference new article ID and vice versa."""
         from valence.core.articles import split_article
 
@@ -300,7 +307,7 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            split_article(ARTICLE_ID)
+            await split_article(ARTICLE_ID)
 
         mutation_calls = [
             str(c) for c in mock_cur.execute.call_args_list
@@ -313,7 +320,7 @@ class TestSplitArticle:
         assert ARTICLE_ID in combined
         assert NEW_ARTICLE_ID in combined
 
-    def test_split_no_sources_still_works(self):
+    async def test_split_no_sources_still_works(self):
         """split_article succeeds even if the original has no sources."""
         from valence.core.articles import split_article
 
@@ -330,7 +337,9 @@ class TestSplitArticle:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            original_out, new_art = split_article(ARTICLE_ID)
+            split_result = await split_article(ARTICLE_ID)
+            original_out = split_result.data["original"]
+            new_art = split_result.data["new"]
 
         assert original_out["id"] == ARTICLE_ID
         assert new_art["id"] == NEW_ARTICLE_ID
@@ -342,7 +351,7 @@ class TestSplitArticle:
 
 
 class TestMergeArticles:
-    """Tests for merge_articles()."""
+    """Tests for await merge_articles()."""
 
     MERGED_ID = str(uuid4())
 
@@ -377,7 +386,7 @@ class TestMergeArticles:
             fetchall_seq=[sources_a, sources_b],
         )
 
-    def test_merge_returns_new_article(self):
+    async def test_merge_returns_new_article(self):
         from valence.core.articles import merge_articles
 
         mock_cur = self._setup_merge_cursor()
@@ -385,12 +394,14 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merged = merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            _mr = await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            merge_result = _mr.data
+            merged = merge_result
 
         assert merged is not None
         assert merged["id"] == self.MERGED_ID
 
-    def test_merge_new_article_has_new_id(self):
+    async def test_merge_new_article_has_new_id(self):
         from valence.core.articles import merge_articles
 
         mock_cur = self._setup_merge_cursor()
@@ -398,12 +409,14 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merged = merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            _mr = await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            merge_result = _mr.data
+            merged = merge_result
 
         assert merged["id"] != ARTICLE_ID_A
         assert merged["id"] != ARTICLE_ID_B
 
-    def test_merge_originals_are_archived(self):
+    async def test_merge_originals_are_archived(self):
         from valence.core.articles import merge_articles
 
         mock_cur = self._setup_merge_cursor()
@@ -411,7 +424,7 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         calls_str = str(mock_cur.execute.call_args_list)
         # Both originals should be archived
@@ -419,7 +432,7 @@ class TestMergeArticles:
         assert ARTICLE_ID_A in calls_str
         assert ARTICLE_ID_B in calls_str
 
-    def test_merge_combined_sources(self):
+    async def test_merge_combined_sources(self):
         """Merged article has sources from both originals."""
         from valence.core.articles import merge_articles
 
@@ -428,13 +441,13 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         calls_str = str(mock_cur.execute.call_args_list)
         assert SOURCE_ID_1 in calls_str
         assert SOURCE_ID_2 in calls_str
 
-    def test_merge_deduplicates_sources(self):
+    async def test_merge_deduplicates_sources(self):
         """If both articles share a source, it appears only once in the merged article."""
         from valence.core.articles import merge_articles
 
@@ -452,7 +465,7 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         # Count article_sources INSERT calls for merged article (self.MERGED_ID)
         source_insert_calls = [
@@ -462,7 +475,7 @@ class TestMergeArticles:
         # 3 unique (source_id, relationship) combos: shared+originates, s2+confirms, s3+contends
         assert len(source_insert_calls) == 3
 
-    def test_merge_records_mutations_on_all_three(self):
+    async def test_merge_records_mutations_on_all_three(self):
         """Merged mutation recorded for both originals and the new article."""
         from valence.core.articles import merge_articles
 
@@ -471,7 +484,7 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         mutation_calls = [
             str(c) for c in mock_cur.execute.call_args_list
@@ -484,7 +497,7 @@ class TestMergeArticles:
         assert ARTICLE_ID_B in combined
         assert self.MERGED_ID in combined
 
-    def test_merge_raises_on_missing_article_a(self):
+    async def test_merge_raises_on_missing_article_a(self):
         from valence.core.articles import merge_articles
 
         mock_cur = _make_cursor(fetchone_seq=[None])
@@ -492,10 +505,11 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            with pytest.raises(ValueError, match="not found"):
-                merge_articles(str(uuid4()), ARTICLE_ID_B)
+            result = await merge_articles(str(uuid4()), ARTICLE_ID_B)
+            assert result.success is False
+            assert "not found" in result.error.lower()
 
-    def test_merge_raises_on_missing_article_b(self):
+    async def test_merge_raises_on_missing_article_b(self):
         from valence.core.articles import merge_articles
 
         article_a = _article_row(article_id=ARTICLE_ID_A)
@@ -504,10 +518,11 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            with pytest.raises(ValueError, match="not found"):
-                merge_articles(ARTICLE_ID_A, str(uuid4()))
+            result = await merge_articles(ARTICLE_ID_A, str(uuid4()))
+            assert result.success is False
+            assert "not found" in result.error.lower()
 
-    def test_merge_title_combines_both(self):
+    async def test_merge_title_combines_both(self):
         """Merged article title should reflect both source titles."""
         from valence.core.articles import merge_articles
 
@@ -517,7 +532,7 @@ class TestMergeArticles:
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
             # The title is built before INSERT; check that it's passed to the DB
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         # Find the INSERT INTO articles call and check title argument
         insert_calls = [
@@ -529,7 +544,7 @@ class TestMergeArticles:
         insert_args = str(insert_calls[0])
         assert "Article A + Article B" in insert_args
 
-    def test_merge_content_contains_both(self):
+    async def test_merge_content_contains_both(self):
         """Merged article content is a concatenation of both source article contents."""
         from valence.core.articles import merge_articles
 
@@ -538,7 +553,7 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         # The INSERT call's first positional arg after the SQL is the content
         insert_calls = [
@@ -549,7 +564,7 @@ class TestMergeArticles:
         assert "Content from article A" in insert_args
         assert "Content from article B" in insert_args
 
-    def test_merge_union_of_sources(self):
+    async def test_merge_union_of_sources(self):
         """Union of sources — all unique (source_id, relationship) pairs preserved."""
         from valence.core.articles import merge_articles
 
@@ -566,7 +581,7 @@ class TestMergeArticles:
             patch("valence.core.articles.get_cursor", return_value=mock_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
 
         source_inserts = [
             str(c) for c in mock_cur.execute.call_args_list
@@ -584,7 +599,7 @@ class TestMergeArticles:
 class TestProvenanceChainIntegrity:
     """Verify that split and merge preserve provenance per WU-07 spec (C6)."""
 
-    def test_split_both_articles_have_all_original_sources_via_provenance(self):
+    async def test_split_both_articles_have_all_original_sources_via_provenance(self):
         """After split, get_provenance on each article should return the original sources."""
         from valence.core.articles import split_article
         from valence.core.provenance import get_provenance
@@ -607,7 +622,9 @@ class TestProvenanceChainIntegrity:
             patch("valence.core.articles.get_cursor", return_value=split_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            orig_result, new_result = split_article(ARTICLE_ID)
+            split_res = await split_article(ARTICLE_ID)
+            orig_result = split_res.data["original"]
+            new_result = split_res.data["new"]
 
         # --- Verify provenance for the original (now updated) article ---
         prov_row_1 = {
@@ -626,14 +643,15 @@ class TestProvenanceChainIntegrity:
         prov_row_2 = {**prov_row_1, "source_id": SOURCE_ID_2, "relationship": "confirms"}
         prov_cur = _make_cursor(fetchall_seq=[[prov_row_1, prov_row_2]])
         with patch("valence.core.provenance.get_cursor", return_value=prov_cur):
-            prov = get_provenance(ARTICLE_ID)
+            prov_result = await get_provenance(ARTICLE_ID)
+            prov = prov_result.data
 
         assert len(prov) == 2
         source_ids = {p["source_id"] for p in prov}
         assert SOURCE_ID_1 in source_ids
         assert SOURCE_ID_2 in source_ids
 
-    def test_merge_provenance_shows_all_original_sources(self):
+    async def test_merge_provenance_shows_all_original_sources(self):
         """After merge, get_provenance on merged article returns all sources from both originals."""
         from valence.core.articles import merge_articles
         from valence.core.provenance import get_provenance
@@ -654,7 +672,9 @@ class TestProvenanceChainIntegrity:
             patch("valence.core.articles.get_cursor", return_value=merge_cur),
             patch("valence.core.articles._compute_embedding", return_value=None),
         ):
-            merged = merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            _mr = await merge_articles(ARTICLE_ID_A, ARTICLE_ID_B)
+            merge_result = _mr.data
+            merged = merge_result
 
         # Simulate get_provenance returning both sources for merged article
         prov_row_1 = {
@@ -673,7 +693,8 @@ class TestProvenanceChainIntegrity:
         prov_row_2 = {**prov_row_1, "source_id": SOURCE_ID_2, "relationship": "confirms"}
         prov_cur = _make_cursor(fetchall_seq=[[prov_row_1, prov_row_2]])
         with patch("valence.core.provenance.get_cursor", return_value=prov_cur):
-            prov = get_provenance(MERGED_ID)
+            prov_result = await get_provenance(MERGED_ID)
+            prov = prov_result.data
 
         assert len(prov) == 2
         source_ids_in_prov = {p["source_id"] for p in prov}
@@ -725,7 +746,7 @@ class TestMutationQueueSplitIntegration:
         mock_status.assert_called_once()
         status_call_args = mock_status.call_args[0]
         assert status_call_args[1] == "completed"
-        assert count == 1
+        assert count.data == 1
 
     async def test_queue_dispatches_merge_candidate(self):
         """process_mutation_queue with a 'merge_candidate' item calls merge_articles."""
@@ -759,4 +780,4 @@ class TestMutationQueueSplitIntegration:
         mock_merge.assert_called_once_with(ARTICLE_ID_A, CANDIDATE_ID)
         status_call_args = mock_status.call_args[0]
         assert status_call_args[1] == "completed"
-        assert count == 1
+        assert count.data == 1

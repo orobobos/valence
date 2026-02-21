@@ -23,6 +23,7 @@ from typing import Any
 from our_db import get_cursor
 
 from .ranking import compute_confidence_score, multi_signal_rank
+from .response import ValenceResponse, ok
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +354,7 @@ async def retrieve(
     limit: int = 10,
     include_sources: bool = False,
     session_id: str | None = None,
-) -> list[dict[str, Any]]:
+) -> ValenceResponse:
     """Unified retrieval: search articles and ungrouped sources.
 
     Ranks results by: relevance * 0.5 + confidence * 0.35 + freshness * 0.15.
@@ -371,7 +372,7 @@ async def retrieve(
         session_id:      Optional session ID to attach to usage traces.
 
     Returns:
-        List of result dicts, each containing:
+        ValenceResponse with data = list of result dicts, each containing:
           - id, content, title (articles) / type (sources)
           - type: "article" or "source"
           - final_score: combined ranking score
@@ -382,14 +383,15 @@ async def retrieve(
           - active_contentions: bool
     """
     if not query or not query.strip():
-        return []
+        return ok(data=[])
 
     limit = max(1, min(limit, 200))
 
-    return await asyncio.to_thread(
+    results = await asyncio.to_thread(
         _retrieve_sync,
         query,
         limit,
         include_sources,
         session_id,
     )
+    return ok(data=results)

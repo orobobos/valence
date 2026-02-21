@@ -19,6 +19,7 @@ from uuid import UUID
 from our_db import get_cursor
 
 from .embedding_interop import text_similarity
+from .response import ValenceResponse, ok, err
 
 logger = logging.getLogger(__name__)
 
@@ -77,13 +78,13 @@ def _row_to_article(row: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def create_article(
+async def create_article(
     content: str,
     title: str | None = None,
     source_ids: list[str] | None = None,
     author_type: str = "system",
     domain_path: list[str] | None = None,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Create a new article.
 
     Links provided sources with the 'originates' relationship, records a
@@ -100,9 +101,9 @@ def create_article(
         Dict with ``success``, ``article``, and optionally ``error``.
     """
     if not content or not content.strip():
-        return {"success": False, "error": "content is required"}
+        return err("content is required")
     if author_type not in VALID_AUTHOR_TYPES:
-        return {"success": False, "error": f"author_type must be one of {sorted(VALID_AUTHOR_TYPES)}"}
+        return err(f"author_type must be one of {sorted(VALID_AUTHOR_TYPES)}")
 
     embedding_str = _compute_embedding(content)
     token_count = _count_tokens(content)
@@ -158,13 +159,13 @@ def create_article(
             (article_id, f"Article created with {len(source_ids or [])} source(s)"),
         )
 
-        return {"success": True, "article": article}
+        return ok(data=article)
 
 
-def get_article(
+async def get_article(
     article_id: str,
     include_provenance: bool = False,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Retrieve an article by ID.
 
     Args:
@@ -178,7 +179,7 @@ def get_article(
         cur.execute("SELECT * FROM articles WHERE id = %s", (article_id,))
         row = cur.fetchone()
         if not row:
-            return {"success": False, "error": f"Article not found: {article_id}"}
+            return err(f"Article not found: {article_id}")
 
         article = _row_to_article(dict(row))
 
@@ -212,14 +213,14 @@ def get_article(
                 provenance.append(entry)
             article["provenance"] = provenance
 
-        return {"success": True, "article": article}
+        return ok(data=article)
 
 
-def update_article(
+async def update_article(
     article_id: str,
     content: str,
     source_id: str | None = None,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Update article content, increment version, and record mutation.
 
     Args:
@@ -231,7 +232,7 @@ def update_article(
         Dict with ``success`` and updated ``article``.
     """
     if not content or not content.strip():
-        return {"success": False, "error": "content is required"}
+        return err("content is required")
 
     embedding_str = _compute_embedding(content)
     token_count = _count_tokens(content)
@@ -255,7 +256,7 @@ def update_article(
         )
         row = cur.fetchone()
         if not row:
-            return {"success": False, "error": f"Article not found: {article_id}"}
+            return err(f"Article not found: {article_id}")
 
         article = _row_to_article(dict(row))
 
@@ -282,7 +283,7 @@ def update_article(
             (article_id, source_id),
         )
 
-        return {"success": True, "article": article}
+        return ok(data=article)
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +323,7 @@ def _split_content_at_midpoint(content: str) -> tuple[str, str]:
     return content[:best_pos].rstrip(), content[best_pos:].lstrip()
 
 
-def split_article(article_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+async def split_article(article_id: str) -> ValenceResponse:
     """Split an oversized article into two articles.
 
     The original article retains its ID and receives the first portion of the
@@ -344,12 +345,12 @@ def split_article(article_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         cur.execute("SELECT * FROM articles WHERE id = %s", (article_id,))
         row = cur.fetchone()
         if not row:
-            raise ValueError(f"Article not found: {article_id}")
+            return err(f"Article not found: {article_id}")
         original = _row_to_article(dict(row))
 
         content = original.get("content") or ""
         if len(content.split()) < 4:
-            raise ValueError(f"Article {article_id} content too short to split (< 4 words)")
+            return err(f"Article {article_id} content too short to split (< 4 words)")
 
         # Fetch all sources for the original article
         cur.execute(
@@ -466,13 +467,13 @@ def split_article(article_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         )
 
     logger.info("Split article %s → original + new %s", article_id, new_article_id)
-    return updated_original, new_article
+    return ok(data={"original": updated_original, "new": new_article})
 
 
-def merge_articles(
+async def merge_articles(
     article_id_a: str,
     article_id_b: str,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Merge two related articles into a single new article.
 
     Creates a new article whose content is the concatenation of both source
@@ -495,13 +496,13 @@ def merge_articles(
         cur.execute("SELECT * FROM articles WHERE id = %s", (article_id_a,))
         row_a = cur.fetchone()
         if not row_a:
-            raise ValueError(f"Article not found: {article_id_a}")
+            return err(f"Article not found: {article_id_a}")
         article_a = _row_to_article(dict(row_a))
 
         cur.execute("SELECT * FROM articles WHERE id = %s", (article_id_b,))
         row_b = cur.fetchone()
         if not row_b:
-            raise ValueError(f"Article not found: {article_id_b}")
+            return err(f"Article not found: {article_id_b}")
         article_b = _row_to_article(dict(row_b))
 
         # Fetch sources for both articles
@@ -629,14 +630,14 @@ def merge_articles(
         )
 
     logger.info("Merged articles %s + %s → new article %s", article_id_a, article_id_b, merged_id)
-    return merged_article
+    return ok(data=merged_article)
 
 
-def search_articles(
+async def search_articles(
     query: str,
     limit: int = 10,
     domain_filter: list[str] | None = None,
-) -> list[dict[str, Any]]:
+) -> ValenceResponse:
     """Search articles via full-text search, optionally augmented with vector similarity.
 
     Full-text search is always performed. If embeddings are available, results
@@ -651,7 +652,7 @@ def search_articles(
         List of article dicts, ordered by relevance.
     """
     if not query or not query.strip():
-        return []
+        return ok(data=[])
 
     with get_cursor() as cur:
         # Full-text search
@@ -707,4 +708,4 @@ def search_articles(
             results.sort(key=lambda x: x.get("similarity", 0), reverse=True)
 
         # Trim to requested limit
-        return results[:limit]
+        return ok(data=results[:limit])

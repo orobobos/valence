@@ -93,9 +93,18 @@ def knowledge_search(
         logger.exception("knowledge_search failed for query %r: %s", query, exc)
         return {"success": False, "error": str(exc)}
 
+    # retrieve() now returns ValenceResponse — unwrap to MCP dict format
+    from ...core.response import ValenceResponse
+    if isinstance(results, ValenceResponse):
+        if not results.success:
+            return {"success": False, "error": results.error}
+        result_list = results.data or []
+    else:
+        result_list = results  # backward compat
+
     return {
         "success": True,
-        "results": results,
-        "total_count": len(results),
+        "results": result_list,
+        "total_count": len(result_list),
         "query": query,
     }

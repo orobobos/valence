@@ -18,6 +18,8 @@ from uuid import UUID
 
 from our_db import get_cursor
 
+from valence.core.response import ValenceResponse, ok, err
+
 from valence.core.inference import (
     TASK_COMPILE,
     TASK_UPDATE,
@@ -279,7 +281,7 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
 async def compile_article(
     source_ids: list[str],
     title_hint: str | None = None,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Compile sources into a new article using LLM summarization.
 
     Fetches source content, invokes the LLM to synthesize an article,
@@ -299,7 +301,7 @@ async def compile_article(
         Dict with ``success``, ``article``, and optionally ``error``.
     """
     if not source_ids:
-        return {"success": False, "error": "At least one source_id is required"}
+        return err("At least one source_id is required")
 
     right_sizing = _get_right_sizing()
     target_tokens = right_sizing["target_tokens"]
@@ -315,7 +317,7 @@ async def compile_article(
             )
             row = cur.fetchone()
             if row is None:
-                return {"success": False, "error": f"Source not found: {sid}"}
+                return err(f"Source not found: {sid}")
             src = dict(row)
             src["id"] = str(src["id"])
             sources.append(src)
@@ -441,16 +443,13 @@ async def compile_article(
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to mark article %s as degraded: %s", article_id, exc)
 
-    result_dict: dict[str, Any] = {"success": True, "article": article}
-    if is_degraded:
-        result_dict["degraded"] = True
-    return result_dict
+    return ok(data=article, degraded=is_degraded)
 
 
 async def update_article_from_source(
     article_id: str,
     source_id: str,
-) -> dict[str, Any]:
+) -> ValenceResponse:
     """Incrementally update an existing article with new source material.
 
     Fetches the article and source, invokes the LLM to produce updated content
@@ -474,7 +473,7 @@ async def update_article_from_source(
         cur.execute("SELECT * FROM articles WHERE id = %s", (article_id,))
         row = cur.fetchone()
         if not row:
-            return {"success": False, "error": f"Article not found: {article_id}"}
+            return err(f"Article not found: {article_id}")
         article = _serialize_row(dict(row))
 
         cur.execute(
@@ -483,7 +482,7 @@ async def update_article_from_source(
         )
         src_row = cur.fetchone()
         if not src_row:
-            return {"success": False, "error": f"Source not found: {source_id}"}
+            return err(f"Source not found: {source_id}")
         source = dict(src_row)
         source["id"] = str(source["id"])
 
@@ -534,7 +533,7 @@ async def update_article_from_source(
         )
         row = cur.fetchone()
         if not row:
-            return {"success": False, "error": f"Article not found after update: {article_id}"}
+            return err(f"Article not found after update: {article_id}")
         updated_article = _serialize_row(dict(row))
 
         # Link source with identified relationship
@@ -599,17 +598,10 @@ async def update_article_from_source(
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to mark article %s degraded after update: %s", article_id, exc)
 
-    update_result: dict[str, Any] = {
-        "success": True,
-        "article": updated_article,
-        "relationship": relationship,
-    }
-    if is_degraded:
-        update_result["degraded"] = True
-    return update_result
+    return ok(data={"article": updated_article, "relationship": relationship}, degraded=is_degraded)
 
 
-async def process_mutation_queue(batch_size: int = 10) -> int:
+async def process_mutation_queue(batch_size: int = 10) -> ValenceResponse:
     """Process pending mutations from the queue.
 
     Claims a batch of 'pending' items by setting status to 'processing',
@@ -672,7 +664,7 @@ async def process_mutation_queue(batch_size: int = 10) -> int:
             )
             _set_queue_item_status(item_id, "failed", error=str(exc))
 
-    return processed
+    return ok(data=processed)
 
 
 async def _process_mutation_item(operation: str, article_id: str, payload: dict) -> None:
@@ -696,18 +688,21 @@ async def _process_mutation_item(operation: str, article_id: str, payload: dict)
         source_ids = [str(r["source_id"]) for r in rows]
         if source_ids:
             result = await compile_article(source_ids)
-            if not result.get("success"):
-                raise RuntimeError(f"recompile failed: {result.get('error')}")
+            _success = result.success if hasattr(result, "success") else result.get("success")
+            _error = result.error if hasattr(result, "error") else result.get("error")
+            if not _success:
+                raise RuntimeError(f"recompile failed: {_error}")
             # Clear degraded flag if this recompile succeeded without degradation
-            if not result.get("degraded"):
+            if not (result.degraded if hasattr(result, "degraded") else result.get("degraded")):
                 with get_cursor() as cur:
                     cur.execute(
                         "UPDATE articles SET degraded = FALSE WHERE id = %s",
                         (article_id,),
                     )
+            _article = result.data if hasattr(result, "data") else result.get("article", {})
             logger.info(
                 "Recompile queued for article %s → new article %s",
-                article_id, result["article"]["id"],
+                article_id, (_article or {}).get("id", "?"),
             )
         else:
             logger.warning("recompile: no sources found for article %s", article_id)
