@@ -1,24 +1,37 @@
 # Valence
 
-**The knowledge substrate for AI agents.**
+**A knowledge system for AI agents.**
 
-Every agent wakes up alone. Reinvents what's true. Can't share what it learned in a way others can trust. We built libraries, universities, peer review. Agents have nothing.
-
-Valence fixes this.
+Valence ingests information from diverse sources, compiles it into useful articles through use-driven promotion, and maintains those articles as living documents — always current, always traceable to their origins, always queryable. Sources are immutable and typed. Articles are compiled on demand, not eagerly. Every article tracks which sources built it, how they contributed, and whether any of them disagree.
 
 ---
 
-## What It Is
+## Architecture
 
-Infrastructure for how beliefs travel between minds — human and artificial.
+```
+Sources (immutable, typed)
+    │  ingest → store → embed (lazy)
+    ▼
+Article compilation (use-driven)
+    │  query → surface sources → compile via inference
+    ▼
+Articles (versioned, right-sized)
+    │  provenance links, contention flags, freshness scores
+    ▼
+Retrieval
+    │  ranked by relevance × confidence × freshness
+    ▼
+Agent / CLI consumer
+```
 
-- **Beliefs, not facts.** Everything is uncertain. Confidence has six dimensions: source reliability, method quality, internal consistency, temporal freshness, corroboration, domain applicability. Plus extensible custom dimensions.
-- **Trust is multi-dimensional.** Competence, integrity, judgment — and epistemic dimensions that emerge from the network. Watch ≠ Trust. Attention is free, endorsement is earned.
-- **Real P2P.** Kademlia DHT, GossipSub, NAT traversal via [py-libp2p](https://github.com/libp2p/py-libp2p). No central server required. Nodes discover each other, beliefs propagate through trust chains.
-- **Privacy by default.** Your beliefs are yours unless you share them. Local embeddings, trust-gated visibility, no central censor.
-- **Multi-DID identity.** Each node has its own Ed25519 DID. No master key. Compromise one device, the others keep working.
+**Four layers:**
 
-Your agent understands you. Together, agents understand *everything*.
+- **Sources** — raw inputs (conversations, documents, web, code, observations, tool outputs). Ingested cheaply, stored immutably. Embedding and entity extraction deferred until needed.
+- **Articles** — compiled knowledge units. Created when a query surfaces ungrouped sources; updated when new source material arrives. Each article is right-sized for context windows and carries full provenance.
+- **Provenance** — typed relationships from sources to articles: `originates`, `confirms`, `supersedes`, `contradicts`, `contends`. Contention is surfaced at retrieval time, not silently resolved.
+- **Traces** — usage signals that drive self-organization. Articles used frequently stay well-maintained; unused articles deprioritize in retrieval and are candidates for organic forgetting.
+
+**Inference router** handles five task types (compile, update, classify, contention detection, split) via a single configured backend. Falls back to degraded mode with explicit visibility — outputs produced in degraded mode are flagged and requeued when inference becomes available.
 
 ---
 
@@ -32,262 +45,228 @@ cd valence
 docker compose up -d
 ```
 
-That's it. Valence server is running at `http://localhost:8420`.
+PostgreSQL + pgvector starts on `localhost:5433`. The Valence API server starts on `http://localhost:8420`. Schema is applied automatically.
 
-### OpenClaw Plugin
+### Database only (for development)
 
 ```bash
-openclaw plugins install @ourochronos/memory-valence
+docker compose up -d postgres
 ```
 
-Then add to your OpenClaw config:
+Then run the server locally:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+valence init          # apply schema migrations
+```
+
+Set connection info via environment or `.env`:
+
+```bash
+VKB_DB_HOST=localhost
+VKB_DB_PORT=5433
+VKB_DB_NAME=valence
+VKB_DB_USER=valence
+VKB_DB_PASSWORD=valence
+```
+
+### Configure inference
+
+By default, the system runs in degraded mode (concatenation fallback). Configure a real backend:
+
+```bash
+# Gemini 2.5 Flash via local gemini CLI (no API key needed)
+valence config inference gemini
+
+# Cerebras (ultra-low-latency classification)
+valence config inference cerebras --api-key YOUR_KEY
+
+# Local Ollama (fully offline)
+valence config inference ollama --model qwen3:30b
+
+# View current config
+valence config inference show
+```
+
+### Smoke test
+
+```bash
+# Ingest a source
+valence sources ingest "Python's GIL was replaced in 3.13 by per-interpreter locks." \
+  --type document --title "Python 3.13 release notes"
+
+# Search sources
+valence sources search "Python GIL"
+
+# Search articles (compiled on first use)
+valence articles search "Python concurrency"
+
+# Get an article with its provenance
+valence articles get <article-id> --provenance
+```
+
+---
+
+## CLI Usage
+
+### Sources
+
+```bash
+# Ingest from stdin or argument
+valence sources ingest "Content here" --type web --title "My Source" --url https://example.com
+valence sources ingest "$(cat notes.txt)" --type document
+
+# List sources (filterable by type)
+valence sources list
+valence sources list --type conversation --limit 50
+
+# Get a specific source
+valence sources get <source-id>
+
+# Search sources (full-text)
+valence sources search "search terms"
+```
+
+**Source types:** `document`, `conversation`, `web`, `code`, `observation`, `tool_output`, `user_input`
+
+### Articles
+
+```bash
+# Search compiled articles (triggers compilation if needed)
+valence articles search "query about anything"
+valence articles search "Python" --domain engineering
+
+# Get article with full provenance
+valence articles get <article-id> --provenance
+
+# List recent articles
+valence articles list
+
+# Create an article manually (operator-authored)
+valence articles create "This is article content." --title "My Article"
+valence articles create "Agent-synthesized insight" --author-type agent
+```
+
+### Provenance
+
+```bash
+# List all sources for an article
+valence provenance get <article-id>
+
+# Trace a specific claim back to contributing sources
+valence provenance trace <article-id> "the claim text to trace"
+
+# Link a source to an article with a typed relationship
+valence provenance link <article-id> <source-id> --relationship confirms
+valence provenance link <article-id> <source-id> --relationship contradicts --notes "Newer data disagrees"
+```
+
+**Relationship types:** `originates`, `confirms`, `supersedes`, `contradicts`, `contends`
+
+### Configuration
+
+```bash
+# Inference backend
+valence config inference show
+valence config inference gemini --model gemini-2.5-flash
+valence config inference cerebras --api-key KEY --model llama-4-scout-17b-16e-instruct
+valence config inference ollama --host http://localhost:11434 --model qwen3:30b
+```
+
+### Global flags
+
+```bash
+valence --json articles search "query"          # JSON output
+valence --output table sources list             # table output
+valence --server http://remote:8420 stats       # remote server
+valence --timeout 60 articles search "big query"
+```
+
+---
+
+## Configuration
+
+Configuration lives in two places:
+
+**Environment / `.env`** — database connection and server binding:
+
+```bash
+VKB_DB_HOST=localhost
+VKB_DB_PORT=5433
+VKB_DB_NAME=valence
+VKB_DB_USER=valence
+VKB_DB_PASSWORD=valence
+VALENCE_HOST=127.0.0.1
+VALENCE_PORT=8420
+```
+
+**`system_config` table** — inference backend (written by `valence config inference`):
+
 ```json
 {
-  "plugins": {
-    "slots": { "memory": "memory-valence" },
-    "entries": {
-      "memory-valence": {
-        "enabled": true,
-        "config": {
-          "serverUrl": "http://127.0.0.1:8420",
-          "autoRecall": true,
-          "autoCapture": true,
-          "sessionTracking": true,
-          "memoryMdSync": true
-        }
-      }
-    }
-  }
+  "provider": "gemini",
+  "model": "gemini-2.5-flash"
 }
 ```
 
-### pip (manual setup)
+The server reads `system_config` at startup. Changes take effect on restart.
+
+---
+
+## Integration
+
+### OpenClaw
+
+Valence integrates with OpenClaw via CLI wrapping. OpenClaw calls `valence` subcommands directly; no MCP server required.
 
 ```bash
-pip install ourochronos-valence
-
-# Requires PostgreSQL 16+ with pgvector
-valence-server migrate up
-valence-server
+# OpenClaw skill wraps the CLI:
+valence sources ingest "$CONTENT" --type observation
+valence articles search "$QUERY"
 ```
 
-### CLI
+Inference backend is configurable per platform — call `valence config inference` to set the backend appropriate for your environment.
 
-```bash
-# Add a belief
-valence add "The best code is code you don't have to write" \
-  -d engineering/principles
+### Claude Code
 
-# Search beliefs
-valence query "code simplicity"
-
-# Check stats
-valence stats
-```
-
-For P2P networking:
-```bash
-pip install ourochronos-valence[p2p]
-```
-
-### Prerequisites
-
-- Docker (recommended), OR:
-- Python 3.11+
-- PostgreSQL 16+ with pgvector extension
+Claude Code integration via plugin system is planned (future). The plugin will call `valence` CLI commands and inherit whatever inference backend is configured. No CLAUDE.md requirement on users.
 
 ---
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    CLI / MCP (58 tools)              │
-├─────────────────────────────────────────────────────┤
-│  Beliefs    Trust     Verification   Consensus      │
-│  ┌──────┐  ┌──────┐  ┌──────────┐  ┌───────────┐  │
-│  │ 6D   │  │Multi-│  │ Stakes + │  │ L1→L4     │  │
-│  │Conf. │  │Dim.  │  │ Disputes │  │ Elevation │  │
-│  └──────┘  └──────┘  └──────────┘  └───────────┘  │
-│  Incentives  Sessions   Sharing     Backup         │
-│  ┌────────┐  ┌──────┐  ┌──────┐   ┌───────────┐  │
-│  │Reputa- │  │Track │  │Trust-│   │ Erasure   │  │
-│  │tion +  │  │+Learn│  │Gated │   │ Coded     │  │
-│  │Calibr. │  └──────┘  └──────┘   └───────────┘  │
-│  └────────┘                                        │
-├─────────────────────────────────────────────────────┤
-│  HTTP Server (OAuth 2.1 + PKCE)  │  Compliance     │
-├─────────────────────────────────────────────────────┤
-│              Transport Layer                        │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐        │
-│  │ Legacy   │  │ libp2p   │  │ Protocol  │        │
-│  │ HTTP     │  │ DHT+     │  │ Handlers  │        │
-│  │          │  │ GossipSub│  │ (VFP)     │        │
-│  └──────────┘  └──────────┘  └───────────┘        │
-├─────────────────────────────────────────────────────┤
-│  Identity (Multi-DID)  │  QoS (Contribution-based) │
-├─────────────────────────────────────────────────────┤
-│  13 our-* bricks  │  PostgreSQL + pgvector         │
-└─────────────────────────────────────────────────────┘
-```
-
----
-
-## Principles
-
-1. **Privacy by default** — Your beliefs are yours unless you share them
-2. **Reputation from rigor** — Accuracy and reasoning quality, not popularity
-3. **Exit rights** — Full data portability. You can always leave with your data
-4. **No central censor** — Trust networks, not central authority
-5. **Transparency** — Algorithms and governance decisions are visible
-
-The protocol has no content opinions. Nodes set their own policies.
-
-See [PRINCIPLES.md](docs/PRINCIPLES.md) and [GOVERNANCE.md](docs/GOVERNANCE.md).
-
----
-
-## For Agent Developers
-
-Valence exposes 58 tools via [MCP](https://modelcontextprotocol.io) (Model Context Protocol):
-
-```python
-# Beliefs — create, query, supersede, search, share, corroborate
-# Trust — multi-dimensional trust scoring and verification
-# Verification — submit, accept, dispute, resolve with stakes
-# Consensus — L1-L4 layer elevation, challenges, corroboration
-# Incentives — reputation, calibration (Brier), rewards, bounties
-# Sessions — track conversations, extract insights, find patterns
-# Backup — create, verify, restore with erasure coding
-```
-
-See [docs/API.md](docs/API.md) for the complete tool reference.
-
-Connect any MCP-compatible agent. Claude, GPT, local models — the substrate doesn't care who's asking, it cares about the quality of what they contribute.
-
-### OAuth 2.1 + PKCE
-
-```bash
-# Register a client
-curl -X POST https://your-node/api/v1/oauth/register \
-  -H "Content-Type: application/json" \
-  -d '{"client_name":"my-agent","redirect_uris":["http://localhost/cb"]}'
-```
-
-Full OAuth 2.1 with PKCE, dynamic client registration, and MCP scope control.
-
----
-
-## Federation
-
-Nodes federate automatically. Beliefs propagate through trust chains — you only see what your trust network endorses.
-
-```
-Node A ←──trust──→ Node B ←──trust──→ Node C
-  │                   │                   │
-  └── beliefs ────────┴── beliefs ────────┘
-      (trust-gated)       (trust-gated)
-```
-
-- **DID-based identity** — `did:web:` and `did:valence:` schemes
-- **Auth challenge/response** — Ed25519 signatures
-- **Replay protection** — per-belief nonces
-- **Key rotation** — graceful transitions with overlap periods
-- **Cursor pagination** — efficient sync at scale
-- **Peer exchange** — gossip-style discovery with trust filtering
-
----
-
-## Local Embeddings
-
-Valence uses local embeddings by default. Your data stays on your machine.
-
-- **Default:** `bge-small-en-v1.5` (384 dimensions) — no API keys needed
-- **Optional:** OpenAI `text-embedding-3-small` (1536 dimensions)
-
-```bash
-# Force re-embed with current provider
-valence embeddings backfill --force
-```
-
----
-
-## CLI
-
-```
-valence init              Initialize database schema
-valence add               Add a new belief
-valence query             Semantic search
-valence list              List recent beliefs
-valence conflicts         Detect contradictions
-valence stats             Database statistics
-valence trust             Trust network management
-valence schema            Dimension schema registry
-valence embeddings        Embedding management
-valence resources         Shared resource management
-valence attestations      Usage attestation tracking
-valence qos               Contribution-based QoS
-valence identity          Multi-DID identity management
-valence migrate           Database migrations
-valence export/import     Data portability
-valence discover          Network peer discovery
-valence peer              Peer management
-```
-
----
-
-## Status
-
-**v1.0.1** — First stable release.
-
-- ✅ 6D confidence + extensible dimensions
-- ✅ Multi-dimensional epistemic trust
-- ✅ P2P via py-libp2p (Kademlia DHT, GossipSub)
-- ✅ Federation with DID auth, nonces, key rotation
-- ✅ Multi-DID identity (no master key SPOF)
-- ✅ Resource sharing with trust-gated access
-- ✅ Contribution-based QoS
-- ✅ MCP server (58 tools)
-- ✅ OAuth 2.1 + PKCE
-- ✅ Local embeddings (no external API needed)
-- ✅ Verification protocol with stakes + disputes
-- ✅ Incentive system (reputation, calibration, rewards)
-- ✅ Consensus mechanism (L1-L4 elevation, challenges)
-- ✅ Resilient backup with erasure coding
-- ✅ GDPR compliance (access, export, import, deletion)
-- ✅ 2,300+ tests in valence, 6,300+ including bricks
-
-See [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md) for detailed component status.
-
-### What's Next
-
-- Rust transport (rust-libp2p) when scale demands it
-- Auto-ingestion from conversations
-- Browser client
-- Network governance transition
-
----
-
-## Contributing
-
-Valence is open source. We welcome contributions.
+## Development
 
 ```bash
 git clone https://github.com/ourochronos/valence.git
 cd valence
+git checkout v2/knowledge-system
+
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-./scripts/check  # lint + tests
+
+# Start the database
+docker compose up -d postgres
+
+# Apply schema
+valence init
+
+# Run tests
+pytest tests/ -x -q
+
+# Lint
+ruff check src/
 ```
 
-See [GOVERNANCE.md](docs/GOVERNANCE.md) for how decisions are made.
+**Current branch:** `v2/knowledge-system` — v2 rewrite. `main` contains v1 (beliefs, federation, MCP, 78 tables). v2 replaces all of that with 20 tables, CLI-first, provenance-native.
+
+---
+
+## Data Sovereignty
+
+All inference runs in the US. Gemini Flash via local CLI, Cerebras (US cloud), or Ollama (local). No direct calls to non-US endpoints. All data stays local unless you explicitly federate (not in v2 scope).
 
 ---
 
 ## License
 
 MIT
-
----
-
-*The substrate that lets agents build genuine understanding of their humans.*
